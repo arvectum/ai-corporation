@@ -201,6 +201,8 @@ def collect_controlled_provider_preflight(
     candidates: list[EligibleRunPreflight] = []
     for run in runs:
         reason_codes: list[str] = []
+        if run.status != "completed":
+            reason_codes.append("analysis_run_not_completed")
         case = session.scalar(
             select(ProcurementCase).where(
                 ProcurementCase.id == run.procurement_case_id,
@@ -248,7 +250,7 @@ def collect_controlled_provider_preflight(
         )
 
     eligible_count = sum(candidate.eligible_for_gate5 for candidate in candidates)
-    report = {
+    return {
         "preflight_version": "r10.1-controlled-provider-preflight-v1",
         "configuration": provider.as_dict(),
         "eligible_run_count": eligible_count,
@@ -264,4 +266,3 @@ def collect_controlled_provider_preflight(
             "local_paths_recorded": False,
         },
     }
-    return report
