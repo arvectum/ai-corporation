@@ -1,12 +1,13 @@
 """
-ARV-009C1.3A — Rolling-window EIS storage upper bound.
+ARV-009C1.3B — Rolling-window EIS storage upper bound.
 
-Corrected checkpoint, scope, and window coverage semantics.
+Harden unit state, checkpoint schema v3, target signature, provenance.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import math
@@ -21,7 +22,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
@@ -38,33 +39,13 @@ MAX_PROCESSING_CONCURRENCY = 4
 
 ACTIVE_LAW_TYPES = ("44fz", "223fz", "capital_repair")
 IMPLEMENTED_LAWS = ["44fz"]
+UNIMPLEMENTED_LAWS = ["223fz", "capital_repair"]
 
 EIS_DOC_TYPE_LAW = {
     "epNotificationEF2020": "44fz",
-    "epNotification223": "223fz",
-    "capitalRepair": "capital_repair",
 }
 
-EIS_REGION_REGISTRY = {
-    "source": "KLADR canonical, verified via EIS NSI getNsiOrgRegion",
-    "version": "kladdr-2024",
-    "codes": [
-        "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
-        "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
-        "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
-        "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
-        "41", "42", "43", "44", "45", "46", "47", "48", "49", "50",
-        "51", "52", "53", "54", "55", "56", "57", "58", "59", "60",
-        "61", "62", "63", "64", "65", "66", "67", "68", "69", "70",
-        "71", "72", "73", "74", "75", "76", "77", "78", "79", "80",
-        "81", "82", "83", "84", "85", "86", "87", "88", "89", "90",
-        "91", "92", "93", "94", "95", "96", "97", "98", "99",
-    ],
-}
-
-_RUSSIAN_REGIONS = EIS_REGION_REGISTRY["codes"]
-NATIONAL_TARGET_REGIONS = _RUSSIAN_REGIONS
-NATIONAL_TARGET_WINDOW_DAYS = 180
+REGION_REGISTRY_PATH = "samples/capacity/eis-org-region-registry.json"
 
 DEFAULT_DELAY_SECONDS = 0.0
 MAX_RETRIES = 3
@@ -82,35 +63,121 @@ OUTPUT_CSV = "arv-009-rolling-window-storage.csv"
 
 _interrupted = False
 
+UnitStatus = Literal["success_archive", "success_no_data", "failed_retryable", "failed_terminal"]
+
 
 def _handle_sigint(signum: int, frame: Any) -> None:
     global _interrupted
     if _interrupted:
-        logger.warning("Second SIGINT — forcing exit.")
+        logger.warning("Second SIGINT - forcing exit.")
         sys.exit(1)
     logger.info("SIGINT received. Will stop after current operation.")
     _interrupted = True
 
 
-# ── Checkpoint / CompletedUnit ─────────────────────────────────────────────
+# ── Region registry ────────────────────────────────────────────────────────
 
 
-@dataclass
-class CompletedUnit:
-    region: str
-    date: str
-    law: str
+def load_region_registry() -> dict:
+    path = Path(REGION_REGISTRY_PATH)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            if "codes" in data and len(data["codes"]) > 0:
+                return data
+        except Exception:
+            logger.warning("Failed to load region registry from %s", path)
+    logger.warning("Region registry not found at %s; using built-in fallback", path)
+    return {
+        "source": "KLADR canonical fallback",
+        "codes": [
+            "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+            "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+            "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
+            "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
+            "41", "42", "43", "44", "45", "46", "47", "48", "49", "50",
+            "51", "52", "53", "54", "55", "56", "57", "58", "59", "60",
+            "61", "62", "63", "64", "65", "66", "67", "68", "69", "70",
+            "71", "72", "73", "74", "75", "76", "77", "78", "79", "80",
+            "81", "82", "83", "84", "85", "86", "87", "88", "89", "90",
+            "91", "92", "93", "94", "95", "96", "97", "98", "99",
+        ],
+    }
 
-    def canonical_key(self) -> str:
-        return f"{self.region}|{self.date}|{self.law}"
 
-    @staticmethod
-    def from_dict(d: dict) -> CompletedUnit:
-        return CompletedUnit(region=d["region"], date=d["date"], law=d["law"])
+def _get_registry_codes() -> list[str]:
+    reg = load_region_registry()
+    return reg["codes"]
+
+
+# ── Checkpoint / Unit ──────────────────────────────────────────────────────
 
 
 def build_unit_key(region: str, date_str: str, law: str) -> str:
     return f"{region}|{date_str}|{law}"
+
+
+def build_target_signature(
+    regions: list[str],
+    laws: list[str],
+    dates: list[str],
+    doc_types: list[str],
+) -> str:
+    payload = {
+        "regions": sorted(regions),
+        "laws": sorted(laws),
+        "dates": sorted(dates),
+        "document_types": sorted(doc_types),
+        "schema_version": 3,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
+
+def check_target_mismatch(
+    checkpoint: dict,
+    regions: list[str],
+    laws: list[str],
+    dates: list[str],
+    doc_types: list[str],
+) -> str | None:
+    expected = build_target_signature(regions, laws, dates, doc_types)
+    actual = checkpoint.get("target_signature", "")
+    if actual and actual != expected:
+        return (
+            "ARV-009C1_CHECKPOINT_TARGET_MISMATCH: checkpoint target signature "
+            f"{actual[:16]}... != expected {expected[:16]}..."
+        )
+    return None
+
+
+RETRY_BUDGET = 2
+
+
+@dataclass
+class UnitResult:
+    status: UnitStatus
+    attempts: int = 0
+    archive_received: bool = False
+    documents_extracted: int = 0
+    last_error_class: str = ""
+    last_error_message: str = ""
+    next_retry_allowed_at: str = ""
+
+    def is_completed(self) -> bool:
+        return self.status in ("success_archive", "success_no_data")
+
+    def is_failed(self) -> bool:
+        return self.status in ("failed_retryable", "failed_terminal")
+
+    def can_retry(self) -> bool:
+        return self.status == "failed_retryable" and self.attempts < RETRY_BUDGET
+
+
+def _sanitize_error_message(msg: str) -> str:
+    msg = _re.sub(r"https?://[^\s]+", "[URL]", msg)
+    msg = _re.sub(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", "[TOKEN]", msg)
+    msg = _re.sub(r"\b\d{10,}\b", "[NUM]", msg)
+    return msg[:500]
 
 
 # ── EIS helpers ────────────────────────────────────────────────────────────
@@ -157,6 +224,14 @@ def _parse_xml_version_number(root: ET.Element) -> str | None:
     return None
 
 
+def _parse_xml_publish_date(root: ET.Element) -> str | None:
+    for tag in ("publishDate", "publicationDate", "docPublishDate", "createDate"):
+        node = root.find(f".//ns3:{tag}", EIS_XML_NS)
+        if node is not None and node.text:
+            return node.text.strip()
+    return None
+
+
 # ── Version comparison ─────────────────────────────────────────────────────
 
 
@@ -169,7 +244,7 @@ def _parse_version_as_int(v: str) -> int | None:
 
 def _version_sort_key(v: str | None, source_date: str = "") -> tuple:
     if v is None or v.strip() == "":
-        return (0, 0, source_date)
+        return (0, 0, source_date or "")
     parsed_int = _parse_version_as_int(v)
     if parsed_int is not None:
         return (1, parsed_int, "")
@@ -228,6 +303,7 @@ def _extract_documents_from_archive(
                 procurement_id = _parse_xml_procurement_id(name)
                 law = _parse_xml_law(name)
                 version = _parse_xml_version_number(root)
+                pub_date = _parse_xml_publish_date(root)
                 try:
                     for att_node in root.findall(".//ns4:attachmentInfo", EIS_XML_NS):
                         fn_node = att_node.find("ns4:fileName", EIS_XML_NS)
@@ -248,7 +324,7 @@ def _extract_documents_from_archive(
                             url=furl,
                             size_bytes=fsize,
                             version=version,
-                            source_date=date_str,
+                            source_date=pub_date or date_str,
                             source_region=region,
                         ))
                 except Exception:
@@ -307,9 +383,10 @@ class ExecutionScope:
 class NationalScope:
     target_region_registry: dict = field(default_factory=dict)
     target_region_count: int = 0
+    target_region_codes: list[str] = field(default_factory=list)
     target_laws: list[str] = field(default_factory=list)
     target_window_days: int = 180
-    regions_covered: int = 0
+    regions_covered: list[str] = field(default_factory=list)
     laws_covered: list[str] = field(default_factory=list)
     days_covered: int = 0
     region_complete: bool = False
@@ -348,7 +425,7 @@ def compute_window_metrics(
     docs: list[DocumentRecord],
     window_days: int,
     snapshot_date: datetime,
-    observed_days_count: int | None = None,
+    completed_dates_count: int | None = None,
 ) -> dict[str, Any]:
     window_docs = filter_docs_by_window(docs, window_days, snapshot_date)
     window_start = (snapshot_date - timedelta(days=window_days)).strftime("%Y-%m-%d")
@@ -393,19 +470,19 @@ def compute_window_metrics(
     max_daily = max(daily_values) if daily_values else 0
     avg_daily = (sum(daily_values) / len(daily_values)) if daily_values else 0.0
 
-    if observed_days_count is None:
-        observed_days_count = len(daily_values)
+    if completed_dates_count is None:
+        completed_dates_count = len(daily_values)
 
     window_coverage_percent = (
-        min(100.0, observed_days_count / window_days * 100.0) if window_days > 0 else 0.0
+        min(100.0, completed_dates_count / window_days * 100.0) if window_days > 0 else 0.0
     )
-    window_scope_complete = observed_days_count >= window_days
+    window_scope_complete = completed_dates_count >= window_days
 
     file_count = len(window_docs)
 
     return {
         "window_days": window_days,
-        "observed_days": observed_days_count,
+        "observed_days": completed_dates_count,
         "window_coverage_percent": round(window_coverage_percent, 1),
         "window_scope_complete": window_scope_complete,
         "window_start_date": window_start,
@@ -434,7 +511,7 @@ def compute_window_metrics(
     }
 
 
-# ── Sizing (only for complete windows) ─────────────────────────────────────
+# ── Sizing ─────────────────────────────────────────────────────────────────
 
 
 def compute_observed_subtotal(window_metrics: dict[str, Any]) -> dict[str, Any]:
@@ -549,38 +626,42 @@ def load_checkpoint(path: Path) -> dict[str, Any] | None:
     return None
 
 
-def build_checkpoint(
-    completed_units: list[CompletedUnit],
+def build_checkpoint_v3(
+    target_signature: str,
+    completed_units: list[dict],
+    failed_units: list[dict],
+    unit_results: dict[str, dict],
     documents: list[DocumentRecord],
-    had_error: bool,
-    source_errors: list[str],
-    archives_downloaded: int,
-    archives_skipped: int,
+    interrupted: bool,
     units_target: int,
     units_completed: int,
     units_failed: int,
-    interrupted: bool = False,
-    region_attempted: list[str] | None = None,
+    source_errors: list[str],
+    archives_downloaded: int,
+    archives_skipped: int,
+    xml_parsed: int,
+    xml_failed: int,
 ) -> dict[str, Any]:
-    units_remaining = units_target - units_completed - units_failed
+    units_remaining = units_target - units_completed
     if units_remaining < 0:
         units_remaining = 0
     return {
+        "schema_version": 3,
+        "target_signature": target_signature,
         "interrupted": interrupted,
         "units_target": units_target,
         "units_completed": units_completed,
         "units_failed": units_failed,
         "units_remaining": units_remaining,
-        "completed_units": [
-            {"region": u.region, "date": u.date, "law": u.law}
-            for u in completed_units
-        ],
+        "completed_units": completed_units,
+        "failed_units": failed_units,
+        "unit_results": unit_results,
         "documents": [asdict(d) for d in documents],
-        "had_error": had_error,
         "source_errors": source_errors,
         "archives_downloaded": archives_downloaded,
         "archives_skipped": archives_skipped,
-        "region_attempted": region_attempted or [],
+        "xml_parsed": xml_parsed,
+        "xml_failed": xml_failed,
     }
 
 
@@ -594,7 +675,7 @@ def run_sweep(
     region_whitelist: list[str] | None = None,
     delay_seconds: float = DEFAULT_DELAY_SECONDS,
     resume: bool = False,
-) -> tuple[list[DocumentRecord], ScopeResult, int, int, int]:
+) -> tuple[list[DocumentRecord], ScopeResult, int, int, int, dict[str, Any], str]:
     from src.modules.tender_operator_agent_demo.settings import get_zakupki_soap_settings
     from src.modules.tender_operator_agent_demo.zakupki_soap_client import ZakupkiSoapClient
     from src.tender_research.sync.eis_params import format_eis_exact_date
@@ -607,12 +688,13 @@ def run_sweep(
             raise RuntimeError("ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP token not configured.")
     client = ZakupkiSoapClient(settings)
 
+    all_codes = _get_registry_codes()
     if region_whitelist:
         regions = region_whitelist
     elif max_regions:
-        regions = _RUSSIAN_REGIONS[:max_regions]
+        regions = all_codes[:max_regions]
     else:
-        regions = list(_RUSSIAN_REGIONS)
+        regions = list(all_codes)
 
     today = datetime.now(UTC)
     dates_to_scan: list[str] = [
@@ -622,12 +704,17 @@ def run_sweep(
 
     target_laws = list(ACTIVE_LAW_TYPES)
     implemented_laws = list(IMPLEMENTED_LAWS)
+    doc_types = ["epNotificationEF2020"]
+
+    target_signature = build_target_signature(regions, implemented_laws, dates_to_scan, doc_types)
 
     archive_dir = output_dir / "archives"
     archive_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / CHECKPOINT_FILENAME
 
-    completed_units: list[CompletedUnit] = []
+    completed_units: list[dict] = []
+    failed_units: list[dict] = []
+    unit_results: dict[str, dict] = {}
     completed_keys: set[str] = set()
     documents: list[DocumentRecord] = []
     had_error = False
@@ -637,16 +724,25 @@ def run_sweep(
     region_attempted: list[str] = []
     units_completed = 0
     units_failed = 0
+    xml_parsed = 0
+    xml_failed = 0
 
     units_target = len(regions) * len(dates_to_scan) * len(implemented_laws)
 
     if resume:
         ckpt = load_checkpoint(checkpoint_path)
         if ckpt:
-            for u_dict in ckpt.get("completed_units", []):
-                cu = CompletedUnit.from_dict(u_dict)
+            mismatch = check_target_mismatch(ckpt, regions, implemented_laws, dates_to_scan, doc_types)
+            if mismatch:
+                raise RuntimeError(mismatch)
+            for cu in ckpt.get("completed_units", []):
+                key = build_unit_key(cu["region"], cu["date"], cu["law"])
                 completed_units.append(cu)
-                completed_keys.add(cu.canonical_key())
+                completed_keys.add(key)
+            for fu in ckpt.get("failed_units", []):
+                failed_units.append(fu)
+            for uk, ur in ckpt.get("unit_results", {}).items():
+                unit_results[uk] = ur
             doc_dicts = ckpt.get("documents", [])
             documents = [DocumentRecord(**d) for d in doc_dicts]
             had_error = ckpt.get("had_error", False)
@@ -656,10 +752,12 @@ def run_sweep(
             region_attempted = ckpt.get("region_attempted", [])
             units_completed = ckpt.get("units_completed", 0)
             units_failed = ckpt.get("units_failed", 0)
+            xml_parsed = ckpt.get("xml_parsed", 0)
+            xml_failed = ckpt.get("xml_failed", 0)
             logger.info(
-                "Resumed: %d completed_units, %d docs, %d errors, target=%d completed=%d failed=%d",
-                len(completed_units), len(documents),
-                len(source_errors), units_target, units_completed, units_failed,
+                "Resumed: %d completed, %d failed, %d docs, %d errors, target=%d",
+                len(completed_units), len(failed_units), len(documents),
+                len(source_errors), units_target,
             )
 
     signal.signal(signal.SIGINT, _handle_sigint)
@@ -677,13 +775,31 @@ def run_sweep(
                 if _interrupted:
                     break
                 unit_key = build_unit_key(region, exact_date, law)
+
+                # Skip if already completed
                 if unit_key in completed_keys:
                     continue
+
+                # Retry failed_retryable if budget remains
+                existing = unit_results.get(unit_key)
+                if existing and existing.get("status") == "failed_retryable":
+                    attempts = existing.get("attempts", 0)
+                    if attempts >= RETRY_BUDGET:
+                        continue  # budget exhausted, leave as failed
+
                 region_in_progress = True
                 doc_type = "epNotificationEF2020"
+                unit_attempt = (existing.get("attempts", 0) if existing else 0) + 1
+                unit_status: str = "failed_retryable"
+                archive_received = False
+                docs_extracted = 0
+                last_error_class = ""
+                last_error_msg = ""
+
                 try:
                     if delay_seconds > 0 and (archives_downloaded > 0 or archives_skipped > 0):
                         time.sleep(delay_seconds)
+
                     result = client.get_docs_by_org_region(
                         org_region=region,
                         exact_date=exact_date,
@@ -695,39 +811,79 @@ def run_sweep(
                         archive_path = archive_dir / attached.stored_name
                         new_docs = _extract_documents_from_archive(archive_path, region, exact_date)
                         documents.extend(new_docs)
+                        docs_extracted = len(new_docs)
+                        archive_received = True
+                        unit_status = "success_archive"
                     elif result.warnings:
-                        for w in result.warnings:
-                            source_errors.append(f"{region} {exact_date} {law}: {w}")
+                        has_no_data = any("отсутствуют" in w for w in result.warnings)
+                        if has_no_data:
+                            unit_status = "success_no_data"
+                        else:
+                            for w in result.warnings:
+                                source_errors.append(f"{region} {exact_date} {law}: {w}")
+                            unit_status = "success_no_data"
+                    else:
+                        unit_status = "success_no_data"
                 except Exception as e:
-                    source_errors.append(f"{region} {exact_date} {law}: {e}")
+                    last_error_class = type(e).__name__
+                    last_error_msg = _sanitize_error_message(str(e))
                     had_error = True
+                    if unit_attempt >= RETRY_BUDGET:
+                        unit_status = "failed_terminal"
+                    else:
+                        unit_status = "failed_retryable"
+
+                ur_dict = {
+                    "status": unit_status,
+                    "attempts": unit_attempt,
+                    "archive_received": archive_received,
+                    "documents_extracted": docs_extracted,
+                    "last_error_class": last_error_class,
+                    "last_error_message": last_error_msg,
+                    "next_retry_allowed_at": "",
+                }
+                unit_results[unit_key] = ur_dict
+
+                cu_entry = {"region": region, "date": exact_date, "law": law}
+
+                if unit_status in ("success_archive", "success_no_data"):
+                    completed_units.append(cu_entry)
+                    completed_keys.add(unit_key)
+                    units_completed += 1
+                else:
+                    failed_units.append(cu_entry)
                     units_failed += 1
 
-                cu = CompletedUnit(region=region, date=exact_date, law=law)
-                completed_units.append(cu)
-                completed_keys.add(cu.canonical_key())
-                units_completed += 1
-
-                ckpt_data = build_checkpoint(
+                ckpt_data = build_checkpoint_v3(
+                    target_signature=target_signature,
                     completed_units=completed_units,
+                    failed_units=failed_units,
+                    unit_results=unit_results,
                     documents=documents,
-                    had_error=had_error,
-                    source_errors=source_errors,
-                    archives_downloaded=archives_downloaded,
-                    archives_skipped=archives_skipped,
+                    interrupted=_interrupted,
                     units_target=units_target,
                     units_completed=units_completed,
                     units_failed=units_failed,
-                    interrupted=_interrupted,
-                    region_attempted=region_attempted,
+                    source_errors=source_errors,
+                    archives_downloaded=archives_downloaded,
+                    archives_skipped=archives_skipped,
+                    xml_parsed=xml_parsed,
+                    xml_failed=xml_failed,
                 )
                 save_checkpoint(ckpt_data, checkpoint_path)
 
-    if _interrupted:
-        logger.info("Sweep interrupted. %d units completed, %d docs collected.",
-                     units_completed, len(documents))
+        if _interrupted and region_in_progress:
+            break
 
-    execution_complete = units_completed == units_target and not _interrupted
+    if _interrupted:
+        logger.info("Sweep interrupted. %d completed, %d failed, %d docs.",
+                     units_completed, units_failed, len(documents))
+
+    execution_complete = (
+        units_completed == units_target
+        and units_failed == 0
+        and not _interrupted
+    )
 
     exec_scope = ExecutionScope(
         requested_regions=list(regions),
@@ -739,25 +895,45 @@ def run_sweep(
     )
 
     completed_region_set = set()
-    completed_date_set = set()
+    completed_date_set: set[str] = set()
     completed_laws_set = set()
+    all_completed_dates_by_region: dict[str, set[str]] = defaultdict(set)
     for cu in completed_units:
-        completed_region_set.add(cu.region)
-        completed_date_set.add(cu.date)
-        completed_laws_set.add(cu.law)
+        completed_region_set.add(cu["region"])
+        completed_date_set.add(cu["date"])
+        completed_laws_set.add(cu["law"])
+        all_completed_dates_by_region[cu["region"]].add(cu["date"])
+
+    failed_regions = set()
+    for fu in failed_units:
+        failed_regions.add(fu["region"])
+    failed_date_set = set()
+    for fu in failed_units:
+        failed_date_set.add(fu["date"])
 
     failed_laws = [l for l in target_laws if l not in completed_laws_set]
 
-    national_region_complete = len(completed_region_set) == len(NATIONAL_TARGET_REGIONS) and not had_error
+    reg_registry = load_region_registry()
+    target_region_codes = reg_registry.get("codes", all_codes)
+    national_region_complete = (
+        set(completed_region_set) == set(target_region_codes)
+        and len(failed_regions) == 0
+    )
     national_law_complete = len(failed_laws) == 0
     national_window_complete = len(completed_date_set) >= NATIONAL_TARGET_WINDOW_DAYS
 
+    dates_complete_for_all_requested_units = (
+        len(completed_date_set - failed_date_set) == len(dates_to_scan)
+        and len(failed_date_set) == 0
+    )
+
     nat_scope = NationalScope(
-        target_region_registry=dict(EIS_REGION_REGISTRY),
-        target_region_count=len(NATIONAL_TARGET_REGIONS),
+        target_region_registry=dict(reg_registry),
+        target_region_count=len(target_region_codes),
+        target_region_codes=target_region_codes,
         target_laws=list(target_laws),
         target_window_days=NATIONAL_TARGET_WINDOW_DAYS,
-        regions_covered=len(completed_region_set),
+        regions_covered=sorted(completed_region_set),
         laws_covered=sorted(completed_laws_set),
         days_covered=len(completed_date_set),
         region_complete=national_region_complete,
@@ -779,10 +955,22 @@ def run_sweep(
         except OSError:
             pass
 
-    return documents, scope, units_completed, units_failed, units_target
+    extra = {
+        "dates_complete_for_all_requested_units": dates_complete_for_all_requested_units,
+        "dates_with_partial_region_coverage": len(completed_date_set - failed_date_set),
+        "dates_with_failures": len(failed_date_set),
+    }
+
+    return documents, scope, units_completed, units_failed, units_target, extra, target_signature
 
 
 # ── Output ─────────────────────────────────────────────────────────────────
+
+
+def compute_result_sha256(report: dict) -> str:
+    return hashlib.sha256(
+        json.dumps(report, sort_keys=True, ensure_ascii=False, default=str).encode()
+    ).hexdigest()
 
 
 def build_report(
@@ -791,20 +979,21 @@ def build_report(
     target_laws: list[str],
     lookback_days: int,
     generated_at: datetime,
+    extra: dict | None = None,
 ) -> dict[str, Any]:
     snapshot_date = datetime.now(UTC)
 
     windows: dict[int, dict[str, Any]] = {}
     sizing: dict[int, dict[str, Any]] = {}
     if isinstance(lookback_days, int):
-        observed_days = lookback_days
+        completed_dates_count = lookback_days
     else:
-        observed_days = len({d.source_date for d in documents if d.source_date})
+        completed_dates_count = len({d.source_date for d in documents if d.source_date})
 
     for wd in (30, 90, 180):
         wm = compute_window_metrics(
             documents, wd, snapshot_date,
-            observed_days_count=observed_days,
+            completed_dates_count=completed_dates_count,
         )
         windows[wd] = wm
         if wm["window_scope_complete"]:
@@ -814,6 +1003,7 @@ def build_report(
             sizing[wd].update(compute_sizing_status(False))
 
     failed_laws = [l for l in target_laws if l not in scope.national_scope.laws_covered]
+    law_scope_complete = len(failed_laws) == 0
 
     exec_complete = scope.execution_scope.complete
     nat_complete = scope.national_scope.complete
@@ -821,30 +1011,43 @@ def build_report(
         w.get("size_coverage_percent", 0) >= 95.0
         for w in windows.values()
     )
-    scope_complete = exec_complete and nat_complete and not failed_laws
+    scope_complete_candidate = exec_complete and nat_complete and not failed_laws
+    size_coverage_ok_val = windows_ok
 
-    verdict, reason = determine_verdict(windows, sizing, scope_complete, windows_ok)
+    verdict, reason = determine_verdict(windows, sizing, scope_complete_candidate, size_coverage_ok_val)
 
     commit_sha = ""
+    worktree_dirty = False
     try:
         result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             capture_output=True, text=True, timeout=5,
         )
         commit_sha = result.stdout.strip()
+        result2 = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True, timeout=5,
+        )
+        worktree_dirty = bool(result2.stdout.strip())
     except Exception:
         commit_sha = "unknown"
 
     report = {
         "schema_version": "2.0.0",
-        "measurement_kind": "incomplete",
+        "checkpoint_schema_version": 3,
+        "measurement_kind": "real_44fz_national_30d"
+            if (nat_complete and exec_complete and not failed_laws)
+            else "incomplete",
         "ssd_verdict": verdict,
         "verdict_reason": reason,
         "meta": {
             "tool": "measure_rolling_window_storage.py",
-            "version": "2.0.0",
+            "version": "3.0.0",
             "generated_at": generated_at.isoformat(),
-            "generator_commit_sha": commit_sha,
+            "generated_from_commit_sha": commit_sha,
+            "worktree_dirty": worktree_dirty,
+            "source_registry_sha256": compute_result_sha256(scope.national_scope.target_region_registry),
+            "result_sha256": "",
         },
         "execution_scope": {
             "requested_regions": scope.execution_scope.requested_regions,
@@ -855,7 +1058,11 @@ def build_report(
             "complete": exec_complete,
         },
         "national_scope": {
-            "target_region_registry": scope.national_scope.target_region_registry,
+            "target_region_registry": {
+                "source": scope.national_scope.target_region_registry.get("source", ""),
+                "count": scope.national_scope.target_region_count,
+                "sha256": scope.national_scope.target_region_registry.get("sha256", ""),
+            },
             "target_region_count": scope.national_scope.target_region_count,
             "target_laws": scope.national_scope.target_laws,
             "target_window_days": scope.national_scope.target_window_days,
@@ -868,7 +1075,19 @@ def build_report(
             "complete": nat_complete,
         },
         "source_errors": scope.source_errors,
+        "provisional_44fz_30d_storage_class": (
+            "requires_full_all_law_scope" if not law_scope_complete else None
+        ),
     }
+
+    if extra:
+        report["dates_complete_for_all_requested_units"] = extra.get(
+            "dates_complete_for_all_requested_units", False
+        )
+        report["dates_with_partial_region_coverage"] = extra.get(
+            "dates_with_partial_region_coverage", 0
+        )
+        report["dates_with_failures"] = extra.get("dates_with_failures", 0)
 
     for wd in (30, 90, 180):
         w = windows[wd]
@@ -885,6 +1104,9 @@ def build_report(
 
     if "windows" not in report:
         report["windows"] = {}
+
+    result_sha = compute_result_sha256(report)
+    report["meta"]["result_sha256"] = result_sha
 
     return report
 
@@ -920,7 +1142,7 @@ def write_outputs(report: dict[str, Any], output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="ARV-009C1.3A — Rolling-window EIS storage upper bound."
+        description="ARV-009C1.3B — Rolling-window EIS storage upper bound."
     )
     parser.add_argument("--output-dir", default="/tmp/arv009c1")
     parser.add_argument("--lookback-days", type=int, default=180)
@@ -929,6 +1151,8 @@ def main() -> None:
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY_SECONDS)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--command-args", nargs="*", default=None,
+                        help="Record the actual command arguments for provenance")
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -941,7 +1165,7 @@ def main() -> None:
     generated_at = datetime.now(UTC)
 
     try:
-        documents, scope, units_completed, units_failed, units_target = run_sweep(
+        documents, scope, units_completed, units_failed, units_target, extra, target_sig = run_sweep(
             output_dir=output_dir,
             lookback_days=args.lookback_days,
             max_regions=args.max_regions,
@@ -958,7 +1182,7 @@ def main() -> None:
             "verdict_reason": str(e),
             "meta": {
                 "tool": "measure_rolling_window_storage.py",
-                "version": "2.0.0",
+                "version": "3.0.0",
                 "generated_at": generated_at.isoformat(),
             },
         }
@@ -973,20 +1197,21 @@ def main() -> None:
     )
 
     report = build_report(
-        documents, scope, target_laws, args.lookback_days, generated_at,
+        documents, scope, target_laws, args.lookback_days, generated_at, extra=extra,
     )
+
+    if args.command_args:
+        report["meta"]["command_arguments"] = " ".join(args.command_args)
+
     write_outputs(report, output_dir)
 
-    units_remaining = units_target - units_completed - units_failed
+    units_remaining = units_target - units_completed
     if units_remaining < 0:
         units_remaining = 0
     exec_complete = scope.execution_scope.complete
     nat_complete = scope.national_scope.complete
-    w30 = report.get("window_30d", {})
-    w90 = report.get("window_90d", {})
-    w180 = report.get("window_180d", {})
 
-    print(f"\n  ARV-009C1.3A — ROLLING WINDOW STORAGE UPPER BOUND (corrected)")
+    print(f"\n  ARV-009C1.3B — ROLLING WINDOW STORAGE (hardened)")
     print(f"  Units:      {units_completed}/{units_target} completed, "
           f"{units_failed} failed, {units_remaining} remaining")
     print(f"  Regions:    {scope.national_scope.regions_covered}")
