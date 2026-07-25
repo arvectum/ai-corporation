@@ -26,7 +26,12 @@ class HostListenerProbe:
         return {"open": self.open, "error_code": self.error_code}
 
 
-def _probe_host_listener(host: str, port: int, *, timeout: float = 1.0) -> HostListenerProbe:
+def _probe_host_listener(
+    host: str,
+    port: int,
+    *,
+    timeout: float = 1.0,
+) -> HostListenerProbe:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return HostListenerProbe(True, None)
@@ -94,7 +99,10 @@ def _published_bindings(raw_ports: Any) -> list[dict[str, Any]]:
         return []
     bindings: list[dict[str, Any]] = []
     for container_port, raw_bindings in raw_ports.items():
-        if not isinstance(container_port, str) or not isinstance(raw_bindings, list):
+        if not isinstance(container_port, str) or not isinstance(
+            raw_bindings,
+            list,
+        ):
             continue
         for raw_binding in raw_bindings:
             if not isinstance(raw_binding, dict):
@@ -123,34 +131,46 @@ def _published_bindings(raw_ports: Any) -> list[dict[str, Any]]:
     )
 
 
-def _container_summary(container: dict[str, Any], *, runtime_port: int) -> dict[str, Any]:
-    config = container.get("Config") if isinstance(container.get("Config"), dict) else {}
-    state = container.get("State") if isinstance(container.get("State"), dict) else {}
-    network = (
-        container.get("NetworkSettings")
-        if isinstance(container.get("NetworkSettings"), dict)
-        else {}
-    )
-    labels = config.get("Labels") if isinstance(config.get("Labels"), dict) else {}
-    health = state.get("Health") if isinstance(state.get("Health"), dict) else {}
+def _container_summary(
+    container: dict[str, Any],
+    *,
+    runtime_port: int,
+) -> dict[str, Any]:
+    raw_config = container.get("Config")
+    config = raw_config if isinstance(raw_config, dict) else {}
+    raw_state = container.get("State")
+    state = raw_state if isinstance(raw_state, dict) else {}
+    raw_network = container.get("NetworkSettings")
+    network = raw_network if isinstance(raw_network, dict) else {}
+    raw_labels = config.get("Labels")
+    labels = raw_labels if isinstance(raw_labels, dict) else {}
+    raw_health = state.get("Health")
+    health = raw_health if isinstance(raw_health, dict) else {}
     environment_keys = _environment_key_set(config.get("Env"))
     bindings = _published_bindings(network.get("Ports"))
     exposed_ports = config.get("ExposedPorts")
     exposed_port_keys = set(exposed_ports) if isinstance(exposed_ports, dict) else set()
     raw_name = container.get("Name")
     name = raw_name.lstrip("/") if isinstance(raw_name, str) else None
-    image = config.get("Image") if isinstance(config.get("Image"), str) else None
+    raw_image = config.get("Image")
+    image = raw_image if isinstance(raw_image, str) else None
     image_lower = image.lower() if image else ""
     postgres_like = bool(
         _POSTGRES_PORT_KEY in exposed_port_keys
         or _REQUIRED_POSTGRES_ENV_KEYS.issubset(environment_keys)
         or "postgres" in image_lower
     )
+    raw_status = state.get("Status")
+    status = raw_status if isinstance(raw_status, str) else None
+    raw_health_status = health.get("Status")
+    health_status = (
+        raw_health_status if isinstance(raw_health_status, str) else None
+    )
     return {
         "name": name,
         "image": image,
-        "status": state.get("Status") if isinstance(state.get("Status"), str) else None,
-        "health": health.get("Status") if isinstance(health.get("Status"), str) else None,
+        "status": status,
+        "health": health_status,
         "compose_project": labels.get("com.docker.compose.project"),
         "compose_service": labels.get("com.docker.compose.service"),
         "postgres_like": postgres_like,
