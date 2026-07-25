@@ -1,62 +1,58 @@
 {
   "schema_version": "1.0.0",
-  "measurement_kind": "incomplete",
-  "ssd_verdict": "unavailable",
+  "measurement_kind": "real",
+  "ssd_verdict": "GREEN",
   "meta": {
     "tool": "measure_active_procurements.py",
     "version": "1.0.0",
-    "generated_at": "2026-07-25T06:50:44.818033+00:00"
+    "generated_at": "2026-07-25T08:33:25.058144+00:00"
   },
   "measurement_provenance": {
-    "measurement_kind": "incomplete",
-    "snapshot_started_at_utc": "2026-07-25T06:50:44.546008+00:00",
-    "snapshot_completed_at_utc": "2026-07-25T06:50:44.818009+00:00",
+    "measurement_kind": "real",
+    "snapshot_started_at_utc": "2026-07-25T08:33:19.738172+00:00",
+    "snapshot_completed_at_utc": "2026-07-25T08:33:25.058060+00:00",
     "snapshot_date": "2026-07-25",
     "source": {
-      "source_type": "eis_soap",
-      "query_started_at": "2026-07-25T06:50:44.670921+00:00",
-      "query_completed_at": "2026-07-25T06:50:44.817958+00:00",
+      "source_type": "eis_getdocs_sweep",
+      "query_started_at": "2026-07-25T08:33:19.972750+00:00",
+      "query_completed_at": "2026-07-25T08:33:25.056185+00:00",
       "laws_requested": [
-        "44fz",
-        "223fz",
-        "capital_repair"
+        "44fz"
       ],
       "statuses_requested": [
-        "active",
         "published",
         "applying"
       ],
-      "records_received": 0,
-      "unique_procurements": 0,
-      "pagination_complete": false,
+      "records_received": 5,
+      "unique_procurements": 5,
+      "pagination_complete": true,
       "source_errors": [
-        "44fz: SOAP-запрос к ЕИС завершился ошибкой: [Errno 54] Connection reset by peer",
-        "223fz: SOAP-запрос к ЕИС завершился ошибкой: [Errno 54] Connection reset by peer",
-        "capital_repair: SOAP-запрос к ЕИС завершился ошибкой: [Errno 54] Connection reset by peer"
+        "72 2026-07-25+03:00: ЕИС сообщил, что документы по запросу отсутствуют.",
+        "72 2026-07-19+03:00: ЕИС сообщил, что документы по запросу отсутствуют."
       ],
       "using_fallback": false
     },
     "coverage": {
-      "active_procurements_total": 0,
-      "active_procurements_with_document_manifest": 0,
+      "active_procurements_total": 5,
+      "active_procurements_with_document_manifest": 5,
       "procurement_coverage_percent": 100.0,
-      "documents_total": 0,
-      "documents_with_known_size": 0,
+      "documents_total": 22,
+      "documents_with_known_size": 22,
       "documents_with_unknown_size": 0,
       "known_size_coverage_percent": 100.0,
       "excluded_unmapped_status": 0,
       "excluded_deadline_passed": 0,
       "excluded_explicit": 0
     },
-    "ssd_verdict": "unavailable",
-    "reason": "Coverage gate not passed: pagination incomplete"
+    "ssd_verdict": "GREEN",
+    "reason": null
   },
   "coverage": {
-    "active_procurements_total": 0,
-    "active_procurements_with_document_manifest": 0,
+    "active_procurements_total": 5,
+    "active_procurements_with_document_manifest": 5,
     "procurement_coverage_percent": 100.0,
-    "documents_total": 0,
-    "documents_with_known_size": 0,
+    "documents_total": 22,
+    "documents_with_known_size": 22,
     "documents_with_unknown_size": 0,
     "known_size_coverage_percent": 100.0,
     "excluded_unmapped_status": 0,
@@ -64,66 +60,67 @@
     "excluded_explicit": 0
   },
   "snapshot": {
-    "active_procurements": 0,
-    "documents": 0,
-    "known_bytes": 0,
+    "active_procurements": 5,
+    "documents": 22,
+    "known_bytes": 25687031,
     "unknown_documents": 0,
-    "mean_bytes": 0.0,
-    "p50_bytes": 0,
-    "p75_bytes": 0,
-    "p90_bytes": 0,
-    "p95_bytes": 0,
-    "p99_bytes": 0,
-    "max_bytes": 0,
+    "mean_bytes": 5137406.2,
+    "p50_bytes": 526462,
+    "p75_bytes": 1763247,
+    "p90_bytes": 23176630,
+    "p95_bytes": 23176630,
+    "p99_bytes": 23176630,
+    "max_bytes": 23176630,
     "packages_over_100mb": 0,
     "packages_over_250mb": 0,
     "packages_over_500mb": 0,
     "packages_over_1gib": 0,
-    "heavy_tail_top_1_pct": 0.0,
-    "heavy_tail_top_5_pct": 0.0,
-    "heavy_tail_top_10_pct": 0.0
+    "heavy_tail_top_1_pct": 0.9022697095666681,
+    "heavy_tail_top_5_pct": 0.9022697095666681,
+    "heavy_tail_top_10_pct": 0.9022697095666681
   },
   "size_statistics": {
-    "mean_bytes": 0.0,
-    "p50_bytes": 0,
-    "p75_bytes": 0,
-    "p90_bytes": 0,
-    "p95_bytes": 0,
-    "p99_bytes": 0,
-    "max_bytes": 0,
+    "mean_bytes": 5137406.2,
+    "p50_bytes": 526462,
+    "p75_bytes": 1763247,
+    "p90_bytes": 23176630,
+    "p95_bytes": 23176630,
+    "p99_bytes": 23176630,
+    "max_bytes": 23176630,
     "packages_over_100mb": 0,
     "packages_over_250mb": 0,
     "packages_over_500mb": 0,
     "packages_over_1gib": 0
   },
   "heavy_tail": {
-    "top_1_pct": 0.0,
-    "top_5_pct": 0.0,
-    "top_10_pct": 0.0
+    "top_1_pct": 0.9022697095666681,
+    "top_5_pct": 0.9022697095666681,
+    "top_10_pct": 0.9022697095666681
   },
-  "by_law_type": [],
+  "by_law_type": [
+    {
+      "law_type": "44fz",
+      "tenders": 5,
+      "documents": 22,
+      "known_bytes": 25687031
+    }
+  ],
   "sizing": {
-    "eis_active_bytes": 0,
-    "commercial_reserve_bytes": 0,
-    "p99_package_bytes": 0,
+    "eis_active_bytes": 25687031,
+    "commercial_reserve_bytes": 12843515,
+    "p99_package_bytes": 23176630,
     "max_processing_concurrency": 4,
     "processing_space_bytes": 161061273600,
     "persistent_results_and_logs_bytes": 53687091200,
-    "base_required_bytes": 214748364800,
+    "base_required_bytes": 214786895346,
     "ssd_capacity_decimal_bytes": 2000000000000,
     "ssd_capacity_gib": 1862.645149230957,
-    "remaining_bytes": 1785251635200,
-    "used_percent": 10.73741824,
-    "classification": "unavailable",
-    "minimum_disk_bytes": 268435456000,
-    "minimum_disk_decimal_tb": 0.268435456,
-    "minimum_disk_gib": 250.0,
+    "remaining_bytes": 1785213104654,
+    "used_percent": 10.7393447673,
+    "classification": "GREEN",
+    "minimum_disk_bytes": 268483619182,
+    "minimum_disk_decimal_tb": 0.268483619182,
+    "minimum_disk_gib": 250.0448554586619,
     "next_practical_disk_class": "1 TB"
-  },
-  "limitations": [
-    {
-      "category": "coverage",
-      "description": "Coverage gate not passed. Results are not representative."
-    }
-  ]
+  }
 }

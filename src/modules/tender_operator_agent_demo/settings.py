@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Literal
 
+from src.modules.tender_operator_agent_demo.credential_resolver import (
+    CredentialOwner as CredOwner,
+)
+from src.modules.tender_operator_agent_demo.credential_resolver import (
+    resolve_getdocsip_credential,
+)
 
 PLACEHOLDER_TOKENS = {
     "",
@@ -18,21 +24,17 @@ PLACEHOLDER_TOKENS = {
 
 
 def _read_token_from_file(file_path: str) -> str:
-    """Read token from a file.
-
-    The file must contain ONLY the token value (with optional trailing newline).
-    Leading/trailing whitespace and BOM are stripped.
-    Returns empty string if file cannot be read.
-    """
     try:
         raw = Path(file_path).read_bytes()
-        # Strip UTF-8 BOM if present
         if raw.startswith(b"\xef\xbb\xbf"):
             raw = raw[3:]
-        # Decode and strip whitespace including CR/LF
         return raw.decode("utf-8").strip()
     except (OSError, UnicodeDecodeError):
         return ""
+
+
+_ACTIVE_TOKEN_CACHE: dict[int, str] = {}
+_CREDENTIAL_OWNER_CACHE: dict[int, CredOwner] = {}
 
 DEFAULT_LEGACY_BASE_URL = "https://int44.zakupki.gov.ru/eis-integration/services-vbs"
 DEFAULT_INDIVIDUAL_BASE_URL = "https://int.zakupki.gov.ru/eis-integration/services/getDocsIP"
@@ -45,6 +47,14 @@ DEFAULT_USER_AGENT = "ArvectumTenderAgent/0.1 read-only"
 DEFAULT_CONTENT_TYPE = "text/xml; charset=utf-8"
 DEFAULT_SOAP_ACTION_URI = "http://zakupki.gov.ru/fz44/queue/ws/get-docs-ip"
 _ENV_FILES_SEEDED = False
+
+
+def _validate_tls_guard() -> None:
+    app_env = os.environ.get("APP_ENV") or os.environ.get("AI_CORP_APP_ENV") or "development"
+    tls_verify = _read_bool("EIS_DOCS_TLS_VERIFY", False) or _read_bool("AI_CORP_EIS_DOCS_TLS_VERIFY", False)
+    allow_insecure = _read_bool("EIS_ALLOW_INSECURE_TLS", True) or _read_bool("AI_CORP_EIS_ALLOW_INSECURE_TLS", True)
+    if app_env.lower() == "production" and (not tls_verify or allow_insecure):
+        raise RuntimeError("Production cannot run GetDocsIP with insecure TLS enabled")
 
 TokenOwner = Literal["individual", "legal_entity"]
 
@@ -108,6 +118,7 @@ def _read_token_owner() -> TokenOwner:
 class ZakupkiSoapSettings:
     enabled: bool = False
     token: str = field(default="", repr=False)
+    document_export_token: str = field(default="", repr=False)
     token_owner: TokenOwner = "individual"
     base_url: str = DEFAULT_LEGACY_BASE_URL
     individual_base_url: str = DEFAULT_INDIVIDUAL_BASE_URL
@@ -133,8 +144,9 @@ class ZakupkiSoapSettings:
     debug: bool = False
 
     @classmethod
-    def from_env(cls) -> "ZakupkiSoapSettings":
+    def from_env(cls) -> ZakupkiSoapSettings:
         _seed_env_from_local_files()
+        _validate_tls_guard()
         token = os.environ.get("ZAKUPKI_GOV_RU_SOAP_TOKEN", "").strip()
         token_file = os.environ.get("ZAKUPKI_GOV_RU_SOAP_TOKEN_FILE", "").strip()
         if (not token or token.lower() in PLACEHOLDER_TOKENS) and token_file:
@@ -142,6 +154,7 @@ class ZakupkiSoapSettings:
         return cls(
             enabled=_read_bool("ZAKUPKI_GOV_RU_SOAP_ENABLED", False),
             token=token,
+            document_export_token=os.environ.get("ZAKUPKI_GOV_RU_DOCUMENT_EXPORT_TOKEN", "").strip(),
             token_owner=_read_token_owner(),
             base_url=os.environ.get("ZAKUPKI_GOV_RU_SOAP_BASE_URL", DEFAULT_LEGACY_BASE_URL).strip()
             or DEFAULT_LEGACY_BASE_URL,
@@ -179,7 +192,7 @@ class ZakupkiSoapSettings:
 
     @property
     def token_configured(self) -> bool:
-        return self.token.strip().lower() not in PLACEHOLDER_TOKENS
+        return bool(self.active_token)
 
     @property
     def configured(self) -> bool:
@@ -188,6 +201,26 @@ class ZakupkiSoapSettings:
     @property
     def individual_mode(self) -> bool:
         return self.token_owner == "individual"
+
+    @property
+    def active_token(self) -> str:
+        if self.document_export_token and self.document_export_token.strip().lower() not in PLACEHOLDER_TOKENS:
+            return self.document_export_token
+        if self.token and self.token.strip().lower() not in PLACEHOLDER_TOKENS:
+            return self.token
+        cached = _ACTIVE_TOKEN_CACHE.get(id(self))
+        if cached is not None:
+            return cached
+        resolved = resolve_getdocsip_credential()
+        if resolved.configured:
+            _ACTIVE_TOKEN_CACHE[id(self)] = resolved.token
+            return resolved.token
+        resolved_legacy = resolve_getdocsip_credential(allow_legacy_fallback=True)
+        if resolved_legacy.configured:
+            _ACTIVE_TOKEN_CACHE[id(self)] = resolved_legacy.token
+            return resolved_legacy.token
+        _ACTIVE_TOKEN_CACHE[id(self)] = ""
+        return ""
 
     @property
     def active_docs_endpoint(self) -> str:

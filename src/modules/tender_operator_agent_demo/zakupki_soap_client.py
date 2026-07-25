@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener, getproxies_environment
+from urllib.request import (
+    HTTPSHandler,
+    ProxyHandler,
+    Request,
+    build_opener,
+    getproxies_environment,
+)
 from uuid import uuid4
 from xml.etree import ElementTree as ET
 
@@ -24,12 +30,11 @@ from src.modules.tender_operator_agent_demo.zakupki_soap_templates import (
     build_attachments_envelope,
     build_details_envelope,
     build_get_docs_by_org_region_envelope,
-    build_get_nsi_envelope,
     build_get_docs_by_reestr_number_envelope,
+    build_get_nsi_envelope,
     build_search_envelope,
 )
 from src.shared.network.http_client import create_urllib_context
-
 
 SoapTransport = Callable[[str, str | None, int], str]
 HttpTransport = Callable[[str, dict[str, str], int, int], tuple[bytes, str | None]]
@@ -91,7 +96,7 @@ class ZakupkiSoapClient:
             raise RuntimeError("Источник ЕИС не настроен для getDocsIP.")
         request_id, created_time = _request_meta()
         envelope = build_get_docs_by_reestr_number_envelope(
-            token=self.settings.token,
+            token=self.settings.active_token,
             namespace=self.settings.individual_namespace,
             token_header_name=self.settings.token_header_name,
             request_id=request_id,
@@ -124,7 +129,7 @@ class ZakupkiSoapClient:
             raise RuntimeError("Источник ЕИС не настроен для getDocsIP.")
         request_id, created_time = _request_meta()
         envelope = build_get_docs_by_org_region_envelope(
-            token=self.settings.token,
+            token=self.settings.active_token,
             namespace=self.settings.individual_namespace,
             token_header_name=self.settings.token_header_name,
             request_id=request_id,
@@ -153,7 +158,7 @@ class ZakupkiSoapClient:
             raise RuntimeError("Источник ЕИС не настроен для getDocsIP.")
         request_id, created_time = _request_meta()
         envelope = build_get_nsi_envelope(
-            token=self.settings.token,
+            token=self.settings.active_token,
             namespace=self.settings.individual_namespace,
             token_header_name=self.settings.token_header_name,
             request_id=request_id,
@@ -222,7 +227,7 @@ class ZakupkiSoapClient:
         max_bytes = self.settings.max_download_mb * 1024 * 1024
         headers = {
             "User-Agent": self.settings.user_agent,
-            self.settings.token_header_name: self.settings.token,
+            self.settings.token_header_name: self.settings.active_token,
         }
         payload, content_type = self._http_get(
             archive_url,

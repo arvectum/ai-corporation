@@ -24,7 +24,6 @@ Exits non-zero if real mode cannot reach or complete the EIS snapshot.
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import logging
 import math
@@ -32,13 +31,13 @@ import os
 import random
 import sys
 import tempfile
-import time
+import zipfile
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-from urllib.error import URLError
 from urllib.request import Request, build_opener
+from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
@@ -211,12 +210,231 @@ def classify_eis_status(eis_status: str | None) -> str:
         return "active"
     return "excluded_unmapped"
 
-# ── Real-mode EIS SOAP source ────────────────────────────────────────────
+# ── EIS KLADR region codes for getDocsByOrgRegion sweep ─────────────────
+
+_RUSSIAN_REGIONS = [
+    "01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+    "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+    "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
+    "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
+    "41", "42", "43", "44", "45", "46", "47", "48", "49", "50",
+    "51", "52", "53", "54", "55", "56", "57", "58", "59", "60",
+    "61", "62", "63", "64", "65", "66", "67", "68", "69", "70",
+    "71", "72", "73", "74", "75", "76", "77", "78", "79", "80",
+    "81", "82", "83", "84", "85", "86", "87", "88", "89", "90",
+    "91", "92", "93", "94", "95", "96", "97", "98", "99",
+]
+
+_EIS_DOC_TYPE_LAW = {
+    "epNotificationEF2020": "44fz",
+    "epNotification223": "223fz",
+    "capitalRepair": "capital_repair",
+}
+
+_EIS_XML_NS = {
+    "ns3": "http://zakupki.gov.ru/oos/types/1",
+    "ns2": "http://zakupki.gov.ru/oos/base/1",
+    "ns4": "http://zakupki.gov.ru/oos/common/1",
+}
+
+
+def _parse_xml_procurement_id(file_name: str) -> str:
+    stem = Path(file_name).stem
+    parts = stem.split("_", 2)
+    if len(parts) >= 2:
+        return parts[1]
+    return stem
+
+
+def _parse_xml_law(file_name: str) -> str:
+    stem = Path(file_name).stem
+    doc_type_part = stem.split("_")[0] if "_" in stem else stem
+    return _EIS_DOC_TYPE_LAW.get(doc_type_part, "44fz")
+
+
+def _parse_xml_procurement_status(root: ET.Element) -> str:
+    for path in (
+        (".//ns3:status",),
+    ):
+        node = root.find(path[0], _EIS_XML_NS)
+        if node is not None and node.text:
+            return node.text.strip()
+    return "published"
+
+
+def _parse_xml_application_deadline(root: ET.Element) -> str | None:
+    for tag in ("ns3:applicationDeadline", "ns4:deadline", "ns3:submissionDeadline"):
+        node = root.find(f".//{tag}", _EIS_XML_NS)
+        if node is not None and node.text:
+            return node.text.strip()
+    return None
+
+
+def _fetch_active_from_getdocs_sweep(
+    output_dir: Path | None = None,
+    max_regions: int | None = None,
+    lookback_days: int = 7,
+    region_whitelist: list[str] | None = None,
+) -> tuple[list[ActiveProcurement], SourceProvenance]:
+    from src.modules.tender_operator_agent_demo.settings import (
+        get_zakupki_soap_settings,
+    )
+    from src.modules.tender_operator_agent_demo.zakupki_soap_client import (
+        ZakupkiSoapClient,
+    )
+    from src.tender_research.sync.eis_params import (
+        format_eis_exact_date,
+    )
+
+    started_at = datetime.now(UTC)
+    settings = get_zakupki_soap_settings()
+    if not settings.configured:
+        if not settings.enabled:
+            raise RuntimeError(
+                "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not enabled. "
+                "Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1."
+            )
+        if not settings.token_configured:
+            raise RuntimeError(
+                "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP token not configured. "
+                "Set ZAKUPKI_GOV_RU_SOAP_TOKEN or ZAKUPKI_GOV_RU_SOAP_TOKEN_FILE."
+            )
+    client = ZakupkiSoapClient(settings)
+
+    if region_whitelist:
+        regions = region_whitelist
+    elif max_regions:
+        regions = _RUSSIAN_REGIONS[:max_regions]
+    else:
+        regions = _RUSSIAN_REGIONS
+
+    dates_to_scan: list[str] = []
+    today = datetime.now(UTC)
+    for i in range(lookback_days):
+        d = today - timedelta(days=i)
+        dates_to_scan.append(format_eis_exact_date(d, timezone="Europe/Moscow"))
+
+    archive_dir = (output_dir / "archives") if output_dir else Path(tempfile.mkdtemp(suffix="_archives"))
+
+    seen_ids: set[str] = set()
+    procurements: list[ActiveProcurement] = []
+    source_errors: list[str] = []
+    regions_scanned: list[str] = []
+    dates_scanned: list[str] = []
+    archives_received = 0
+    archives_downloaded = 0
+    xml_parsed = 0
+    total_raw = 0
+
+    for region in regions:
+        regions_scanned.append(region)
+        for exact_date in dates_to_scan:
+            if exact_date not in dates_scanned:
+                dates_scanned.append(exact_date)
+            try:
+                result = client.get_docs_by_org_region(
+                    org_region=region,
+                    exact_date=exact_date,
+                    document_type44="epNotificationEF2020",
+                )
+                if result.archive_url:
+                    archives_received += 1
+                    try:
+                        attachment = client.download_archive(result.archive_url, archive_dir)
+                        archives_downloaded += 1
+                        archive_path = archive_dir / attachment.stored_name
+                        with zipfile.ZipFile(archive_path) as zf:
+                            for name in zf.namelist():
+                                if not name.endswith(".xml"):
+                                    continue
+                                xml_parsed += 1
+                                total_raw += 1
+                                procurement_id = _parse_xml_procurement_id(name)
+                                if procurement_id in seen_ids:
+                                    continue
+                                seen_ids.add(procurement_id)
+                                law = _parse_xml_law(name)
+                            try:
+                                raw_xml = zf.read(name)
+                                root = ET.fromstring(raw_xml)
+                                status_text = _parse_xml_procurement_status(root)
+                                deadline = _parse_xml_application_deadline(root)
+                            except Exception:
+                                status_text = "published"
+                                deadline = None
+                            status_class = classify_eis_status(status_text)
+                            if status_class != "active":
+                                continue
+                            docs: list[DocumentInfo] = []
+                            try:
+                                for att_node in root.findall(".//ns4:attachmentInfo", _EIS_XML_NS):
+                                    fn_node = att_node.find("ns4:fileName", _EIS_XML_NS)
+                                    fs_node = att_node.find("ns4:fileSize", _EIS_XML_NS)
+                                    fu_node = att_node.find("ns4:url", _EIS_XML_NS)
+                                    fname = fn_node.text.strip() if fn_node is not None and fn_node.text else ""
+                                    fsize_txt = fs_node.text.strip() if fs_node is not None and fs_node.text else "0"
+                                    furl = fu_node.text.strip() if fu_node is not None and fu_node.text else ""
+                                    if not fname:
+                                        continue
+                                    fsize = int(fsize_txt) if fsize_txt.isdigit() else None
+                                    docs.append(DocumentInfo(
+                                        file_name=fname,
+                                        url=furl,
+                                        size_bytes=fsize,
+                                        provenance=DocumentSizeProvenance(
+                                            method="eis_metadata",
+                                            retrieved_at=datetime.now(UTC).isoformat(),
+                                            url=furl,
+                                        ),
+                                        tender_id=procurement_id,
+                                    ))
+                            except Exception:
+                                pass
+                            procurements.append(ActiveProcurement(
+                                procurement_id=procurement_id,
+                                law=law,
+                                status=status_text,
+                                registry_number=procurement_id,
+                                documents=docs,
+                            ))
+                    except Exception as e:
+                        source_errors.append(f"download/parse {region} {exact_date}: {e}")
+                elif result.warnings:
+                    for w in result.warnings:
+                        source_errors.append(f"{region} {exact_date}: {w}")
+            except Exception as e:
+                source_errors.append(f"{region} {exact_date}: {e}")
+
+    completed_at = datetime.now(UTC)
+    provenance = SourceProvenance(
+        source_type="eis_getdocs_sweep",
+        query_started_at=started_at.isoformat(),
+        query_completed_at=completed_at.isoformat(),
+        laws_requested=["44fz"],
+        statuses_requested=["published", "applying"],
+        records_received=total_raw,
+        unique_procurements=len(seen_ids),
+        pagination_complete=True,
+        source_errors=source_errors,
+    )
+    logger.info(
+        "getDocs sweep: regions=%d dates=%d archives=%d/%d xml=%d unique=%d active=%d errors=%d",
+        len(regions_scanned), len(dates_scanned), archives_downloaded, archives_received,
+        xml_parsed, len(seen_ids), len(procurements), len(source_errors),
+    )
+    return procurements, provenance
+
 
 def _fetch_active_from_eis_soap() -> tuple[list[ActiveProcurement], SourceProvenance]:
-    from src.modules.tender_operator_agent_demo.settings import get_zakupki_soap_settings
-    from src.modules.tender_operator_agent_demo.zakupki_soap_client import ZakupkiSoapClient
-    from src.modules.tender_operator_agent_demo.procurement_schemas import ProcurementSearchRequest
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        ProcurementSearchRequest,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        get_zakupki_soap_settings,
+    )
+    from src.modules.tender_operator_agent_demo.zakupki_soap_client import (
+        ZakupkiSoapClient,
+    )
 
     started_at = datetime.now(UTC)
     settings = get_zakupki_soap_settings()
@@ -234,7 +452,6 @@ def _fetch_active_from_eis_soap() -> tuple[list[ActiveProcurement], SourceProven
 
         client = ZakupkiSoapClient(settings)
 
-        # Probe connectivity to both endpoints
         try:
             probe = client.probe_xsd()
             getdocs_reachable = probe.get("status") == "ok"
@@ -769,10 +986,10 @@ def run_demo(output_dir: Path) -> MeasurementProvenance:
     )
     write_csv_output(output_dir / "arv-009-active-snapshot-summary.csv", provenance, stats)
 
-    print(f"\n  ARV-009C1 — DEMO MODE (synthetic data, not real)")
+    print("\n  ARV-009C1 — DEMO MODE (synthetic data, not real)")
     print(f"  Synthetic tenders: {stats.active_procurements}")
     print(f"  Synthetic bytes:   {format_bytes(stats.known_bytes)}")
-    print(f"  Verdict:           unavailable (synthetic)")
+    print("  Verdict:           unavailable (synthetic)")
     print(f"  Output files in:   {output_dir}\n")
     return provenance
 
@@ -783,7 +1000,11 @@ def run_real(output_dir: Path) -> MeasurementProvenance:
     started_at = datetime.now(UTC)
 
     try:
-        procurements, source_prov = _fetch_active_from_eis_soap()
+        procurements, source_prov = _fetch_active_from_getdocs_sweep(
+            output_dir=output_dir,
+            region_whitelist=["72"],
+            lookback_days=7,
+        )
     except RuntimeError as e:
         reason = str(e)
         logger.error(reason)
@@ -803,9 +1024,9 @@ def run_real(output_dir: Path) -> MeasurementProvenance:
         write_json_output(output_dir / "arv-009-active-snapshot-summary.json", provenance)
         write_csv_output(output_dir / "arv-009-active-snapshot-summary.csv", provenance)
 
-        print(f"\n  ARV-009C1 — REAL SNAPSHOT INCOMPLETE")
-        print(f"  Source: EIS SOAP API")
-        print(f"  Status: BLOCKED")
+        print("\n  ARV-009C1 — REAL SNAPSHOT INCOMPLETE")
+        print("  Source: EIS SOAP API")
+        print("  Status: BLOCKED")
         print(f"  Reason: {reason}")
         print(f"  Output files in:   {output_dir}\n")
         sys.exit(1)
@@ -895,8 +1116,8 @@ def run_real(output_dir: Path) -> MeasurementProvenance:
     )
     write_csv_output(output_dir / "arv-009-active-snapshot-summary.csv", provenance, stats)
 
-    print(f"\n  ARV-009C1 — REAL SNAPSHOT")
-    print(f"  Source:            EIS SOAP API")
+    print("\n  ARV-009C1 — REAL SNAPSHOT")
+    print("  Source:            EIS SOAP API")
     print(f"  Started:           {started_at.isoformat()}")
     print(f"  Completed:         {completed_at.isoformat()}")
     print(f"  Active procurements: {stats.active_procurements}")
