@@ -5,6 +5,7 @@ import stat
 import subprocess
 from pathlib import Path
 
+import pytest
 from sqlalchemy.engine import URL, make_url
 
 import src.modules.production_llm_analysis.runtime_db_recovery as recovery
@@ -67,10 +68,13 @@ def test_container_candidate_preserves_network_target_and_encodes_password() -> 
     assert "new%3Ap%40ss%2Fword" in rendered
 
 
-def test_atomic_repair_creates_private_backup_and_replaces_only_database_url(
+def test_atomic_repair_creates_private_external_backup_and_replaces_only_database_url(
     tmp_path: Path,
 ) -> None:
-    env_file = tmp_path / ".env.local"
+    checkout = tmp_path / "runtime" / "repo"
+    checkout.mkdir(parents=True)
+    env_file = checkout / ".env.local"
+    backup_dir = tmp_path / "quarantine"
     env_file.write_text(
         "AI_CORP_DATABASE_URL=postgresql+psycopg://old:wrong@127.0.0.1:55432/arvectum\n"
         "AI_CORP_LLM_PROVIDER=stub\n",
@@ -85,17 +89,41 @@ def test_atomic_repair_creates_private_backup_and_replaces_only_database_url(
         database="arvectum",
     )
 
-    _atomic_repair_env_file(env_file, candidate)
+    _atomic_repair_env_file(env_file, candidate, backup_dir=backup_dir)
 
     repaired = env_file.read_text(encoding="utf-8")
     assert "new-secret" in repaired
     assert "old:wrong" not in repaired
     assert "AI_CORP_LLM_PROVIDER=stub" in repaired
-    backups = list(tmp_path.glob(".env.local.backup-*"))
+    backups = list(backup_dir.glob("repo-.env.local.backup-*"))
     assert len(backups) == 1
     assert "old:wrong" in backups[0].read_text(encoding="utf-8")
     assert stat.S_IMODE(backups[0].stat().st_mode) == 0o600
+    assert stat.S_IMODE(backup_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE(env_file.stat().st_mode) == 0o600
+    assert not list(checkout.glob("*.backup-*"))
+
+
+def test_atomic_repair_rejects_backup_inside_runtime_checkout(tmp_path: Path) -> None:
+    checkout = tmp_path / "runtime"
+    checkout.mkdir()
+    env_file = checkout / ".env.local"
+    env_file.write_text("AI_CORP_LLM_PROVIDER=stub\n", encoding="utf-8")
+    candidate = URL.create(
+        "postgresql+psycopg",
+        username="arvectum",
+        password="new-secret",
+        host="127.0.0.1",
+        port=55432,
+        database="arvectum",
+    )
+
+    with pytest.raises(ValueError, match="runtime_env_backup_must_be_outside_checkout"):
+        _atomic_repair_env_file(
+            env_file,
+            candidate,
+            backup_dir=checkout / "secret-backups",
+        )
 
 
 def test_recovery_repairs_only_after_container_candidate_probe_and_stays_sanitized(
@@ -103,7 +131,10 @@ def test_recovery_repairs_only_after_container_candidate_probe_and_stays_sanitiz
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("AI_CORP_DATABASE_URL", raising=False)
-    env_file = tmp_path / ".env.local"
+    checkout = tmp_path / "runtime" / "repo"
+    checkout.mkdir(parents=True)
+    env_file = checkout / ".env.local"
+    backup_dir = tmp_path / "quarantine"
     env_file.write_text(
         "AI_CORP_DATABASE_URL=postgresql+psycopg://arvectum:wrong@127.0.0.1:55432/arvectum\n"
         "AI_CORP_LLM_PROVIDER=stub\n",
@@ -149,6 +180,7 @@ def test_recovery_repairs_only_after_container_candidate_probe_and_stays_sanitiz
         container="arvectum-postgres",
         docker_context="desktop-linux",
         repair=True,
+        backup_dir=backup_dir,
         docker_runner=docker_runner,
         probe=probe,
     )
@@ -162,4 +194,5 @@ def test_recovery_repairs_only_after_container_candidate_probe_and_stays_sanitiz
     assert "container-secret" not in serialized
     assert "wrong" not in serialized
     assert str(env_file) not in serialized
+    assert str(backup_dir) not in serialized
     assert report["safety"]["provider_called"] is False
