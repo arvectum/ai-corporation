@@ -3,8 +3,9 @@
 
 The command compares the configured runtime database URL with the existing
 PostgreSQL container identity. With --repair it atomically updates only
-AI_CORP_DATABASE_URL in the selected local env file after the container-derived
-candidate has passed a live database probe. It never calls an LLM provider.
+AI_CORP_DATABASE_URL after the container-derived candidate has passed a live
+database probe. Secret backups must be stored outside the runtime checkout.
+It never calls an LLM provider.
 """
 from __future__ import annotations
 
@@ -29,6 +30,11 @@ def _arguments() -> argparse.Namespace:
         "--repair",
         action="store_true",
         help="Atomically repair AI_CORP_DATABASE_URL after a successful probe.",
+    )
+    parser.add_argument(
+        "--backup-dir",
+        type=Path,
+        help="External 0700 directory for the secret env backup.",
     )
     return parser.parse_args()
 
@@ -55,6 +61,7 @@ def main() -> int:
             container=args.container,
             docker_context=args.docker_context,
             repair=args.repair,
+            backup_dir=args.backup_dir,
             limit=args.limit,
         )
         print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
