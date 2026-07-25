@@ -22,6 +22,7 @@ from src.shared.config.settings import Settings
 
 _DATABASE_ENV_KEY = "AI_CORP_DATABASE_URL"
 _REQUIRED_CONTAINER_KEYS = ("POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB")
+_POSTGRES_CONTAINER_PORT = "5432/tcp"
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,44 @@ def _docker_container_environment(
     return environment
 
 
+def _docker_published_postgres_endpoint(
+    *,
+    container: str,
+    docker_context: str,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> tuple[str, int]:
+    completed = runner(
+        [
+            "docker",
+            "--context",
+            docker_context,
+            "inspect",
+            "--format",
+            '{{json (index .NetworkSettings.Ports "5432/tcp")}}',
+            container,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    bindings = json.loads(completed.stdout)
+    if not isinstance(bindings, list) or not bindings:
+        raise ValueError("docker_postgres_port_not_published")
+
+    ports: set[int] = set()
+    for binding in bindings:
+        if not isinstance(binding, dict):
+            continue
+        raw_port = binding.get("HostPort")
+        if isinstance(raw_port, str) and raw_port.isdigit():
+            port = int(raw_port)
+            if 1 <= port <= 65535:
+                ports.add(port)
+    if len(ports) != 1:
+        raise ValueError("docker_postgres_published_port_ambiguous")
+    return "127.0.0.1", ports.pop()
+
+
 def _container_candidate_url(
     runtime_database_url: str,
     container_environment: dict[str, str],
@@ -129,6 +168,27 @@ def _container_candidate_url(
         password=container_environment["POSTGRES_PASSWORD"],
         host=runtime_url.host,
         port=runtime_url.port,
+        database=container_environment["POSTGRES_DB"],
+        query=runtime_url.query,
+    )
+
+
+def _published_container_candidate_url(
+    runtime_database_url: str,
+    container_environment: dict[str, str],
+    *,
+    host: str,
+    port: int,
+) -> URL:
+    runtime_url = make_url(runtime_database_url)
+    if runtime_url.get_backend_name() != "postgresql":
+        raise ValueError("runtime_database_not_postgresql")
+    return URL.create(
+        drivername=runtime_url.drivername,
+        username=container_environment["POSTGRES_USER"],
+        password=container_environment["POSTGRES_PASSWORD"],
+        host=host,
+        port=port,
         database=container_environment["POSTGRES_DB"],
         query=runtime_url.query,
     )
@@ -226,10 +286,11 @@ def recover_runtime_database_access(
         raise ValueError("runtime_env_backup_directory_required")
 
     runtime_settings = Settings(_env_file=env_file, _env_file_encoding="utf-8")
+    runtime_url = make_url(runtime_settings.database_url)
     runtime_probe = probe(runtime_settings.database_url)
 
     report: dict[str, Any] = {
-        "recovery_version": "r10.1-runtime-db-recovery-v1",
+        "recovery_version": "r10.1-runtime-db-recovery-v2",
         "runtime_candidate": runtime_probe.as_dict(),
         "container_candidate": {
             "available": False,
@@ -237,8 +298,17 @@ def recover_runtime_database_access(
             "error_code": None,
             "alembic_revisions": [],
         },
+        "published_endpoint_candidate": {
+            "available": False,
+            "host": None,
+            "port": None,
+            "connection_ready": False,
+            "error_code": None,
+            "alembic_revisions": [],
+        },
         "selected_candidate": "runtime_env" if runtime_probe.connection_ready else "none",
         "secret_source_drift": False,
+        "endpoint_source_drift": False,
         "repair_requested": repair,
         "repair_performed": False,
         "backup_created": False,
@@ -255,6 +325,7 @@ def recover_runtime_database_access(
     }
 
     selected_settings = runtime_settings
+    selected_url: URL | None = None
     if not runtime_probe.connection_ready:
         container_environment = _docker_container_environment(
             container=container,
@@ -273,16 +344,51 @@ def recover_runtime_database_access(
         if container_probe.connection_ready:
             report["selected_candidate"] = "container_env"
             report["secret_source_drift"] = True
+            selected_url = container_url
+        else:
+            try:
+                published_host, published_port = _docker_published_postgres_endpoint(
+                    container=container,
+                    docker_context=docker_context,
+                    runner=docker_runner,
+                )
+                published_url = _published_container_candidate_url(
+                    runtime_settings.database_url,
+                    container_environment,
+                    host=published_host,
+                    port=published_port,
+                )
+                published_probe = probe(published_url)
+                report["published_endpoint_candidate"] = {
+                    "available": True,
+                    "host": published_host,
+                    "port": published_port,
+                    **published_probe.as_dict(),
+                }
+                if published_probe.connection_ready:
+                    report["selected_candidate"] = "container_published_endpoint"
+                    report["secret_source_drift"] = True
+                    report["endpoint_source_drift"] = (
+                        runtime_url.host != published_host
+                        or runtime_url.port != published_port
+                    )
+                    selected_url = published_url
+            except (subprocess.SubprocessError, ValueError):
+                report["published_endpoint_candidate"]["error_code"] = (
+                    "docker_postgres_published_endpoint_unavailable"
+                )
+
+        if selected_url is not None:
             selected_settings = Settings(
                 _env_file=env_file,
                 _env_file_encoding="utf-8",
-                database_url=container_url.render_as_string(hide_password=False),
+                database_url=selected_url.render_as_string(hide_password=False),
             )
             if repair:
                 assert backup_dir is not None
                 _atomic_repair_env_file(
                     env_file,
-                    container_url,
+                    selected_url,
                     backup_dir=backup_dir,
                 )
                 report["repair_performed"] = True
