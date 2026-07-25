@@ -94,6 +94,18 @@ def _claim_summary(claim: Any) -> dict[str, Any]:
 def _claim_semantics(claim: Any) -> dict[str, Any]:
     """Return grounded content while excluding provider-owned confidence metadata."""
 
+    references = [
+        reference.model_dump(mode="json") for reference in claim.evidence_references
+    ]
+    references.sort(
+        key=lambda item: (
+            item["fragment_id"],
+            item["document_id"],
+            item["chunk_id"],
+            item["quote_sha256"],
+            canonical_sha256(item.get("locator", {})),
+        )
+    )
     return {
         "claim_id": claim.claim_id,
         "field_path": claim.field_path,
@@ -101,24 +113,30 @@ def _claim_semantics(claim: Any) -> dict[str, Any]:
         "support_status": claim.support_status.value,
         "validated_confidence": claim.validated_confidence,
         "confidence_basis": claim.confidence_basis.value,
-        "evidence_references": [
-            reference.model_dump(mode="json") for reference in claim.evidence_references
-        ],
-        "validation_errors": list(claim.validation_errors),
-        "limitations": list(claim.limitations),
+        "evidence_references": references,
+        "validation_errors": sorted(claim.validation_errors),
+        "limitations": sorted(claim.limitations),
     }
+
+
+def _sorted_claim_semantics(claims: Sequence[Any]) -> list[dict[str, Any]]:
+    values = [_claim_semantics(claim) for claim in claims]
+    values.sort(
+        key=lambda item: (
+            item["field_path"],
+            item["claim_id"],
+            canonical_sha256(item),
+        )
+    )
+    return values
 
 
 def _grounded_claims_hash(production: R10_1CanonicalProduction) -> str:
     result = production.llm_result
     return canonical_sha256(
         {
-            "accepted_claims": [
-                _claim_semantics(claim) for claim in result.accepted_claims
-            ],
-            "rejected_claims": [
-                _claim_semantics(claim) for claim in result.rejected_claims
-            ],
+            "accepted_claims": _sorted_claim_semantics(result.accepted_claims),
+            "rejected_claims": _sorted_claim_semantics(result.rejected_claims),
         }
     )
 
