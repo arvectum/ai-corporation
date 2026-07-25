@@ -91,12 +91,26 @@ def _claim_summary(claim: Any) -> dict[str, Any]:
     }
 
 
+def _grounded_claims_hash(production: R10_1CanonicalProduction) -> str:
+    result = production.llm_result
+    return canonical_sha256(
+        {
+            "accepted_claims": [
+                claim.model_dump(mode="json") for claim in result.accepted_claims
+            ],
+            "rejected_claims": [
+                claim.model_dump(mode="json") for claim in result.rejected_claims
+            ],
+        }
+    )
+
+
 def _stable_publication_identity(production: R10_1CanonicalProduction) -> dict[str, Any]:
     result = production.llm_result
     return {
         "request_id": result.request_id,
         "evidence_packet_hash": result.evidence_packet_hash,
-        "validated_result_hash": result.validated_result_hash,
+        "grounded_claims_hash": _grounded_claims_hash(production),
         "source_analysis_run_id": production.source_analysis_run_id,
         "source_graph_hash": production.source_graph_hash,
         "production_model_hash": production.production_model_hash,
@@ -112,6 +126,7 @@ def _execution_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
         "status": result.status.value,
         "canonical_input_eligible": result.canonical_input_eligible,
         "provider_request_id": result.provider_request_id,
+        "validated_result_hash": result.validated_result_hash,
         "accepted_claim_count": len(result.accepted_claims),
         "rejected_claim_count": len(result.rejected_claims),
         "accepted_claims": [_claim_summary(claim) for claim in result.accepted_claims],
