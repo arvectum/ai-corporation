@@ -1,1 +1,1 @@
-schema_version,measurement_kind,ssd_verdict,reason,active_procurements_total,documents_total,known_bytes,unknown_documents
+1.0.0,incomplete,unavailable,Coverage gate not passed: pagination incomplete,0,0,0,0

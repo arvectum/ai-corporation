@@ -5,17 +5,17 @@
   "meta": {
     "tool": "measure_active_procurements.py",
     "version": "1.0.0",
-    "generated_at": "2026-07-25T05:48:16.201723+00:00"
+    "generated_at": "2026-07-25T06:50:44.818033+00:00"
   },
   "measurement_provenance": {
     "measurement_kind": "incomplete",
-    "snapshot_started_at_utc": "2026-07-25T05:48:16.201696+00:00",
-    "snapshot_completed_at_utc": "2026-07-25T05:48:16.201696+00:00",
+    "snapshot_started_at_utc": "2026-07-25T06:50:44.546008+00:00",
+    "snapshot_completed_at_utc": "2026-07-25T06:50:44.818009+00:00",
     "snapshot_date": "2026-07-25",
     "source": {
       "source_type": "eis_soap",
-      "query_started_at": "2026-07-25T05:48:16.079555+00:00",
-      "query_completed_at": "2026-07-25T05:48:16.201716+00:00",
+      "query_started_at": "2026-07-25T06:50:44.670921+00:00",
+      "query_completed_at": "2026-07-25T06:50:44.817958+00:00",
       "laws_requested": [
         "44fz",
         "223fz",
@@ -30,12 +30,100 @@
       "unique_procurements": 0,
       "pagination_complete": false,
       "source_errors": [
-        "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not configured (token missing, disabled, or placeholder). Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1 and provide a valid token."
+        "44fz: SOAP-запрос к ЕИС завершился ошибкой: [Errno 54] Connection reset by peer",
+        "223fz: SOAP-запрос к ЕИС завершился ошибкой: [Errno 54] Connection reset by peer",
+        "capital_repair: SOAP-запрос к ЕИС завершился ошибкой: [Errno 54] Connection reset by peer"
       ],
       "using_fallback": false
     },
-    "coverage": null,
+    "coverage": {
+      "active_procurements_total": 0,
+      "active_procurements_with_document_manifest": 0,
+      "procurement_coverage_percent": 100.0,
+      "documents_total": 0,
+      "documents_with_known_size": 0,
+      "documents_with_unknown_size": 0,
+      "known_size_coverage_percent": 100.0,
+      "excluded_unmapped_status": 0,
+      "excluded_deadline_passed": 0,
+      "excluded_explicit": 0
+    },
     "ssd_verdict": "unavailable",
-    "reason": "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not configured (token missing, disabled, or placeholder). Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1 and provide a valid token."
-  }
+    "reason": "Coverage gate not passed: pagination incomplete"
+  },
+  "coverage": {
+    "active_procurements_total": 0,
+    "active_procurements_with_document_manifest": 0,
+    "procurement_coverage_percent": 100.0,
+    "documents_total": 0,
+    "documents_with_known_size": 0,
+    "documents_with_unknown_size": 0,
+    "known_size_coverage_percent": 100.0,
+    "excluded_unmapped_status": 0,
+    "excluded_deadline_passed": 0,
+    "excluded_explicit": 0
+  },
+  "snapshot": {
+    "active_procurements": 0,
+    "documents": 0,
+    "known_bytes": 0,
+    "unknown_documents": 0,
+    "mean_bytes": 0.0,
+    "p50_bytes": 0,
+    "p75_bytes": 0,
+    "p90_bytes": 0,
+    "p95_bytes": 0,
+    "p99_bytes": 0,
+    "max_bytes": 0,
+    "packages_over_100mb": 0,
+    "packages_over_250mb": 0,
+    "packages_over_500mb": 0,
+    "packages_over_1gib": 0,
+    "heavy_tail_top_1_pct": 0.0,
+    "heavy_tail_top_5_pct": 0.0,
+    "heavy_tail_top_10_pct": 0.0
+  },
+  "size_statistics": {
+    "mean_bytes": 0.0,
+    "p50_bytes": 0,
+    "p75_bytes": 0,
+    "p90_bytes": 0,
+    "p95_bytes": 0,
+    "p99_bytes": 0,
+    "max_bytes": 0,
+    "packages_over_100mb": 0,
+    "packages_over_250mb": 0,
+    "packages_over_500mb": 0,
+    "packages_over_1gib": 0
+  },
+  "heavy_tail": {
+    "top_1_pct": 0.0,
+    "top_5_pct": 0.0,
+    "top_10_pct": 0.0
+  },
+  "by_law_type": [],
+  "sizing": {
+    "eis_active_bytes": 0,
+    "commercial_reserve_bytes": 0,
+    "p99_package_bytes": 0,
+    "max_processing_concurrency": 4,
+    "processing_space_bytes": 161061273600,
+    "persistent_results_and_logs_bytes": 53687091200,
+    "base_required_bytes": 214748364800,
+    "ssd_capacity_decimal_bytes": 2000000000000,
+    "ssd_capacity_gib": 1862.645149230957,
+    "remaining_bytes": 1785251635200,
+    "used_percent": 10.73741824,
+    "classification": "unavailable",
+    "minimum_disk_bytes": 268435456000,
+    "minimum_disk_decimal_tb": 0.268435456,
+    "minimum_disk_gib": 250.0,
+    "next_practical_disk_class": "1 TB"
+  },
+  "limitations": [
+    {
+      "category": "coverage",
+      "description": "Coverage gate not passed. Results are not representative."
+    }
+  ]
 }

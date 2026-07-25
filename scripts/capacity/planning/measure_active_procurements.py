@@ -221,11 +221,45 @@ def _fetch_active_from_eis_soap() -> tuple[list[ActiveProcurement], SourceProven
     started_at = datetime.now(UTC)
     settings = get_zakupki_soap_settings()
     if not settings.configured:
-        raise RuntimeError(
-            "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not configured "
-            "(token missing, disabled, or placeholder). "
-            "Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1 and provide a valid token."
-        )
+        if not settings.enabled:
+            raise RuntimeError(
+                "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not enabled. "
+                "Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1."
+            )
+        if not settings.token_configured:
+            raise RuntimeError(
+                "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP token not configured. "
+                "Set ZAKUPKI_GOV_RU_SOAP_TOKEN or ZAKUPKI_GOV_RU_SOAP_TOKEN_FILE."
+            )
+
+        client = ZakupkiSoapClient(settings)
+
+        # Probe connectivity to both endpoints
+        try:
+            probe = client.probe_xsd()
+            getdocs_reachable = probe.get("status") == "ok"
+        except Exception:
+            getdocs_reachable = False
+
+        try:
+            req = ProcurementSearchRequest(
+                source="zakupki_gov_ru_soap_legacy",
+                law="44fz",
+                max_results=1,
+            )
+            client.search_procurements(req)
+            search_reachable = True
+        except Exception:
+            search_reachable = False
+
+        if not search_reachable:
+            raise RuntimeError(
+                "ARV-009C1_REAL_SNAPSHOT_BLOCKED_NO_SYNTHETIC_FALLBACK: "
+                f"EIS SOAP search API ({settings.base_url}) unreachable. "
+                f"getDocsIP endpoint reachable={getdocs_reachable}. "
+                "Cannot retrieve active procurement list without search API. "
+                "No implicit fallback to synthetic data."
+            )
 
     client = ZakupkiSoapClient(settings)
 

@@ -16,6 +16,24 @@ PLACEHOLDER_TOKENS = {
     "вставить_токен_сюда",
 }
 
+
+def _read_token_from_file(file_path: str) -> str:
+    """Read token from a file.
+
+    The file must contain ONLY the token value (with optional trailing newline).
+    Leading/trailing whitespace and BOM are stripped.
+    Returns empty string if file cannot be read.
+    """
+    try:
+        raw = Path(file_path).read_bytes()
+        # Strip UTF-8 BOM if present
+        if raw.startswith(b"\xef\xbb\xbf"):
+            raw = raw[3:]
+        # Decode and strip whitespace including CR/LF
+        return raw.decode("utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
 DEFAULT_LEGACY_BASE_URL = "https://int44.zakupki.gov.ru/eis-integration/services-vbs"
 DEFAULT_INDIVIDUAL_BASE_URL = "https://int.zakupki.gov.ru/eis-integration/services/getDocsIP"
 DEFAULT_INDIVIDUAL_XSD_URL = f"{DEFAULT_INDIVIDUAL_BASE_URL}?xsd=getDocsIP-ws-api.xsd"
@@ -117,9 +135,13 @@ class ZakupkiSoapSettings:
     @classmethod
     def from_env(cls) -> "ZakupkiSoapSettings":
         _seed_env_from_local_files()
+        token = os.environ.get("ZAKUPKI_GOV_RU_SOAP_TOKEN", "").strip()
+        token_file = os.environ.get("ZAKUPKI_GOV_RU_SOAP_TOKEN_FILE", "").strip()
+        if (not token or token.lower() in PLACEHOLDER_TOKENS) and token_file:
+            token = _read_token_from_file(token_file)
         return cls(
             enabled=_read_bool("ZAKUPKI_GOV_RU_SOAP_ENABLED", False),
-            token=os.environ.get("ZAKUPKI_GOV_RU_SOAP_TOKEN", "").strip(),
+            token=token,
             token_owner=_read_token_owner(),
             base_url=os.environ.get("ZAKUPKI_GOV_RU_SOAP_BASE_URL", DEFAULT_LEGACY_BASE_URL).strip()
             or DEFAULT_LEGACY_BASE_URL,
