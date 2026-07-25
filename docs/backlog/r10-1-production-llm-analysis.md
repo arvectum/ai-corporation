@@ -1,6 +1,6 @@
 # R10.1 / ARV-003 — Production LLM Analysis
 
-Status: `R10_1_GATE_3_OPENAI_COMPATIBLE_TRANSPORT_COMPLETE_GATE_4_READY`.
+Status: `R10_1_GATE_4_VERSIONED_CANONICAL_PRODUCER_COMPLETE_GATE_5_READY`.
 
 Canonical base: annotated tag `r9-operational-hardening-2026-07-24`, peeled commit `58bef2da2342bff1e6f63215ee2697e96fefe6f7`.
 
@@ -107,25 +107,48 @@ Status: `R10_1_GATE_3_OPENAI_COMPATIBLE_TRANSPORT_COMPLETE`.
 
 ### Gate 4 — versioned R10.1 canonical producer
 
-- [ ] add a producer beside `produce_frozen_canonical_analysis()` rather than changing the frozen producer in place;
-- [ ] pass only validated supported claims into the existing canonical output builder;
-- [ ] preserve source graph construction and R8/R9 persistence formats;
-- [ ] preserve immutable ownership, hashes, idempotency and final-PDF verification;
-- [ ] make R9 versus R10.1 mode selection explicit and fail closed;
-- [ ] reject canonical publication when grounding validation fails.
+- [x] add `produce_r10_1_canonical_analysis()` beside `produce_frozen_canonical_analysis()`;
+- [x] keep the frozen producer unchanged and prove byte-equivalent explicit dispatch;
+- [x] build deterministic evidence packets only from server-owned analyzed documents;
+- [x] validate tenant/project/case/run/registry identities before provider invocation;
+- [x] pass only validated supported claims through an explicit field-path allow-list;
+- [x] reject unknown fields, malformed values, mixed supported/rejected results and provider-authored positive decisions;
+- [x] preserve existing source graph construction, canonical serialization and verification;
+- [x] record provider/model/prompt/schema/evidence/policy/budget provenance without raw response bodies;
+- [x] make `frozen_r9` versus `production_llm_r10_1` mode selection explicit and prohibit fallback;
+- [x] prove provider failure and grounding failure cannot publish canonical files;
+- [x] remain fully offline through fake-provider tests.
 
-Gate 4 may use the Gate 3 transport only through mocked HTTP or a fake provider. A real provider, real credential and real procurement call remain prohibited until Gate 5.
+Executable evidence:
+
+- PR: `#25`;
+- verified implementation head: `af6e02eb661292d9e4a5e6abd8efce6c913510f6`;
+- CI workflow: `30147724651`;
+- Gate 4 focused test cases added: `8`;
+- full suite: `1739 passed, 188 skipped, 150 warnings` in `421.59s`;
+- `make check`: PASS;
+- migrations: PASS;
+- security scan: PASS;
+- R8 PostgreSQL integration: PASS;
+- R8 acceptance integration: PASS;
+- evidence artifact: `r9-operational-hardening-evidence-af6e02eb661292d9e4a5e6abd8efce6c913510f6`;
+- artifact digest: `sha256:0a52d24fd2edab82e447ea1a68dfa549f3101b80ffb1d2ac5db551e44276c958`.
+
+Status: `R10_1_GATE_4_VERSIONED_CANONICAL_PRODUCER_COMPLETE`.
 
 ### Gate 5 — controlled real-provider evidence
 
-- [ ] run one approved real procurement through the configured provider;
-- [ ] verify every accepted claim against owned evidence;
-- [ ] record evidence coverage and rejected claims;
-- [ ] record provider/model/prompt/schema/policy versions;
-- [ ] record token usage, latency and cost;
-- [ ] prove budget compliance;
-- [ ] publish sanitized CI/runtime evidence without raw tender data or credentials;
-- [ ] repeat the same input to verify stable identities and non-conflicting publication.
+- [ ] select and approve one configured provider/model and versioned pricing policy;
+- [ ] load credentials only from the existing secret/config boundary and prove they never enter requests, results, logs or artifacts;
+- [ ] run one approved real procurement through `production_llm_r10_1`;
+- [ ] verify every accepted claim against procurement-owned evidence and preserve rejected claims/limitations;
+- [ ] record provider/model/request/prompt/schema/evidence/grounding/pricing identities;
+- [ ] record token usage, retries, latency and cost against explicit budgets;
+- [ ] prove provider, validation and budget failures remain fail closed without frozen or stub fallback;
+- [ ] publish sanitized runtime evidence without raw tender text, raw provider bodies or credentials;
+- [ ] repeat the same controlled input to verify stable local identities and non-conflicting publication.
+
+Gate 5 is the first gate allowed to use one approved real credential, endpoint and procurement. It must be executed as a controlled evidence run, not as general customer rollout.
 
 ### Gate 6 — handoff to ARV-001
 
@@ -146,4 +169,4 @@ Gate 4 may use the Gate 3 transport only through mocked HTTP or a fake provider.
 
 ## Immediate next slice
 
-Gate 4 is the only authorized implementation slice. It must add a versioned R10.1 producer beside the frozen R9 producer, preserve every existing canonical persistence and artifact invariant, and remain fully offline through fake-provider or mocked-HTTP tests.
+Gate 5 is the only authorized implementation slice. It must execute one approved real-provider procurement analysis through the versioned R10.1 producer, produce sanitized evidence for grounding and budgets, and preserve every fail-closed and immutable-publication invariant established in Gates 2–4.
