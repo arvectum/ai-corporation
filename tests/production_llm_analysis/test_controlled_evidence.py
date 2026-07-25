@@ -112,25 +112,28 @@ def _reference(request, quote: str) -> EvidenceReference:
 
 
 class StableProvider:
+    def __init__(self, *, sequence: int = 1):
+        self.sequence = sequence
+
     def generate(self, request):
         quote = "Cable AVVG-P is required."
         return ProviderAnalysisResponse(
-            provider_request_id="provider-request-stable",
+            provider_request_id=f"provider-request-{self.sequence}",
             claims=[
                 ProviderClaim(
                     claim_id="technical-requirement-1",
                     field_path="requirements.technical_requirements",
                     value=quote,
-                    provider_confidence=0.99,
+                    provider_confidence=0.90 + self.sequence / 100,
                     evidence_references=[_reference(request, quote)],
                 )
             ],
-            input_tokens=100,
-            output_tokens=30,
-            attempt_latencies_ms=[5],
-            total_latency_ms=5,
+            input_tokens=99 + self.sequence,
+            output_tokens=29 + self.sequence,
+            attempt_latencies_ms=[4 + self.sequence],
+            total_latency_ms=4 + self.sequence,
             retry_count=0,
-            raw_response_sha256="a" * 64,
+            raw_response_sha256=("a" if self.sequence == 1 else "b") * 64,
         )
 
 
@@ -184,16 +187,26 @@ def _run(output_root: Path, provider_factory):
     )
 
 
-def test_two_matching_executions_publish_quote_free_sanitized_manifest(tmp_path):
+def test_matching_semantics_publish_despite_volatile_provider_metadata(tmp_path):
     output_root = tmp_path / "controlled"
-    bundle = _run(output_root, StableProvider)
+    state = {"created": 0}
+
+    def provider_factory():
+        state["created"] += 1
+        return StableProvider(sequence=state["created"])
+
+    bundle = _run(output_root, provider_factory)
 
     assert bundle.manifest_path.exists()
     assert bundle.manifest["repeat_count"] == 2
     assert bundle.manifest["repeat_identity_verified"] is True
     assert bundle.manifest["stable_identity"]["request_id"] == bundle.first.llm_result.request_id
     assert bundle.manifest["stable_identity"]["evidence_packet_hash"] == bundle.second.llm_result.evidence_packet_hash
+    assert bundle.manifest["stable_identity"]["grounded_claims_hash"]
+    assert bundle.manifest["executions"][0]["provider_request_id"] != bundle.manifest["executions"][1]["provider_request_id"]
+    assert bundle.manifest["executions"][0]["validated_result_hash"] != bundle.manifest["executions"][1]["validated_result_hash"]
     assert bundle.manifest["executions"][0]["budget"]["actual_input_tokens"] == 100
+    assert bundle.manifest["executions"][1]["budget"]["actual_input_tokens"] == 101
     assert bundle.manifest["executions"][0]["raw_response_stored"] is False
 
     text = bundle.manifest_path.read_text(encoding="utf-8")
