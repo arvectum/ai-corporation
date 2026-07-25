@@ -20,6 +20,13 @@ from src.modules.production_llm_analysis.schemas import (
     ProviderAnalysisResponse,
     SupportStatus,
 )
+from src.shared.llm.transport import (
+    InvalidProviderResponseError,
+    ProviderBudgetExceededError,
+    ProviderPermanentError,
+    ProviderTimeoutError,
+    ProviderTransientError,
+)
 
 _ZERO_HASH = "0" * 64
 
@@ -126,6 +133,51 @@ def run_production_llm_analysis(
 
     try:
         raw_response = provider.generate(request)
+    except ProviderBudgetExceededError:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.BUDGET_EXCEEDED,
+            budget=preflight.model_copy(
+                update={
+                    "status": BudgetStatus.EXCEEDED,
+                    "reasons": [*preflight.reasons, "provider_runtime_budget_exceeded"],
+                }
+            ),
+            error_code="provider_runtime_budget_exceeded",
+            limitation="Provider execution stopped before another attempt could exceed the configured budget.",
+        )
+    except InvalidProviderResponseError:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.INVALID_RESPONSE,
+            budget=preflight,
+            error_code="provider_response_invalid",
+            limitation="Provider response did not satisfy the versioned output schema.",
+        )
+    except ProviderTimeoutError:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.TIMEOUT,
+            budget=preflight,
+            error_code="provider_timeout",
+            limitation="Provider timed out; no generated claim was accepted.",
+        )
+    except ProviderPermanentError:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.PROVIDER_UNAVAILABLE,
+            budget=preflight,
+            error_code="provider_request_rejected",
+            limitation="Provider rejected the request; no generated claim was accepted.",
+        )
+    except ProviderTransientError:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.PROVIDER_UNAVAILABLE,
+            budget=preflight,
+            error_code="provider_transient_failure",
+            limitation="Provider remained unavailable after bounded retries; no generated claim was accepted.",
+        )
     except TimeoutError:
         return _failure_result(
             request,
