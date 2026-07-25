@@ -96,6 +96,8 @@ def _failure_result(
     budget: BudgetEvaluation,
     error_code: str,
     limitation: str,
+    retry_count: int = 0,
+    raw_response_sha256: str | None = None,
 ) -> ProductionLLMAnalysisResult:
     return _finish_result(
         status=status,
@@ -113,8 +115,26 @@ def _failure_result(
         rejected_claims=[],
         limitations=[limitation],
         budget=budget,
+        retry_count=retry_count,
         sanitized_error_code=error_code,
+        raw_response_sha256=raw_response_sha256,
     )
+
+
+def _transport_failure_values(
+    error: BaseException,
+    budget: BudgetEvaluation,
+) -> tuple[BudgetEvaluation, int, str | None]:
+    total_latency_ms = getattr(error, "total_latency_ms", None)
+    if isinstance(total_latency_ms, int) and total_latency_ms >= 0:
+        budget = budget.model_copy(update={"total_latency_ms": total_latency_ms})
+    retry_count = getattr(error, "retry_count", 0)
+    if not isinstance(retry_count, int) or retry_count < 0:
+        retry_count = 0
+    raw_response_sha256 = getattr(error, "raw_response_sha256", None)
+    if not isinstance(raw_response_sha256, str):
+        raw_response_sha256 = None
+    return budget, retry_count, raw_response_sha256
 
 
 def run_production_llm_analysis(
@@ -133,50 +153,65 @@ def run_production_llm_analysis(
 
     try:
         raw_response = provider.generate(request)
-    except ProviderBudgetExceededError:
+    except ProviderBudgetExceededError as exc:
+        failure_budget, retry_count, response_hash = _transport_failure_values(exc, preflight)
         return _failure_result(
             request,
             status=AnalysisStatus.BUDGET_EXCEEDED,
-            budget=preflight.model_copy(
+            budget=failure_budget.model_copy(
                 update={
                     "status": BudgetStatus.EXCEEDED,
-                    "reasons": [*preflight.reasons, "provider_runtime_budget_exceeded"],
+                    "reasons": [*failure_budget.reasons, "provider_runtime_budget_exceeded"],
                 }
             ),
             error_code="provider_runtime_budget_exceeded",
             limitation="Provider execution stopped before another attempt could exceed the configured budget.",
+            retry_count=retry_count,
+            raw_response_sha256=response_hash,
         )
-    except InvalidProviderResponseError:
+    except InvalidProviderResponseError as exc:
+        failure_budget, retry_count, response_hash = _transport_failure_values(exc, preflight)
         return _failure_result(
             request,
             status=AnalysisStatus.INVALID_RESPONSE,
-            budget=preflight,
+            budget=failure_budget,
             error_code="provider_response_invalid",
             limitation="Provider response did not satisfy the versioned output schema.",
+            retry_count=retry_count,
+            raw_response_sha256=response_hash,
         )
-    except ProviderTimeoutError:
+    except ProviderTimeoutError as exc:
+        failure_budget, retry_count, response_hash = _transport_failure_values(exc, preflight)
         return _failure_result(
             request,
             status=AnalysisStatus.TIMEOUT,
-            budget=preflight,
+            budget=failure_budget,
             error_code="provider_timeout",
             limitation="Provider timed out; no generated claim was accepted.",
+            retry_count=retry_count,
+            raw_response_sha256=response_hash,
         )
-    except ProviderPermanentError:
+    except ProviderPermanentError as exc:
+        failure_budget, retry_count, response_hash = _transport_failure_values(exc, preflight)
         return _failure_result(
             request,
             status=AnalysisStatus.PROVIDER_UNAVAILABLE,
-            budget=preflight,
+            budget=failure_budget,
             error_code="provider_request_rejected",
             limitation="Provider rejected the request; no generated claim was accepted.",
+            retry_count=retry_count,
+            raw_response_sha256=response_hash,
         )
-    except ProviderTransientError:
+    except ProviderTransientError as exc:
+        failure_budget, retry_count, response_hash = _transport_failure_values(exc, preflight)
         return _failure_result(
             request,
             status=AnalysisStatus.PROVIDER_UNAVAILABLE,
-            budget=preflight,
+            budget=failure_budget,
             error_code="provider_transient_failure",
             limitation="Provider remained unavailable after bounded retries; no generated claim was accepted.",
+            retry_count=retry_count,
+            raw_response_sha256=response_hash,
         )
     except TimeoutError:
         return _failure_result(
