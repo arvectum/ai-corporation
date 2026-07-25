@@ -16,8 +16,8 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
 from src.modules.customer_pilot.models import ProcurementCase
-from src.modules.procurement_analysis.customer_inputs import resolve_customer_run_inputs
 from src.modules.production_llm_analysis.controlled_evidence import (
     ControlledEvidenceError,
     load_approved_provider_policy,
