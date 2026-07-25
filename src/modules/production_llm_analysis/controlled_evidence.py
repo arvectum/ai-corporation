@@ -301,15 +301,14 @@ def run_controlled_provider_evidence(
         )
         manifest_path = stage / "controlled-evidence.manifest.json"
         _write_manifest(manifest_path, manifest)
-        os.replace(stage, target)
-        first = _relocate_production(productions[0], target / "execution-1")
-        second = _relocate_production(productions[1], target / "execution-2")
-        return ControlledEvidenceBundle(
+        bundle = ControlledEvidenceBundle(
             manifest=manifest,
             manifest_path=target / manifest_path.name,
-            first=first,
-            second=second,
+            first=_relocate_production(productions[0], target / "execution-1"),
+            second=_relocate_production(productions[1], target / "execution-2"),
         )
+        os.replace(stage, target)
+        return bundle
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)
         raise
