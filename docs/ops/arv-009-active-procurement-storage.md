@@ -86,13 +86,14 @@ completion, or protocol documents found in the sampled set.
    `<status>` in its metadata wrapper. Pre-classify procurements as
    active/completed/cancelled before feeding them into the storage-sizing
    pipeline.
-2. **Conservative upper bound** — Without status classification, use a
-   rolling-window storage estimate: measure total document volume for a 30/60/90
-   day window regardless of activity status. This provides an upper bound
-   without claiming exact active-set accuracy.
+2. **Rolling-window approach (implemented)** — See
+   `docs/ops/arv-009-rolling-window-storage.md` and
+   `scripts/capacity/planning/measure_rolling_window_storage.py`.
+   Measures total document volume across 30/90/180-day windows as a
+   conservative upper bound without requiring active-status classification.
 3. **Implement remaining laws** — Add 223-FZ and capital_repair support to the
    sweep to complete law scope.
-4. **Expand region coverage** — Run sweeps across all 89 regions to build
+4. **Expand region coverage** — Run sweeps across all 99 KLADR regions to build
    representative national data.
 
 ## Outputs
