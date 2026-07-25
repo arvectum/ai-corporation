@@ -60,6 +60,7 @@ EIS_XML_NS = {
 CHECKPOINT_FILENAME = ".arv009c13_checkpoint.json"
 OUTPUT_JSON = "arv-009-rolling-window-storage.json"
 OUTPUT_CSV = "arv-009-rolling-window-storage.csv"
+NATIONAL_TARGET_WINDOW_DAYS = 180
 
 _interrupted = False
 
@@ -743,6 +744,21 @@ def run_sweep(
                 failed_units.append(fu)
             for uk, ur in ckpt.get("unit_results", {}).items():
                 unit_results[uk] = ur
+            units_completed = ckpt.get("units_completed", 0)
+            units_failed = ckpt.get("units_failed", 0)
+            # Reconcile: remove failed_units entries whose status is now success
+            reconciled_failed = []
+            for fu in failed_units:
+                fuk = build_unit_key(fu["region"], fu["date"], fu["law"])
+                fur = unit_results.get(fuk, {})
+                if fur.get("status", "").startswith("failed"):
+                    reconciled_failed.append(fu)
+            stale_count = len(failed_units) - len(reconciled_failed)
+            if stale_count > 0:
+                failed_units = reconciled_failed
+                units_failed -= stale_count
+                if units_failed < 0:
+                    units_failed = 0
             doc_dicts = ckpt.get("documents", [])
             documents = [DocumentRecord(**d) for d in doc_dicts]
             had_error = ckpt.get("had_error", False)
@@ -750,8 +766,6 @@ def run_sweep(
             archives_downloaded = ckpt.get("archives_downloaded", 0)
             archives_skipped = ckpt.get("archives_skipped", 0)
             region_attempted = ckpt.get("region_attempted", [])
-            units_completed = ckpt.get("units_completed", 0)
-            units_failed = ckpt.get("units_failed", 0)
             xml_parsed = ckpt.get("xml_parsed", 0)
             xml_failed = ckpt.get("xml_failed", 0)
             logger.info(
@@ -845,14 +859,26 @@ def run_sweep(
                 unit_results[unit_key] = ur_dict
 
                 cu_entry = {"region": region, "date": exact_date, "law": law}
+                prev_failed = (
+                    existing and existing.get("status", "").startswith("failed")
+                )
 
                 if unit_status in ("success_archive", "success_no_data"):
-                    completed_units.append(cu_entry)
-                    completed_keys.add(unit_key)
-                    units_completed += 1
+                    if prev_failed:
+                        # Remove from failed tracking
+                        failed_units[:] = [
+                            fu for fu in failed_units
+                            if build_unit_key(fu["region"], fu["date"], fu["law"]) != unit_key
+                        ]
+                        units_failed = max(0, units_failed - 1)
+                    if not prev_failed or unit_key not in completed_keys:
+                        completed_units.append(cu_entry)
+                        completed_keys.add(unit_key)
+                        units_completed += 1
                 else:
-                    failed_units.append(cu_entry)
-                    units_failed += 1
+                    if not prev_failed:
+                        failed_units.append(cu_entry)
+                        units_failed += 1
 
                 ckpt_data = build_checkpoint_v3(
                     target_signature=target_signature,

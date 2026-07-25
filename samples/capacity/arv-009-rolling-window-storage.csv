@@ -1,4 +1,4 @@
 window_days,unique_procurements,unique_documents,known_bytes,size_coverage_pct,conservative_union_bytes,window_scope_complete,sizing_status,ssd_verdict
-30,178,802,598264735,100.0,598264735,False,unavailable,unavailable
-90,178,802,598264735,100.0,598264735,False,unavailable,unavailable
-180,178,802,598264735,100.0,598264735,False,unavailable,unavailable
+30,78141,418357,188675255282,100.0,188675255282,True,available,unavailable
+90,78141,418357,188675255282,100.0,188675255282,False,unavailable,unavailable
+180,78141,418357,188675255282,100.0,188675255282,False,unavailable,unavailable
