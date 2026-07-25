@@ -29,6 +29,7 @@ from src.shared.llm.transport import (
 )
 
 _TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+_PROTECTED_HEADERS = {"accept", "authorization", "content-type"}
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,13 @@ class OpenAICompatibleTransportConfig:
             raise ValueError("auth_scheme is invalid")
         if not self.endpoint_path.startswith("/"):
             raise ValueError("endpoint_path must start with '/'")
+        for key, value in self.extra_headers.items():
+            if key.strip().lower() in _PROTECTED_HEADERS:
+                raise ValueError("extra_headers cannot override protected transport headers")
+            if not key.strip() or any(character in key for character in "\r\n"):
+                raise ValueError("extra header name is invalid")
+            if any(character in value for character in "\r\n"):
+                raise ValueError("extra header value is invalid")
 
     @property
     def endpoint_url(self) -> str:
@@ -83,11 +91,17 @@ class OpenAICompatibleProductionLLMProvider:
             elapsed_ms = self._elapsed_ms(analysis_started)
             remaining_latency_ms = limits.max_total_latency_ms - elapsed_ms
             if remaining_latency_ms <= 0:
-                raise ProviderBudgetExceededError("provider_total_latency_budget_exceeded")
+                raise ProviderBudgetExceededError(
+                    "provider_total_latency_budget_exceeded",
+                    **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                )
 
             projected_cost = estimated_attempt_cost * (attempt_index + 1)
-            if projected_cost > request.budget_policy.limits.max_estimated_cost + 1e-12:
-                raise ProviderBudgetExceededError("provider_retry_cost_budget_exceeded")
+            if projected_cost > limits.max_estimated_cost + 1e-12:
+                raise ProviderBudgetExceededError(
+                    "provider_retry_cost_budget_exceeded",
+                    **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                )
 
             timeout_ms = min(limits.timeout_ms, remaining_latency_ms)
             http_request = HTTPRequest(
@@ -99,34 +113,57 @@ class OpenAICompatibleProductionLLMProvider:
             attempt_started = self._clock()
             try:
                 response = self._http_client.send(http_request)
+            except ProviderPermanentError:
+                attempt_latencies_ms.append(self._elapsed_ms(attempt_started))
+                raise ProviderPermanentError(
+                    "provider_request_rejected",
+                    **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                ) from None
             except ProviderTimeoutError:
                 attempt_latencies_ms.append(self._elapsed_ms(attempt_started))
                 if attempt_index + 1 >= maximum_attempts:
-                    raise ProviderTimeoutError("provider_timeout") from None
+                    raise ProviderTimeoutError(
+                        "provider_timeout",
+                        **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                    ) from None
                 continue
             except (ProviderTransientError, ConnectionError, OSError):
                 attempt_latencies_ms.append(self._elapsed_ms(attempt_started))
                 if attempt_index + 1 >= maximum_attempts:
-                    raise ProviderTransientError("provider_transient_failure") from None
+                    raise ProviderTransientError(
+                        "provider_transient_failure",
+                        **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                    ) from None
                 continue
 
             attempt_latencies_ms.append(self._elapsed_ms(attempt_started))
+            response_hash = hashlib.sha256(response.body).hexdigest()
             if response.status_code in _TRANSIENT_STATUS_CODES:
                 if attempt_index + 1 >= maximum_attempts:
-                    raise ProviderTransientError("provider_transient_http_failure")
+                    raise ProviderTransientError(
+                        "provider_transient_http_failure",
+                        raw_response_sha256=response_hash,
+                        **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                    )
                 continue
             if not 200 <= response.status_code < 300:
-                raise ProviderPermanentError("provider_request_rejected")
+                raise ProviderPermanentError(
+                    "provider_request_rejected",
+                    raw_response_sha256=response_hash,
+                    **self._failure_metadata(analysis_started, attempt_latencies_ms),
+                )
 
             return self._parse_success_response(
-                request=request,
                 response=response,
                 attempt_latencies_ms=attempt_latencies_ms,
                 retry_count=attempt_index,
                 analysis_started=analysis_started,
             )
 
-        raise ProviderTransientError("provider_attempts_exhausted")
+        raise ProviderTransientError(
+            "provider_attempts_exhausted",
+            **self._failure_metadata(analysis_started, attempt_latencies_ms),
+        )
 
     def _headers(self) -> dict[str, str]:
         headers = {
@@ -198,65 +235,68 @@ class OpenAICompatibleProductionLLMProvider:
     def _parse_success_response(
         self,
         *,
-        request: ProductionLLMAnalysisRequest,
         response: HTTPResponse,
         attempt_latencies_ms: list[int],
         retry_count: int,
         analysis_started: float,
     ) -> ProviderAnalysisResponse:
+        response_hash = hashlib.sha256(response.body).hexdigest()
+        failure_metadata = {
+            "retry_count": retry_count,
+            "attempt_latencies_ms": tuple(attempt_latencies_ms),
+            "total_latency_ms": self._total_latency_ms(analysis_started, attempt_latencies_ms),
+            "raw_response_sha256": response_hash,
+        }
         try:
             envelope = json.loads(response.body.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError):
-            raise InvalidProviderResponseError("provider_response_invalid_json") from None
-        if not isinstance(envelope, dict):
-            raise InvalidProviderResponseError("provider_response_invalid_envelope")
+            if not isinstance(envelope, dict):
+                raise InvalidProviderResponseError("provider_response_invalid_envelope")
 
-        content_text = self._extract_message_content(envelope)
-        try:
+            content_text = self._extract_message_content(envelope)
             content = json.loads(content_text)
-        except json.JSONDecodeError:
-            raise InvalidProviderResponseError("provider_content_invalid_json") from None
-        if not isinstance(content, dict) or set(content) != {"claims"}:
-            raise InvalidProviderResponseError("provider_content_schema_mismatch")
-        if not isinstance(content.get("claims"), list):
-            raise InvalidProviderResponseError("provider_claims_not_list")
+            if not isinstance(content, dict) or set(content) != {"claims"}:
+                raise InvalidProviderResponseError("provider_content_schema_mismatch")
+            if not isinstance(content.get("claims"), list):
+                raise InvalidProviderResponseError("provider_claims_not_list")
 
-        usage = envelope.get("usage")
-        input_tokens: int | None = None
-        output_tokens: int | None = None
-        if usage is not None:
-            if not isinstance(usage, dict):
-                raise InvalidProviderResponseError("provider_usage_invalid")
-            input_tokens = self._optional_non_negative_int(usage.get("prompt_tokens"), "provider_input_tokens_invalid")
-            output_tokens = self._optional_non_negative_int(
-                usage.get("completion_tokens"),
-                "provider_output_tokens_invalid",
-            )
+            usage = envelope.get("usage")
+            input_tokens: int | None = None
+            output_tokens: int | None = None
+            if usage is not None:
+                if not isinstance(usage, dict):
+                    raise InvalidProviderResponseError("provider_usage_invalid")
+                input_tokens = self._optional_non_negative_int(
+                    usage.get("prompt_tokens"),
+                    "provider_input_tokens_invalid",
+                )
+                output_tokens = self._optional_non_negative_int(
+                    usage.get("completion_tokens"),
+                    "provider_output_tokens_invalid",
+                )
 
-        provider_request_id = envelope.get("id")
-        if provider_request_id is not None and not isinstance(provider_request_id, str):
-            raise InvalidProviderResponseError("provider_request_id_invalid")
-        if not provider_request_id:
-            provider_request_id = self._header_value(response.headers, "x-request-id")
-            provider_request_id = provider_request_id or self._header_value(response.headers, "request-id")
+            provider_request_id = envelope.get("id")
+            if provider_request_id is not None and not isinstance(provider_request_id, str):
+                raise InvalidProviderResponseError("provider_request_id_invalid")
+            if not provider_request_id:
+                provider_request_id = self._header_value(response.headers, "x-request-id")
+                provider_request_id = provider_request_id or self._header_value(response.headers, "request-id")
 
-        total_latency_ms = max(
-            self._elapsed_ms(analysis_started),
-            sum(attempt_latencies_ms),
-        )
-        try:
             return ProviderAnalysisResponse(
                 provider_request_id=provider_request_id,
                 claims=content["claims"],
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 attempt_latencies_ms=attempt_latencies_ms,
-                total_latency_ms=total_latency_ms,
+                total_latency_ms=failure_metadata["total_latency_ms"],
                 retry_count=retry_count,
-                raw_response_sha256=hashlib.sha256(response.body).hexdigest(),
+                raw_response_sha256=response_hash,
             )
+        except InvalidProviderResponseError as exc:
+            raise InvalidProviderResponseError(str(exc), **failure_metadata) from None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise InvalidProviderResponseError("provider_response_invalid_json", **failure_metadata) from None
         except PydanticValidationError:
-            raise InvalidProviderResponseError("provider_claim_schema_invalid") from None
+            raise InvalidProviderResponseError("provider_claim_schema_invalid", **failure_metadata) from None
 
     @staticmethod
     def _extract_message_content(envelope: dict[str, Any]) -> str:
@@ -305,6 +345,20 @@ class OpenAICompatibleProductionLLMProvider:
             (estimated_input_tokens / 1000) * policy.pricing.input_cost_per_1k_tokens
             + (estimated_output_tokens / 1000) * policy.pricing.output_cost_per_1k_tokens
         )
+
+    def _failure_metadata(
+        self,
+        analysis_started: float,
+        attempt_latencies_ms: list[int],
+    ) -> dict[str, Any]:
+        return {
+            "retry_count": max(0, len(attempt_latencies_ms) - 1),
+            "attempt_latencies_ms": tuple(attempt_latencies_ms),
+            "total_latency_ms": self._total_latency_ms(analysis_started, attempt_latencies_ms),
+        }
+
+    def _total_latency_ms(self, analysis_started: float, attempt_latencies_ms: list[int]) -> int:
+        return max(self._elapsed_ms(analysis_started), sum(attempt_latencies_ms))
 
     def _elapsed_ms(self, started: float) -> int:
         return max(0, int(round((self._clock() - started) * 1000)))
