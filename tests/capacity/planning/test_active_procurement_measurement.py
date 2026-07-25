@@ -6,427 +6,509 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import random
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+import urllib.error
+
 from scripts.capacity.planning.measure_active_procurements import (
     MAX_PROCESSING_CONCURRENCY,
-    NON_ACTIVE_STATUSES,
     ONE_GIB,
-    PERSISTENT_RESULTS_AND_LOGS,
-    PROCESSING_SPACE_MIN,
-    TWO_TB,
+    PROCESSING_SPACE_MIN_BYTES,
+    PERSISTENT_RESULTS_AND_LOGS_BYTES,
+    SSD_CAPACITY_DECIMAL_BYTES,
     COMMERCIAL_RESERVE_RATIO,
-    EIS_SOURCES,
+    COVERAGE_THRESHOLD,
+    ACTIVE_LAW_TYPES,
+    EXCLUDED_STATUSES,
+    GREEN_THRESHOLD_BYTES,
+    YELLOW_THRESHOLD_BYTES,
+    ActiveProcurement,
+    ByLawType,
+    CoverageReport,
     DocumentInfo,
-    PackageInfo,
-    SnapshotStats,
+    DocumentSizeProvenance,
+    MeasurementProvenance,
     SizingResult,
+    SnapshotStats,
+    SourceProvenance,
+    classify_eis_status,
+    compute_coverage,
     compute_sizing,
     compute_statistics,
+    compute_by_law,
     format_bytes,
-    is_procurement_active,
+    is_active_eis_status,
+    make_incomplete_provenance,
     run_demo,
+    _generate_synthetic_packages,
+    _try_content_length,
+    _try_content_range,
+    _try_stream,
 )
 
 
-# ── Fixtures ──────────────────────────────────────────────────────────────
+# ─── Helpers ──────────────────────────────────────────────────────────────
 
-@pytest.fixture
-def sample_packages() -> list[PackageInfo]:
-    rng = random.Random(42)
-    pkgs = []
-    for i in range(50):
-        doc_count = rng.randint(1, 5)
-        docs = [
-            DocumentInfo(
-                file_name=f"doc_{d}.pdf",
-                size_bytes=rng.randint(10_000, 50_000_000),
-                content_type="application/pdf",
-                is_archive=False,
-                source="synthetic",
-            )
-            for d in range(doc_count)
-        ]
-        pkgs.append(PackageInfo(
-            tender_id=f"test-{i:04d}",
-            registry_number=f"TEST{i:019d}",
-            law_type=rng.choice(list(EIS_SOURCES)),
-            status="applying",
-            source="demo",
-            documents=docs,
-        ))
-    pkgs.sort(key=lambda p: p.total_bytes, reverse=True)
-    return pkgs
+def _make_doc(size: int | None = 1_000_000) -> DocumentInfo:
+    return DocumentInfo(
+        size_bytes=size,
+        provenance=DocumentSizeProvenance(method="eis_metadata"),
+    )
 
 
-@pytest.fixture
-def single_stat(sample_packages: list[PackageInfo]) -> SnapshotStats:
-    return compute_statistics(sample_packages, snapshot_index=1)
+def _make_pkg(
+    docs: list | None = None,
+    law: str = "44fz",
+    status: str = "published",
+    procurement_id: str = "test-0001",
+) -> ActiveProcurement:
+    docs = docs or [_make_doc()]
+    return ActiveProcurement(
+        procurement_id=procurement_id,
+        law=law,
+        status=status,
+        documents=docs,
+    )
 
 
-# ─── Active procurement filtering ────────────────────────────────────────
+# ─── Canonical status mapping ─────────────────────────────────────────────
 
-class TestActiveProcurementFilter:
-    def test_active_status(self):
-        assert is_procurement_active("published") is True
-        assert is_procurement_active("applying") is True
-        assert is_procurement_active("active") is True
+class TestStatusMapping:
+    def test_active_statuses(self):
+        for s in ("published", "applying", "active", "submission", "open"):
+            assert is_active_eis_status(s) is True, f"{s!r} should be active"
+            assert classify_eis_status(s) == "active"
 
-    def test_non_active_statuses(self):
-        for status in NON_ACTIVE_STATUSES:
-            assert is_procurement_active(status) is False, f"{status!r} should be non-active"
+    def test_excluded_explicit(self):
+        for s in EXCLUDED_STATUSES:
+            assert is_active_eis_status(s) is False
+            assert classify_eis_status(s) == "excluded_explicit"
+
+    def test_unknown_status(self):
+        assert is_active_eis_status("unknown_garbage") is False
+        assert classify_eis_status("unknown_garbage") == "excluded_unmapped"
 
     def test_none_status(self):
-        assert is_procurement_active(None) is False
-
-    def test_empty_status(self):
-        assert is_procurement_active("") is False
+        assert is_active_eis_status(None) is False
+        assert classify_eis_status(None) == "excluded_missing"
 
     def test_case_insensitive(self):
-        assert is_procurement_active("CANCELLED") is False
-        assert is_procurement_active("PUBLISHED") is True
+        assert is_active_eis_status("PUBLISHED") is True
+        assert is_active_eis_status("COMPLETED") is False
+
+    def test_empty_status(self):
+        assert is_active_eis_status("") is False
 
 
-# ─── Statistics computation ───────────────────────────────────────────────
+# ─── Coverage gate ────────────────────────────────────────────────────────
+
+class TestCoverageGate:
+    def test_full_coverage_accepted(self):
+        pkgs = [_make_pkg(law="44fz") for _ in range(20)]
+        cov = compute_coverage(pkgs)
+        assert cov.procurement_coverage_percent == 100.0
+        assert cov.known_size_coverage_percent == 100.0
+
+    def test_95_percent_accepted(self):
+        pkgs = [_make_pkg(status="published") for _ in range(19)]
+        pkgs.append(_make_pkg(docs=[_make_doc(size=None)], status="published"))
+        cov = compute_coverage(pkgs)
+        assert cov.procurement_coverage_percent == 100.0
+        assert cov.documents_with_unknown_size == 1
+        assert cov.documents_total == sum(p.doc_count for p in pkgs)
+        known_ratio = cov.documents_with_known_size / cov.documents_total * 100
+        assert known_ratio >= COVERAGE_THRESHOLD
+
+    def test_9499_percent_rejected(self):
+        total_docs = 200
+        unknown = 11
+        known = total_docs - unknown
+        ratio = known / total_docs * 100
+        assert ratio < COVERAGE_THRESHOLD, f"{ratio} should be < {COVERAGE_THRESHOLD}"
+
+        pkgs = [
+            _make_pkg(docs=[_make_doc(size=1_000_000) for _ in range(known // 5 + 1)])
+            for _ in range(5)
+        ]
+        pkgs.append(_make_pkg(docs=[_make_doc(size=None) for _ in range(unknown)]))
+        cov = compute_coverage(pkgs)
+        assert cov.known_size_coverage_percent < COVERAGE_THRESHOLD
+
+    def test_empty_passthrough(self):
+        cov = compute_coverage([])
+        assert cov.procurement_coverage_percent == 100.0
+        assert cov.known_size_coverage_percent == 100.0
+
+    def test_excluded_counts(self):
+        cov = compute_coverage([], excluded_unmapped=5, excluded_explicit=10)
+        assert cov.excluded_unmapped_status == 5
+        assert cov.excluded_explicit == 10
+
+
+# ─── Statistics ───────────────────────────────────────────────────────────
 
 class TestStatistics:
-    def test_empty_packages(self):
+    def test_empty(self):
         stats = compute_statistics([])
-        assert stats.total_tenders == 0
-        assert stats.total_bytes == 0
+        assert stats.active_procurements == 0
+        assert stats.known_bytes == 0
         assert stats.mean_bytes == 0.0
-        assert stats.p50_bytes == 0
 
-    def test_single_package(self):
-        doc = DocumentInfo("test.pdf", 1_000_000, "application/pdf", False, "test")
-        pkg = PackageInfo("t1", "RN1", "44fz", "published", "test", [doc])
+    def test_single_procurement(self):
+        pkg = _make_pkg(docs=[_make_doc(1_000_000)])
         stats = compute_statistics([pkg])
-        assert stats.total_tenders == 1
-        assert stats.total_bytes == 1_000_000
+        assert stats.active_procurements == 1
+        assert stats.known_bytes == 1_000_000
         assert stats.p50_bytes == 1_000_000
         assert stats.p99_bytes == 1_000_000
 
-    def test_percentiles(self, sample_packages: list[PackageInfo]):
-        stats = compute_statistics(sample_packages, snapshot_index=1)
-        sizes = sorted([p.total_bytes for p in sample_packages])
+    def test_percentiles(self):
+        rng = random.Random(42)
+        pkgs = [_make_pkg(docs=[_make_doc(rng.randint(100_000, 50_000_000))]) for _ in range(100)]
+        stats = compute_statistics(pkgs)
+        sizes = sorted([p.known_bytes for p in pkgs])
         n = len(sizes)
         p50_idx = max(0, min(n - 1, int(math.ceil(50 * n / 100) - 1)))
         p95_idx = max(0, min(n - 1, int(math.ceil(95 * n / 100) - 1)))
-        expected_p50 = sizes[p50_idx]
-        expected_p95 = sizes[p95_idx]
-        assert stats.p50_bytes == expected_p50
-        assert stats.p95_bytes == expected_p95
+        assert stats.p50_bytes == sizes[p50_idx]
+        assert stats.p95_bytes == sizes[p95_idx]
 
-    def test_snapshot_index(self):
-        stats = compute_statistics([], snapshot_index=3)
-        assert stats.snapshot_index == 3
+    def test_unknown_docs_not_counted_in_known(self):
+        docs = [_make_doc(1_000_000), _make_doc(size=None)]
+        pkg = _make_pkg(docs=docs)
+        stats = compute_statistics([pkg])
+        assert stats.known_bytes == 1_000_000
+        assert stats.unknown_documents == 1
 
-    def test_snapshot_date(self):
-        stats = compute_statistics([], snapshot_date="2026-07-24")
-        assert stats.snapshot_date == "2026-07-24"
+    def test_zero_known_not_in_percentile(self):
+        pkg = _make_pkg(docs=[_make_doc(size=None)])
+        stats = compute_statistics([pkg])
+        assert stats.known_bytes == 0
+        assert stats.p50_bytes == 0
 
 
-# ─── Heavy-tail contribution ──────────────────────────────────────────────
+# ─── Heavy tail ───────────────────────────────────────────────────────────
 
 class TestHeavyTail:
-    def test_top_1_pct_below_100(self):
-        sizes = [100_000_000] * 200
-        pkgs = [PackageInfo(
-            tender_id=f"t{i}", registry_number=None, law_type="44fz",
-            status="published", source="test",
-            documents=[DocumentInfo(f"d.pdf", s, "application/pdf", False, "test")],
-        ) for i, s in enumerate(sizes)]
+    def test_monotonic(self):
+        pkgs = [_make_pkg(docs=[_make_doc(random.randint(10_000, 100_000_000))]) for _ in range(50)]
         stats = compute_statistics(pkgs)
-        assert 0 < stats.heavy_tail_top_1_pct <= 1.0
+        assert stats.heavy_tail_top_1_pct <= stats.heavy_tail_top_5_pct
+        assert stats.heavy_tail_top_5_pct <= stats.heavy_tail_top_10_pct
 
-    def test_heavy_tail_monotonic(self, single_stat: SnapshotStats):
-        assert single_stat.heavy_tail_top_1_pct <= single_stat.heavy_tail_top_5_pct
-        assert single_stat.heavy_tail_top_5_pct <= single_stat.heavy_tail_top_10_pct
-
-    def test_heavy_tail_empty(self):
+    def test_empty(self):
         stats = compute_statistics([])
         assert stats.heavy_tail_top_1_pct == 0.0
-        assert stats.heavy_tail_top_5_pct == 0.0
-        assert stats.heavy_tail_top_10_pct == 0.0
 
 
-# ─── Large package counting ───────────────────────────────────────────────
+# ─── Large packages ───────────────────────────────────────────────────────
 
 class TestLargePackages:
     def test_over_100mb(self):
         sizes = [50_000_000, 150_000_000, 200_000_000]
-        pkgs = [PackageInfo(f"t{i}", None, "44fz", "published", "test",
-                            [DocumentInfo("d.pdf", s, "application/pdf", False, "test")])
-                for i, s in enumerate(sizes)]
+        pkgs = [_make_pkg(docs=[_make_doc(s)]) for s in sizes]
         stats = compute_statistics(pkgs)
         assert stats.packages_over_100mb == 2
 
-    def test_over_1gb(self):
+    def test_over_1gib(self):
         sizes = [500_000_000, ONE_GIB + 1]
-        pkgs = [PackageInfo(f"t{i}", None, "44fz", "published", "test",
-                            [DocumentInfo("d.pdf", s, "application/pdf", False, "test")])
-                for i, s in enumerate(sizes)]
+        pkgs = [_make_pkg(docs=[_make_doc(s)]) for s in sizes]
         stats = compute_statistics(pkgs)
-        assert stats.packages_over_1gb == 1
+        assert stats.packages_over_1gib == 1
 
 
-# ─── Sizing calculation ───────────────────────────────────────────────────
+# ─── By law type ──────────────────────────────────────────────────────────
+
+class TestByLawType:
+    def test_grouping(self):
+        pkgs = [
+            _make_pkg(law="44fz", docs=[_make_doc(100)]),
+            _make_pkg(law="44fz", docs=[_make_doc(200)]),
+            _make_pkg(law="223fz", docs=[_make_doc(300)]),
+        ]
+        by_law = compute_by_law(pkgs)
+        law_map = {b.law_type: b for b in by_law}
+        assert law_map["44fz"].tenders == 2
+        assert law_map["44fz"].known_bytes == 300
+        assert law_map["223fz"].tenders == 1
+        assert law_map["223fz"].known_bytes == 300
+
+
+# ─── Sizing ───────────────────────────────────────────────────────────────
 
 class TestSizing:
-    def test_50_pct_commercial_reserve(self):
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=100, total_documents=500,
-            total_bytes=100_000_000_000, mean_bytes=1_000_000_000.0,
-            p50_bytes=500_000_000, p75_bytes=1_000_000_000,
-            p90_bytes=2_000_000_000, p95_bytes=3_000_000_000,
-            p99_bytes=5_000_000_000, max_bytes=10_000_000_000,
-            pct_over_100mb=50.0, pct_over_250mb=20.0,
-            pct_over_500mb=5.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.1, heavy_tail_top_5_pct=0.3,
-            heavy_tail_top_10_pct=0.5, packages_over_100mb=50,
-            packages_over_250mb=20, packages_over_500mb=5, packages_over_1gb=0,
+    def _make_coverage(self) -> CoverageReport:
+        return CoverageReport(
+            active_procurements_total=100,
+            active_procurements_with_document_manifest=100,
+            procurement_coverage_percent=100.0,
+            documents_total=500,
+            documents_with_known_size=500,
+            documents_with_unknown_size=0,
+            known_size_coverage_percent=100.0,
         )
-        sizing = compute_sizing([stats])
-        expected_reserve = int(100_000_000_000 * COMMERCIAL_RESERVE_RATIO)
-        assert sizing.commercial_reserve_bytes == expected_reserve
 
-    def test_green_threshold(self):
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=100, total_documents=300,
-            total_bytes=500_000_000_000, mean_bytes=5_000_000_000.0,
-            p50_bytes=2_000_000_000, p75_bytes=5_000_000_000,
-            p90_bytes=10_000_000_000, p95_bytes=15_000_000_000,
-            p99_bytes=20_000_000_000, max_bytes=30_000_000_000,
-            pct_over_100mb=30.0, pct_over_250mb=10.0,
-            pct_over_500mb=2.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.05, heavy_tail_top_5_pct=0.2,
-            heavy_tail_top_10_pct=0.4, packages_over_100mb=30,
-            packages_over_250mb=10, packages_over_500mb=2, packages_over_1gb=0,
-        )
-        sizing = compute_sizing([stats])
+    def test_50_pct_commercial_reserve(self):
+        stats = SnapshotStats(known_bytes=100_000_000_000, p99_bytes=1_000_000_000,
+                              active_procurements=50, documents=200)
+        sizing = compute_sizing(stats, self._make_coverage())
+        expected = int(100_000_000_000 * COMMERCIAL_RESERVE_RATIO)
+        assert sizing.commercial_reserve_bytes == expected
+
+    def test_green(self):
+        stats = SnapshotStats(known_bytes=500_000_000_000, p99_bytes=5_000_000_000,
+                              active_procurements=100, documents=300)
+        sizing = compute_sizing(stats, self._make_coverage())
         assert sizing.classification == "GREEN"
 
-    def test_yellow_threshold(self):
+    def test_yellow(self):
         total = 900_000_000_000
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=100, total_documents=300,
-            total_bytes=total, mean_bytes=float(total / 100),
-            p50_bytes=10_000_000_000, p75_bytes=20_000_000_000,
-            p90_bytes=30_000_000_000, p95_bytes=40_000_000_000,
-            p99_bytes=50_000_000_000, max_bytes=60_000_000_000,
-            pct_over_100mb=30.0, pct_over_250mb=10.0,
-            pct_over_500mb=2.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.05, heavy_tail_top_5_pct=0.2,
-            heavy_tail_top_10_pct=0.4, packages_over_100mb=30,
-            packages_over_250mb=10, packages_over_500mb=2, packages_over_1gb=0,
-        )
-        sizing = compute_sizing([stats])
+        stats = SnapshotStats(known_bytes=total, p99_bytes=50_000_000_000,
+                              active_procurements=100, documents=300)
+        sizing = compute_sizing(stats, self._make_coverage())
         assert sizing.classification == "YELLOW"
-        assert sizing.base_required > int(1.4 * TWO_TB / 2)
-        assert sizing.base_required <= int(1.7 * TWO_TB / 2)
+        assert sizing.base_required_bytes > GREEN_THRESHOLD_BYTES
+        assert sizing.base_required_bytes <= YELLOW_THRESHOLD_BYTES
 
-    def test_red_threshold(self):
-        total = 1_800_000_000_000  # ~1.8 TB
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=100, total_documents=300,
-            total_bytes=total, mean_bytes=float(total / 100),
-            p50_bytes=10_000_000_000, p75_bytes=20_000_000_000,
-            p90_bytes=30_000_000_000, p95_bytes=40_000_000_000,
-            p99_bytes=50_000_000_000, max_bytes=60_000_000_000,
-            pct_over_100mb=30.0, pct_over_250mb=10.0,
-            pct_over_500mb=2.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.05, heavy_tail_top_5_pct=0.2,
-            heavy_tail_top_10_pct=0.4, packages_over_100mb=30,
-            packages_over_250mb=10, packages_over_500mb=2, packages_over_1gb=0,
-        )
-        sizing = compute_sizing([stats])
+    def test_red(self):
+        total = 1_800_000_000_000
+        stats = SnapshotStats(known_bytes=total, p99_bytes=50_000_000_000,
+                              active_procurements=100, documents=300)
+        sizing = compute_sizing(stats, self._make_coverage())
         assert sizing.classification == "RED"
 
+    def test_unavailable_when_zero(self):
+        stats = SnapshotStats(known_bytes=0, p99_bytes=0,
+                              active_procurements=0, documents=0)
+        sizing = compute_sizing(stats, self._make_coverage())
+        assert sizing.classification == "unavailable"
+
     def test_processing_space_min(self):
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=1, total_documents=1,
-            total_bytes=1_000, mean_bytes=1000.0,
-            p50_bytes=1000, p75_bytes=1000,
-            p90_bytes=1000, p95_bytes=1000,
-            p99_bytes=1000, max_bytes=1000,
-            pct_over_100mb=0.0, pct_over_250mb=0.0,
-            pct_over_500mb=0.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.0, heavy_tail_top_5_pct=0.0,
-            heavy_tail_top_10_pct=0.0,
-            packages_over_100mb=0, packages_over_250mb=0,
-            packages_over_500mb=0, packages_over_1gb=0,
-        )
-        sizing = compute_sizing([stats])
-        assert sizing.processing_space_bytes == PROCESSING_SPACE_MIN
+        stats = SnapshotStats(known_bytes=1_000, p99_bytes=1_000,
+                              active_procurements=1, documents=1)
+        sizing = compute_sizing(stats, self._make_coverage())
+        assert sizing.processing_space_bytes == PROCESSING_SPACE_MIN_BYTES
 
     def test_processing_space_p99(self):
-        p99 = 100_000_000_000  # 100 GiB
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=1, total_documents=1,
-            total_bytes=1_000, mean_bytes=1000.0,
-            p50_bytes=1000, p75_bytes=1000,
-            p90_bytes=1000, p95_bytes=1000,
-            p99_bytes=p99, max_bytes=p99,
-            pct_over_100mb=0.0, pct_over_250mb=0.0,
-            pct_over_500mb=0.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.0, heavy_tail_top_5_pct=0.0,
-            heavy_tail_top_10_pct=0.0,
-            packages_over_100mb=0, packages_over_250mb=0,
-            packages_over_500mb=0, packages_over_1gb=0,
-        )
-        sizing = compute_sizing([stats])
+        p99 = 100_000_000_000
+        stats = SnapshotStats(known_bytes=1_000, p99_bytes=p99,
+                              active_procurements=1, documents=1)
+        sizing = compute_sizing(stats, self._make_coverage())
         expected = p99 * MAX_PROCESSING_CONCURRENCY
         assert sizing.processing_space_bytes == expected
 
-    def test_persistent_results_constant(self):
-        stats = SnapshotStats(
-            snapshot_date="2026-07-24", snapshot_index=1,
-            total_tenders=0, total_documents=0,
-            total_bytes=0, mean_bytes=0.0,
-            p50_bytes=0, p75_bytes=0, p90_bytes=0, p95_bytes=0,
-            p99_bytes=0, max_bytes=0,
-            pct_over_100mb=0.0, pct_over_250mb=0.0,
-            pct_over_500mb=0.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.0, heavy_tail_top_5_pct=0.0,
-            heavy_tail_top_10_pct=0.0,
-            packages_over_100mb=0, packages_over_250mb=0,
-            packages_over_500mb=0, packages_over_1gb=0,
+    def test_persistent_constant(self):
+        stats = SnapshotStats(known_bytes=0, p99_bytes=0,
+                              active_procurements=0, documents=0)
+        sizing = compute_sizing(stats, self._make_coverage())
+        assert sizing.persistent_results_and_logs_bytes == PERSISTENT_RESULTS_AND_LOGS_BYTES
+
+    def test_minimum_disk_80pct(self):
+        stats = SnapshotStats(known_bytes=500_000_000_000, p99_bytes=5_000_000_000,
+                              active_procurements=100, documents=300)
+        sizing = compute_sizing(stats, self._make_coverage())
+        base = sizing.base_required_bytes
+        expected_min = int(base / 0.80)
+        assert sizing.minimum_disk_bytes == expected_min
+        assert sizing.minimum_disk_bytes >= base
+
+    def test_disk_class_1tb(self):
+        sizing = compute_sizing(SnapshotStats(
+            known_bytes=100_000_000_000, p99_bytes=5_000_000_000,
+            active_procurements=100, documents=300,
+        ), self._make_coverage())
+        assert sizing.next_practical_disk_class == "1 TB"
+
+    def test_disk_class_2tb(self):
+        sizing = compute_sizing(SnapshotStats(
+            known_bytes=500_000_000_000, p99_bytes=5_000_000_000,
+            active_procurements=100, documents=300,
+        ), self._make_coverage())
+        assert sizing.next_practical_disk_class == "2 TB"
+
+    def test_disk_class_4tb(self):
+        sizing = compute_sizing(SnapshotStats(
+            known_bytes=1_500_000_000_000, p99_bytes=5_000_000_000,
+            active_procurements=100, documents=300,
+        ), self._make_coverage())
+        assert sizing.next_practical_disk_class == "4 TB"
+
+    def test_disk_class_8tb(self):
+        sizing = compute_sizing(SnapshotStats(
+            known_bytes=3_500_000_000_000, p99_bytes=5_000_000_000,
+            active_procurements=100, documents=300,
+        ), self._make_coverage())
+        assert sizing.next_practical_disk_class == "8 TB"
+
+    def test_ssd_capacity_gib_not_mixed(self):
+        stats = SnapshotStats(known_bytes=500_000_000_000, p99_bytes=5_000_000_000,
+                              active_procurements=100, documents=300)
+        sizing = compute_sizing(stats, self._make_coverage())
+        assert sizing.ssd_capacity_decimal_bytes == SSD_CAPACITY_DECIMAL_BYTES
+        assert sizing.ssd_capacity_gib == pytest.approx(
+            SSD_CAPACITY_DECIMAL_BYTES / ONE_GIB, rel=1e-6
         )
-        sizing = compute_sizing([stats])
-        assert sizing.persistent_results_and_logs == PERSISTENT_RESULTS_AND_LOGS
 
-    def test_max_snapshot_selection(self):
-        stats1 = SnapshotStats(
-            snapshot_date="day1", snapshot_index=1,
-            total_tenders=1, total_documents=1,
-            total_bytes=100, mean_bytes=100.0,
-            p50_bytes=100, p75_bytes=100,
-            p90_bytes=100, p95_bytes=100,
-            p99_bytes=100, max_bytes=100,
-            pct_over_100mb=0.0, pct_over_250mb=0.0,
-            pct_over_500mb=0.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.0, heavy_tail_top_5_pct=0.0,
-            heavy_tail_top_10_pct=0.0,
-            packages_over_100mb=0, packages_over_250mb=0,
-            packages_over_500mb=0, packages_over_1gb=0,
-        )
-        stats2 = SnapshotStats(
-            snapshot_date="day2", snapshot_index=2,
-            total_tenders=1, total_documents=1,
-            total_bytes=200, mean_bytes=200.0,
-            p50_bytes=200, p75_bytes=200,
-            p90_bytes=200, p95_bytes=200,
-            p99_bytes=200, max_bytes=200,
-            pct_over_100mb=0.0, pct_over_250mb=0.0,
-            pct_over_500mb=0.0, pct_over_1gb=0.0,
-            heavy_tail_top_1_pct=0.0, heavy_tail_top_5_pct=0.0,
-            heavy_tail_top_10_pct=0.0,
-            packages_over_100mb=0, packages_over_250mb=0,
-            packages_over_500mb=0, packages_over_1gb=0,
-        )
-        sizing = compute_sizing([stats1, stats2])
-        assert sizing.eis_active_bytes == 200
-        assert sizing.max_snapshot_bytes == 200
-
-    def test_empty_stats_list(self):
-        sizing = compute_sizing([])
-        assert sizing.snapshot_count == 0
-        assert sizing.classification == "GREEN"
-
-
-# ─── Privacy ──────────────────────────────────────────────────────────────
-
-class TestPrivacy:
-    def test_no_tender_ids_in_output(self, tmp_path: Path):
-        stats_list = run_demo(tmp_path, snapshot_series=False)
-        json_file = tmp_path / "arv-009-active-snapshot-summary.json"
-        with open(json_file) as f:
-            data = json.load(f)
-        text = json.dumps(data)
-        assert "demo-" not in text
-        assert "TEST" not in text
-
-    def test_no_registry_numbers_in_summary(self, tmp_path: Path):
-        stats_list = run_demo(tmp_path, snapshot_series=False)
-        json_file = tmp_path / "arv-009-active-snapshot-summary.json"
-        with open(json_file) as f:
-            data = json.load(f)
-        assert "registry_number" not in json.dumps(data)
-
-
-# ─── Determinism ──────────────────────────────────────────────────────────
-
-class TestDeterminism:
-    def test_json_deterministic(self, tmp_path: Path):
-        p1 = tmp_path / "run1"
-        p2 = tmp_path / "run2"
-        run_demo(p1, snapshot_series=True)
-        run_demo(p2, snapshot_series=True)
-
-        with open(p1 / "arv-009-active-snapshot-summary.json") as f:
-            d1 = json.load(f)
-        with open(p2 / "arv-009-active-snapshot-summary.json") as f:
-            d2 = json.load(f)
-        d1["meta"]["generated_at"] = ""
-        d2["meta"]["generated_at"] = ""
-        assert d1 == d2
-
-    def test_csv_deterministic(self, tmp_path: Path):
-        p1 = tmp_path / "run1"
-        p2 = tmp_path / "run2"
-        run_demo(p1, snapshot_series=True)
-        run_demo(p2, snapshot_series=True)
-
-        csv1 = (p1 / "arv-009-active-snapshot-summary.csv").read_text()
-        csv2 = (p2 / "arv-009-active-snapshot-summary.csv").read_text()
-        assert csv1 == csv2
+    def test_remaining_never_negative(self):
+        stats = SnapshotStats(known_bytes=5_000_000_000_000, p99_bytes=50_000_000_000,
+                              active_procurements=100, documents=300)
+        sizing = compute_sizing(stats, self._make_coverage())
+        assert sizing.remaining_bytes >= 0
 
 
 # ─── Demo mode ────────────────────────────────────────────────────────────
 
 class TestDemoMode:
-    def test_single_snapshot(self, tmp_path: Path):
-        stats_list = run_demo(tmp_path, snapshot_series=False)
-        assert len(stats_list) == 1
-        assert stats_list[0].total_tenders > 0
-        assert stats_list[0].total_bytes > 0
+    def test_synthetic_verdict_unavailable(self, tmp_path: Path):
+        run_demo(tmp_path)
+        with open(tmp_path / "arv-009-active-snapshot-summary.json") as f:
+            data = json.load(f)
+        assert data["measurement_kind"] == "synthetic"
+        assert data["ssd_verdict"] == "unavailable"
 
-    def test_snapshot_series(self, tmp_path: Path):
-        stats_list = run_demo(tmp_path, snapshot_series=True)
-        assert len(stats_list) == 3
-        # Each snapshot should have increasing tenders
-        assert stats_list[0].total_tenders < stats_list[1].total_tenders
-        assert stats_list[1].total_tenders < stats_list[2].total_tenders
+    def test_synthetic_reason_present(self, tmp_path: Path):
+        run_demo(tmp_path)
+        with open(tmp_path / "arv-009-active-snapshot-summary.json") as f:
+            data = json.load(f)
+        assert "synthetic" in data["measurement_provenance"]["reason"].lower()
 
     def test_files_created(self, tmp_path: Path):
-        run_demo(tmp_path, snapshot_series=True)
+        run_demo(tmp_path)
         assert (tmp_path / "arv-009-active-snapshot-summary.json").exists()
         assert (tmp_path / "arv-009-active-snapshot-summary.csv").exists()
-        assert (tmp_path / "snapshot-1-sanitized-manifest.json").exists()
-        assert (tmp_path / "snapshot-2-sanitized-manifest.json").exists()
-        assert (tmp_path / "snapshot-3-sanitized-manifest.json").exists()
+
+
+# ─── Real mode (no fallback) ─────────────────────────────────────────────
+
+class TestRealModeNoFallback:
+    def test_no_fallback_to_demo(self):
+        with pytest.raises(SystemExit) as exc:
+            from scripts.capacity.planning.measure_active_procurements import run_real
+            import tempfile
+            run_real(Path(tempfile.mkdtemp()))
+        assert exc.value.code == 1
+
+    def test_no_fallback_error_marker(self, tmp_path: Path):
+        from scripts.capacity.planning.measure_active_procurements import run_real
+        with pytest.raises(SystemExit):
+            run_real(tmp_path)
+        json_file = tmp_path / "arv-009-active-snapshot-summary.json"
+        assert json_file.exists()
+        with open(json_file) as f:
+            data = json.load(f)
+        assert data["measurement_kind"] == "incomplete"
+        assert data["ssd_verdict"] == "unavailable"
+        assert "ARV-009C1_REAL_MEASUREMENT_BLOCKED" in (data["measurement_provenance"]["reason"] or "") or \
+               "BLOCKED" in data["measurement_provenance"]["reason"]
+
+
+# ─── Privacy ──────────────────────────────────────────────────────────────
+
+class TestPrivacy:
+    def test_no_procurement_ids_in_committed(self, tmp_path: Path):
+        run_demo(tmp_path)
+        with open(tmp_path / "arv-009-active-snapshot-summary.json") as f:
+            data = json.load(f)
+        text = json.dumps(data)
+        assert "demo-" not in text
+        assert "test-" not in text
+
+    def test_no_urls_in_committed(self, tmp_path: Path):
+        run_demo(tmp_path)
+        with open(tmp_path / "arv-009-active-snapshot-summary.json") as f:
+            data = json.load(f)
+        assert "file_name" not in json.dumps(data)
+        assert "url" not in json.dumps(data)
+
+
+# ─── Determinism ──────────────────────────────────────────────────────────
+
+class TestDeterminism:
+    def test_synthetic_json_deterministic(self, tmp_path: Path):
+        p1 = tmp_path / "run1"
+        p2 = tmp_path / "run2"
+        run_demo(p1)
+        run_demo(p2)
+        with open(p1 / "arv-009-active-snapshot-summary.json") as f:
+            d1 = json.load(f)
+        with open(p2 / "arv-009-active-snapshot-summary.json") as f:
+            d2 = json.load(f)
+        d1["meta"]["generated_at"] = ""
+        d1["measurement_provenance"]["snapshot_started_at_utc"] = ""
+        d1["measurement_provenance"]["snapshot_completed_at_utc"] = ""
+        d1["measurement_provenance"]["source"]["query_started_at"] = ""
+        d1["measurement_provenance"]["source"]["query_completed_at"] = ""
+        d2["meta"]["generated_at"] = ""
+        d2["measurement_provenance"]["snapshot_started_at_utc"] = ""
+        d2["measurement_provenance"]["snapshot_completed_at_utc"] = ""
+        d2["measurement_provenance"]["source"]["query_started_at"] = ""
+        d2["measurement_provenance"]["source"]["query_completed_at"] = ""
+        assert d1 == d2
+
+
+# ─── Incomplete provenance ────────────────────────────────────────────────
+
+class TestIncompleteProvenance:
+    def test_marker(self):
+        prov = make_incomplete_provenance("test reason")
+        assert prov.measurement_kind == "incomplete"
+        assert prov.ssd_verdict == "unavailable"
+        assert prov.reason == "test reason"
+        assert prov.snapshot_date is not None
+
+    def test_future_date_rejected(self):
+        before = datetime.now(UTC)
+        prov = make_incomplete_provenance("test")
+        parsed = datetime.fromisoformat(prov.snapshot_started_at_utc)
+        assert before - parsed <= timedelta(seconds=1)
 
 
 # ─── Format helper ────────────────────────────────────────────────────────
 
 class TestFormatBytes:
+    def test_gib(self):
+        assert "GiB" in format_bytes(ONE_GIB)
+
+    def test_mb(self):
+        assert "MB" in format_bytes(1_500_000)
+
     def test_bytes(self):
         assert format_bytes(500) == "500 B"
 
-    def test_kb(self):
-        assert format_bytes(1_500) == "1.5 KB"
 
-    def test_mb(self):
-        assert format_bytes(1_500_000) == "1.5 MB"
+# ─── Size resolution (unit only — no network) ────────────────────────────
 
-    def test_gib(self):
-        assert "GiB" in format_bytes(ONE_GIB)
+class TestSizeResolution:
+    def test_content_length_no_network_url_fails(self):
+        with pytest.raises((urllib.error.URLError, OSError)):
+            _try_content_length("http://localhost:1/nonexistent")
+
+    def test_content_range_no_network_url_fails(self):
+        with pytest.raises((urllib.error.URLError, OSError)):
+            _try_content_range("http://localhost:1/nonexistent")
+
+
+# ─── Streamed size resolution ─────────────────────────────────────────────
+
+class TestStreamedSize:
+    def test_stream_fails_on_unreachable(self):
+        with pytest.raises((urllib.error.URLError, OSError)):
+            _try_stream("http://localhost:1/nonexistent")
+
+    def test_stream_temp_file_cleaned_on_error(self):
+        tmp_files_before = {
+            f for f in os.listdir("/tmp") if f.startswith("tmp")
+        } if os.path.isdir("/tmp") else set()
+        try:
+            _try_stream("http://localhost:1/nonexistent")
+        except (urllib.error.URLError, OSError):
+            pass
+        tmp_files_after = {
+            f for f in os.listdir("/tmp") if f.startswith("tmp")
+        } if os.path.isdir("/tmp") else set()
+        assert tmp_files_after == tmp_files_before or len(tmp_files_after - tmp_files_before) == 0

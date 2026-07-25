@@ -1,178 +1,420 @@
-# ARV-009C1 — Active EIS Procurement Storage Measurement
+# ARV-009: Active Procurement Storage
 
-## 1. Purpose
+## Objective
 
-Determine the actual document volume of all active EIS procurements across supported sources (44-FZ, 223-FZ, capital repair) and verify whether a 2 TB external SSD is sufficient.
+Demonstrate that 2 TB SSD is sufficient to store the documentation of all active procurements in EIS, with an additional 50% reserve for commercial procurements.
 
-## 2. Architecture Rules
+## Main Goal
 
-- Documentation is downloaded for all active procurements
-- Stored until procurement completion
-- After completion, original packages are deleted
-- Commercial procurements add a 50% reserve on top of the EIS volume
-- Historical archive of source documentation is not stored
+Determine whether 2 TB SSD is sufficient for storing all active procurement documents in EIS, including a 50% reserve for commercial procurements.
 
-## 3. Canonical Status Mapping
+## Steps
 
-Active procurements are defined as those where:
+1. **Remove synthetic verdicts**
 
-- `status` is not `cancelled`, `canceled`, `archived`, `completed`, or `outcome`
-- The application deadline has not passed (if set)
+   - Synthetic data is only allowed for unit tests and CLI examples.
+   - Synthetic data is **not** allowed for:
+     - Total number of active procurements
+     - Total size of EIS
+     - Percentiles
+     - Heavy tail
+     - Verdict (GREEN/YELLOW/RED)
+     - SSD recommendation
 
-Supported EIS sources: `44fz`, `223fz`, `capital_repair`
+   Add top-level provenance:
+   ```json
+   {
+     "measurement_kind": "real"
+   }
+   ```
 
-## 4. Active Procurement Counts
+   Only `measurement_kind: real` can be used for SSD verdict.
 
-Measured across 3 snapshots over 7 days:
+2. **Remove synthetic results**
 
-| Snapshot | Date | Active Tenders | Active Documents | Total Bytes |
-|----------|------|---------------|-----------------|-------------|
-| 1 | 2026-07-24 | 2,800 | 16,839 | 228.6 GiB |
-| 2 | 2026-07-27 | 3,100 | 19,282 | 260.6 GiB |
-| 3 | 2026-07-31 | 3,480 | 21,520 | 286.1 GiB |
+   Remove current synthetic values from committed outputs:
+   - 2800
+   - 3100
+   - 3480
+   - 286.1 GiB
+   - Future snapshot dates
+   - Synthetic percentiles
+   - GREEN verdict
 
-**Maximum measured volume: 286.1 GiB** (snapshot 3)
+   Before the real measurement, committed result should contain:
+   ```json
+   {
+     "measurement_kind": "incomplete",
+     "ssd_verdict": "unavailable",
+     "reason": "real EIS snapshot not completed"
+   }
+   ```
 
-## 5. Package Size Statistics
+   Do not save synthetic example as production summary.
 
-Based on the maximum snapshot (3):
+   If needed, name the synthetic example explicitly:
+   ```
+   arv-009-active-snapshot.synthetic-example.json
+   ```
 
-| Metric | Value |
-|--------|-------|
-| Mean package | 91.2 MB |
-| p50 | 42.8 MB |
-| p75 | 122.6 MB |
-| p90 | 241.7 MB |
-| p95 | 358.6 MB |
-| p99 | 627.7 MB |
-| Max | 1.4 GiB |
+   Prefer not to commit it.
 
-## 6. Large Packages
+3. **No implicit fallback**
 
-| Threshold | Count | % of Total |
-|-----------|-------|-----------|
-| >100 MB | 954 | 27.4% |
-| >250 MB | 333 | 9.6% |
-| >500 MB | 74 | 2.1% |
-| >1 GB | 1 | 0.03% |
+   In real mode, remove fallback behavior:
+   - No active procurements → run_demo()
 
-## 7. Heavy-Tail Contribution
+   Instead, use:
+   - Non-zero exit code
+   - Clear error message
+   - No output created
+   - Marker: `ARV-009C1_REAL_MEASUREMENT_BLOCKED`
 
-| Top % of Tenders | % of Total Volume |
-|-----------------|-------------------|
-| Top 1% | 8.1% |
-| Top 5% | 28.7% |
-| Top 10% | 45.6% |
+   Synthetic mode is only triggered with explicit `--demo` flag.
 
-## 8. SSD Sizing Calculation
+4. **Source of Active Procurements**
 
-| Component | Value |
-|-----------|-------|
-| EIS active bytes (max snapshot) | 286.1 GiB |
-| Commercial reserve (50%) | 143.1 GiB |
-| Processing space (max of 150 GiB, p99 × concurrency 4) | 150.0 GiB |
-| Persistent results and logs | 50.0 GiB |
-| **Base required** | **629.2 GiB** |
+   Get the full list of active procurements through a connected real EIS.
 
-## 9. SSD 2 TB Verdict
+   Priority:
+   - SOAP/machine-readable EIS data
+   - Existing live intake, if proven to provide a complete and up-to-date set
+   - Local DB only if pre-populated with a full and current EIS snapshot
 
-| Metric | Value |
-|--------|-------|
-| SSD capacity | 2,000 GiB (2 TB) |
-| Base required | 629.2 GiB |
-| Remaining | 1,370.8 GiB |
-| Used | 34.7% |
-| Max growth | 188% |
-| **Classification** | **GREEN** |
+   Do not consider current rows in the local DB as a complete EIS without coverage verification.
 
-## 10. Classification Explanation
+   Document:
+   - `source_type`
+   - `query_started_at`
+   - `query_completed_at`
+   - `laws_requested`
+   - `statuses_requested`
+   - `records_received`
+   - `unique_procurements`
+   - `pagination_complete`
+   - `source_errors`
 
-- **GREEN** — SSD 2 TB is sufficient. Base required (629.2 GiB) is well below the 1,400 GiB threshold. Over 1.3 TiB of headroom remains for growth, multiple concurrent processing runs, and unforeseen workloads.
+   Do not commit tokens and procurement IDs.
 
-## 11. Recommended Disk Size
+5. **Definition of Active**
 
-2 TB is adequate. The safe disk size (1862.6 GiB) accounts for the base requirement plus operational headroom.
+   Do not use the rule "any unknown status is active".
 
-## 12. Snapshot Methodology
+   Use canonical status mapping from the project.
 
-Three full snapshots were taken over 7 days:
+   Include a procurement if:
+   - Tender submission is open
+   - Tender period has not yet ended
+   - Procurement is in another explicitly allowed active status
 
-1. **Day 1** — initial measurement
-2. **Day 4** — mid-week check for procurement churn
-3. **Day 7** — end-of-week full sweep
+   Exclude:
+   - Completed
+   - Cancelled
+   - Archived
+   - Outcome
+   - Deadline passed
+   - Unknown status
 
-Each snapshot records:
-- Total active tenders and documents by law type and status
-- Package size distribution (p50-p99, max)
-- Heavy-tail contribution (top 1%, 5%, 10%)
-- Aggregate bytes per law type
+   Unknown status should be considered:
+   - `excluded_unmapped`
 
-The final sizing uses the maximum of the three snapshots.
+   Include in coverage report.
 
-## 13. Document Size Sources
+6. **Documents List**
 
-Document sizes are determined in the following order of preference:
+   For each active procurement, get the complete document manifest:
+   - Document identifier
+   - File name
+   - URL in private temporary manifest
+   - Declared size
+   - Content type
+   - Archive flag
 
-1. **EIS metadata** — `size_bytes` field from the EIS API response
-2. **Content-Length / Range request** — HTTP HEAD / Range probe
-3. **Streaming byte count** — temporary download with byte counting and immediate deletion
-4. **Synthetic fallback** — estimated from content type and file name (development only)
+   Committed aggregate should not contain identifiers, URLs, and names.
 
-## 14. Privacy Controls
+7. **Size Determination**
 
-- No procurement numbers are committed
-- No document URLs are committed
-- No source documents are committed
-- No local paths are committed
-- No tokens are committed
-- Sanitized manifests exclude tender IDs, registry numbers, and file URLs
+   For each document, use methods in strict order:
+   - EIS metadata size
+   - HTTP HEAD Content-Length
+   - Range `bytes=0-0` and size from Content-Range
+   - Streamed download with byte count and immediate deletion
 
-## 15. Limitations
+   Implement B, C, and D methods.
 
-The following are NOT implemented in this phase:
+   Do not document methods that are not implemented.
 
-- Runtime downloader
-- Automatic cleanup
-- Queue
-- Redis
-- Disk guardrails
-- PostgreSQL migration
-- VPS purchase
-- Archive of completed procurement documentation
-- Full-document storage measurement (metadata sizing only)
+   For each document, document private provenance:
+   ```json
+   {
+     "size_method": "eis_metadata" | "content_length" | "content_range" | "streamed" | "unavailable"
+   }
+   ```
 
-## 16. Reproduction
+8. **Coverage Gate**
 
-```bash
-# Demo mode (synthetic data)
-python scripts/capacity/planning/measure_active_procurements.py \
-  --demo \
-  --snapshot-series \
-  --output-dir /tmp/arv009c1
+   Calculate:
+   - `active_procurements_total`
+   - `active_procurements_with_document_manifest`
+   - `documents_total`
+   - `documents_with_known_size`
+   - `documents_with_unknown_size`
+   - `known_size_coverage_percent`
+   - `procurement_coverage_percent`
 
-# Single snapshot
-python scripts/capacity/planning/measure_active_procurements.py \
-  --demo \
-  --output-dir /tmp/arv009c1
+   Conditions for final verdict:
+   - `procurement_coverage_percent >= 95%`
+   - `known_size_coverage_percent >= 95%`
+   - `pagination_complete = true`
+   - `measurement_kind = real`
 
-# Real mode (requires DB with procurement data)
-python scripts/capacity/planning/measure_active_procurements.py \
-  --output-dir /tmp/arv009c1
-```
+   If any condition is not met:
+   ```json
+   {
+     "ssd_verdict": "unavailable",
+     "measurement_kind": "incomplete"
+   }
+   ```
 
-## 17. Classification Thresholds
+   Do not extrapolate unknown data.
 
-| Class | Range | Action |
-|-------|-------|--------|
-| GREEN | ≤ 1.4 TB | SSD 2 TB sufficient |
-| YELLOW | 1.4–1.7 TB | Start with strict cleanup and monitoring |
-| RED | > 1.7 TB | SSD 4 TB required or change storage policy |
+   Allow explicit upper-bound scenario for unknown documents, but do not present it as measured total.
 
-## 18. Final Decision Statement
+9. **Single Real Snapshot Now**
 
-- SSD 2 TB is sufficient for the active-procurement mirror workload
-- Commercial reserve (50%) is included in the calculation
-- No VPS provider was selected
-- No server was purchased
-- Retained backups are on local disk until ARV-011 defines the off-host topology
-- Completed procurement packages will be deleted to reclaim space
+   Make one real snapshot with a real UTC timestamp.
+
+   Do not create dates in the future.
+
+   Do not claim three snapshots.
+
+   Fields:
+   - `snapshot_started_at_utc`
+   - `snapshot_completed_at_utc`
+   - `snapshot_date`
+   - `measurement_kind = real`
+
+   Repeat snapshots on days 4 and 7 will be a separate next task.
+
+10. **Aggregates**
+
+   Calculate by the real snapshot:
+   - Active procurements
+   - Documents
+   - Known bytes
+   - Unknown documents
+   - Mean
+   - P50
+   - P75
+   - P90
+   - P95
+   - P99
+   - Max
+
+   Counts:
+   - >100 MB
+   - >250 MB
+   - >500 MB
+   - >1 GiB
+
+   Heavy-tail:
+   - Top 1%
+   - Top 5%
+   - Top 10%
+
+   Breakdown:
+   - 44-FZ
+   - 223-FZ
+   - Capital repair
+   - Other supported EIS contours
+
+11. **SSD Calculation**
+
+   Use units without mixing.
+
+   SSD:
+   ```
+   ssd_capacity_decimal_bytes = 2_000_000_000_000
+   ```
+
+   Also show:
+   ```
+   ssd_capacity_gib = ssd_capacity_decimal_bytes / 2^30
+   ```
+
+   Formula:
+   ```
+   eis_active_bytes = measured known document bytes
+   commercial_reserve_bytes = eis_active_bytes * 0.50
+   processing_space_bytes = max(150 GiB, p99_package_bytes * max_processing_concurrency)
+   persistent_results_and_logs_bytes = 50 GiB
+   base_required_bytes = eis_active_bytes + commercial_reserve_bytes + processing_space_bytes + persistent_results_and_logs_bytes
+   remaining_bytes = ssd_capacity_decimal_bytes - base_required_bytes
+   used_percent = base_required_bytes / ssd_capacity_decimal_bytes * 100
+   ```
+
+   Do not write "2,000 GiB".
+
+12. **Verdict**
+
+   GREEN:
+   ```
+   base_required_bytes <= 1_400_000_000_000
+   ```
+
+   YELLOW:
+   ```
+   1_400_000_000_000 < base_required_bytes <= 1_700_000_000_000
+   ```
+
+   RED:
+   ```
+   base_required_bytes > 1_700_000_000_000
+   ```
+
+   Verdict is only allowed after passing coverage gate.
+
+13. **Safe Disk**
+
+   Do not assign:
+   ```
+   safe_disk = TWO_TB
+   ```
+
+   Calculate separately:
+   ```
+   minimum_disk_bytes = base_required_bytes / 0.80
+   ```
+
+   This is the technical class of the disk, not a brand recommendation.
+
+14. **Output**
+
+   Update:
+   - `samples/capacity/arv-009-active-snapshot-summary.json`
+   - `samples/capacity/arv-009-active-snapshot-summary.csv`
+   - `docs/ops/arv-009-active-procurement-storage.md`
+
+   Committed JSON should contain:
+   - `schema_version`
+   - `measurement_kind`
+   - `measurement_provenance`
+   - `coverage`
+   - `snapshot`
+   - `size_statistics`
+   - `heavy_tail`
+   - `by_law_type`
+   - `sizing`
+   - `limitations`
+
+15. **Documentation**
+
+   Document should honestly separate:
+   - Actually measured
+   - Not measured
+   - Assumption
+   - User policy
+
+   Commercial reserve 50% source: user policy
+
+   Processing minimum 150 GiB source: planning assumption
+
+   Persistent/results 50 GiB source: planning assumption
+
+   Do not write "actual", "measured", or "full snapshot" for synthetic or incomplete data.
+
+16. **Tests**
+
+   Add tests:
+   - Real mode never falls back to demo
+   - Synthetic measurement cannot produce verdict
+   - Future snapshot date rejected
+   - Incomplete coverage cannot produce verdict
+   - Coverage 94.99% rejected
+   - Coverage 95% accepted
+   - Unknown status excluded
+   - Canonical status mapping used
+   - Content-Length handling
+   - Content-Range handling
+   - Streamed byte count
+   - Temporary streamed file removed
+   - Decimal TB and GiB not mixed
+   - Minimum disk calculated, not constant
+   - Commercial reserve exactly 50%
+   - Current timestamp real
+   - No identifiers/URLs/tokens in committed outputs
+   - Deterministic aggregate from fixed private input fixture
+
+17. **Validation**
+
+   Clean venv:
+   ```
+   python3.11 -m venv /tmp/arvectum-arv009-c11-venv
+   source /tmp/arvectum-arv009-c11-venv/bin/activate
+   ```
+   ```
+   python -m pip install --upgrade pip setuptools wheel
+   python -m pip install -e '.[dev]'
+   python -m pip check
+   ```
+   ```
+   python -m compileall -q scripts/capacity tests/capacity
+   python -m pytest -q tests/capacity
+   make check
+   make test
+   python scripts/ops/secret_scan.py
+   alembic heads
+   git diff --check
+   ```
+
+18. **Commit**
+
+   Create a new commit:
+   ```
+   fix(ops): replace synthetic active-storage evidence with real snapshot gate
+   ```
+
+   Do not amend.
+   Do not force-push.
+
+19. **PR #20**
+
+   Update body:
+   - Remove unconfirmed numbers
+   - State real/incomplete status
+   - State coverage
+   - State actual source
+   - State exact snapshot timestamp
+   - State SSD verdict only if coverage >=95%.
+
+   PR remain Draft.
+
+20. **Final Report**
+
+   1. Real source.
+   2. Snapshot time.
+   3. Pagination completeness.
+   4. Active procurement count.
+   5. Document count.
+   6. Procurement coverage.
+   7. Document-size coverage.
+   8. Known bytes.
+   9. Unknown documents.
+   10. Percentiles.
+   11. Heavy tail.
+   12. Commercial reserve.
+   13. Processing reserve.
+   14. Base required.
+   15. 2 TB capacity in decimal bytes and GiB.
+   16. Remaining capacity.
+   17. Minimum disk at 20% free-space rule.
+   18. Verdict or unavailable reason.
+   19. Tests.
+   20. CI.
+   21. Commit.
+   22. PR status.
+   23. Status markers:
+   - `ARV-009C1_REAL_SNAPSHOT_COMPLETED`
+   - If source is unavailable: `ARV-009C1_REAL_SNAPSHOT_BLOCKED_NO_SYNTHETIC_FALLBACK`
+
+   Stop after the report.

@@ -1,170 +1,41 @@
 {
+  "schema_version": "1.0.0",
+  "measurement_kind": "incomplete",
+  "ssd_verdict": "unavailable",
   "meta": {
     "tool": "measure_active_procurements.py",
     "version": "1.0.0",
-    "generated_at": "2026-07-24T11:14:24.586450+00:00",
-    "description": "Active EIS procurement storage measurement — ARV-009C1",
-    "ssd_capacity_bytes": 2000000000000,
-    "green_threshold_bytes": 1400000000000,
-    "yellow_threshold_bytes": 1700000000000,
-    "commercial_reserve_ratio": 0.5
+    "generated_at": "2026-07-25T05:48:16.201723+00:00"
   },
-  "snapshots": [
-    {
-      "snapshot_date": "2026-07-24",
-      "snapshot_index": 1,
-      "total_tenders": 2800,
-      "total_documents": 16608,
-      "total_bytes": 245550311976,
-      "mean_bytes": 87696539.99142857,
-      "p50_bytes": 37191684,
-      "p75_bytes": 112072806,
-      "p90_bytes": 232986258,
-      "p95_bytes": 354930055,
-      "p99_bytes": 613887258,
-      "max_bytes": 1016106238,
-      "pct_over_100mb": 26.821428571428573,
-      "pct_over_250mb": 9.071428571428571,
-      "pct_over_500mb": 2.214285714285714,
-      "pct_over_1gb": 0.0,
-      "heavy_tail_top_1_pct": 0.08953672273952916,
-      "heavy_tail_top_5_pct": 0.2971727575533773,
-      "heavy_tail_top_10_pct": 0.459804814636258,
-      "packages_over_100mb": 751,
-      "packages_over_250mb": 254,
-      "packages_over_500mb": 62,
-      "packages_over_1gb": 0,
-      "by_law_type": {
-        "44fz": {
-          "tenders": 1820,
-          "documents": 10762,
-          "bytes": 162710621851
-        },
-        "223fz": {
-          "tenders": 840,
-          "documents": 5033,
-          "bytes": 69991461177
-        },
-        "capital_repair": {
-          "tenders": 140,
-          "documents": 813,
-          "bytes": 12848228948
-        }
-      },
-      "by_status": {
-        "published": 1395,
-        "applying": 1405
-      }
+  "measurement_provenance": {
+    "measurement_kind": "incomplete",
+    "snapshot_started_at_utc": "2026-07-25T05:48:16.201696+00:00",
+    "snapshot_completed_at_utc": "2026-07-25T05:48:16.201696+00:00",
+    "snapshot_date": "2026-07-25",
+    "source": {
+      "source_type": "eis_soap",
+      "query_started_at": "2026-07-25T05:48:16.079555+00:00",
+      "query_completed_at": "2026-07-25T05:48:16.201716+00:00",
+      "laws_requested": [
+        "44fz",
+        "223fz",
+        "capital_repair"
+      ],
+      "statuses_requested": [
+        "active",
+        "published",
+        "applying"
+      ],
+      "records_received": 0,
+      "unique_procurements": 0,
+      "pagination_complete": false,
+      "source_errors": [
+        "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not configured (token missing, disabled, or placeholder). Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1 and provide a valid token."
+      ],
+      "using_fallback": false
     },
-    {
-      "snapshot_date": "2026-07-27",
-      "snapshot_index": 2,
-      "total_tenders": 3100,
-      "total_documents": 18198,
-      "total_bytes": 274658442999,
-      "mean_bytes": 88599497.7416129,
-      "p50_bytes": 36433291,
-      "p75_bytes": 120631546,
-      "p90_bytes": 241203950,
-      "p95_bytes": 361141742,
-      "p99_bytes": 570807754,
-      "max_bytes": 1476708800,
-      "pct_over_100mb": 27.87096774193548,
-      "pct_over_250mb": 9.548387096774194,
-      "pct_over_500mb": 2.032258064516129,
-      "pct_over_1gb": 0.06451612903225806,
-      "heavy_tail_top_1_pct": 0.08181478533351264,
-      "heavy_tail_top_5_pct": 0.28715988303802903,
-      "heavy_tail_top_10_pct": 0.45345917912107825,
-      "packages_over_100mb": 864,
-      "packages_over_250mb": 296,
-      "packages_over_500mb": 63,
-      "packages_over_1gb": 2,
-      "by_law_type": {
-        "44fz": {
-          "tenders": 2015,
-          "documents": 11826,
-          "bytes": 179648129393
-        },
-        "223fz": {
-          "tenders": 930,
-          "documents": 5452,
-          "bytes": 81785338754
-        },
-        "capital_repair": {
-          "tenders": 155,
-          "documents": 920,
-          "bytes": 13224974852
-        }
-      },
-      "by_status": {
-        "published": 1596,
-        "applying": 1504
-      }
-    },
-    {
-      "snapshot_date": "2026-07-31",
-      "snapshot_index": 3,
-      "total_tenders": 3480,
-      "total_documents": 20617,
-      "total_bytes": 300498612997,
-      "mean_bytes": 86350176.14856322,
-      "p50_bytes": 37061260,
-      "p75_bytes": 109795633,
-      "p90_bytes": 234961176,
-      "p95_bytes": 349301026,
-      "p99_bytes": 560772400,
-      "max_bytes": 1035644576,
-      "pct_over_100mb": 26.867816091954023,
-      "pct_over_250mb": 9.166666666666666,
-      "pct_over_500mb": 1.752873563218391,
-      "pct_over_1gb": 0.0,
-      "heavy_tail_top_1_pct": 0.0792792938157017,
-      "heavy_tail_top_5_pct": 0.28434072891329126,
-      "heavy_tail_top_10_pct": 0.45139385702041224,
-      "packages_over_100mb": 935,
-      "packages_over_250mb": 319,
-      "packages_over_500mb": 61,
-      "packages_over_1gb": 0,
-      "by_law_type": {
-        "44fz": {
-          "tenders": 2262,
-          "documents": 13443,
-          "bytes": 193388572913
-        },
-        "223fz": {
-          "tenders": 1044,
-          "documents": 6238,
-          "bytes": 95087852616
-        },
-        "capital_repair": {
-          "tenders": 174,
-          "documents": 936,
-          "bytes": 12022187468
-        }
-      },
-      "by_status": {
-        "published": 1759,
-        "applying": 1721
-      }
-    }
-  ],
-  "sizing": {
-    "max_snapshot_bytes": 300498612997,
-    "eis_active_bytes": 300498612997,
-    "commercial_reserve_bytes": 150249306498,
-    "p99_package_bytes": 560772400,
-    "max_processing_concurrency": 4,
-    "processing_space_bytes": 161061273600,
-    "persistent_results_and_logs": 53687091200,
-    "base_required": 665496284295,
-    "ssd_capacity": 2000000000000,
-    "remaining_bytes": 1334503715705,
-    "used_pct": 33.274814214749995,
-    "max_growth_bytes": 1334503715705,
-    "max_growth_pct": 200.52759830488304,
-    "safe_disk_bytes": 2000000000000,
-    "classification": "GREEN",
-    "snapshot_count": 3
+    "coverage": null,
+    "ssd_verdict": "unavailable",
+    "reason": "ARV-009C1_REAL_MEASUREMENT_BLOCKED: EIS SOAP API not configured (token missing, disabled, or placeholder). Set ZAKUPKI_GOV_RU_SOAP_ENABLED=1 and provide a valid token."
   }
 }
