@@ -1,6 +1,6 @@
 # R10.1 / ARV-003 — Production LLM Analysis
 
-Status: `R10_1_GATE_2_OFFLINE_CONTRACT_COMPLETE_GATE_3_READY`.
+Status: `R10_1_GATE_3_OPENAI_COMPATIBLE_TRANSPORT_COMPLETE_GATE_4_READY`.
 
 Canonical base: annotated tag `r9-operational-hardening-2026-07-24`, peeled commit `58bef2da2342bff1e6f63215ee2697e96fefe6f7`.
 
@@ -76,14 +76,34 @@ Status: `R10_1_GATE_2_OFFLINE_CONTRACT_COMPLETE`.
 
 ### Gate 3 — one transport behind the contract
 
-- [ ] extract or wrap one configured JSON provider transport behind the new interface;
-- [ ] retain existing credential and raw-response safety defaults;
-- [ ] capture provider/model/request identity and usage metadata;
-- [ ] enforce timeout, retries and analysis-wide budgets;
-- [ ] test with a mocked HTTP boundary only;
-- [ ] prohibit production fallback to stub.
+- [x] add one OpenAI-compatible JSON provider transport behind `ProductionLLMProvider`;
+- [x] retain credential and raw-response safety defaults;
+- [x] send only the allow-listed evidence packet and versioned request metadata;
+- [x] capture provider request ID, token usage, retry count, attempt/total latency and response SHA-256;
+- [x] enforce per-attempt timeout, bounded retries and analysis-wide latency/cost budgets;
+- [x] retry only timeout, 429 and transient 5xx classes;
+- [x] reject permanent 4xx responses without retry;
+- [x] validate the provider envelope, JSON content and claim schema before grounding;
+- [x] test through an injected mocked HTTP boundary only;
+- [x] prove no live network, real credential or real procurement is used;
+- [x] prohibit production fallback to stub.
 
-Gate 3 may use one existing provider transport pattern, but it must remain behind the Gate 2 contract. A real procurement call is still prohibited.
+Executable evidence:
+
+- PR: `#24`;
+- verified implementation head: `bb1bd7fef7d1ce191509da4fa5a04b03086482ca`;
+- CI workflow: `30146130371`;
+- Gate 3 focused test cases added: `24`;
+- full suite: `1731 passed, 188 skipped, 150 warnings` in `401.00s`;
+- `make check`: PASS;
+- migrations: PASS;
+- security scan: PASS;
+- R8 PostgreSQL integration: PASS;
+- R8 acceptance integration: PASS;
+- evidence artifact: `r9-operational-hardening-evidence-bb1bd7fef7d1ce191509da4fa5a04b03086482ca`;
+- artifact digest: `sha256:ebac6d46a3db72d5b3f79799f867acfbc69ec1ce14f72a3c1827e3ebef29c189`.
+
+Status: `R10_1_GATE_3_OPENAI_COMPATIBLE_TRANSPORT_COMPLETE`.
 
 ### Gate 4 — versioned R10.1 canonical producer
 
@@ -93,6 +113,8 @@ Gate 3 may use one existing provider transport pattern, but it must remain behin
 - [ ] preserve immutable ownership, hashes, idempotency and final-PDF verification;
 - [ ] make R9 versus R10.1 mode selection explicit and fail closed;
 - [ ] reject canonical publication when grounding validation fails.
+
+Gate 4 may use the Gate 3 transport only through mocked HTTP or a fake provider. A real provider, real credential and real procurement call remain prohibited until Gate 5.
 
 ### Gate 5 — controlled real-provider evidence
 
@@ -124,4 +146,4 @@ Gate 3 may use one existing provider transport pattern, but it must remain behin
 
 ## Immediate next slice
 
-Gate 3 is the only authorized implementation slice. It must place one configured provider transport behind the Gate 2 interfaces, use mocked HTTP tests, retain fail-closed behavior, and make no real provider or procurement call.
+Gate 4 is the only authorized implementation slice. It must add a versioned R10.1 producer beside the frozen R9 producer, preserve every existing canonical persistence and artifact invariant, and remain fully offline through fake-provider or mocked-HTTP tests.
