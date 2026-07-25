@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from pathlib import Path
 from typing import Any, Callable
@@ -185,10 +184,7 @@ def reconcile_runtime_database_password(
     elif runtime_preflight.get("ready_for_controlled_execution"):
         report["final_status"] = "GATE5_PREFLIGHT_READY"
     else:
-        report["final_status"] = "DATABASE_ACCESS_RESTORED_GATE5_CONFIGURATION_PENDING"
+        report["final_status"] = (
+            "DATABASE_ACCESS_RESTORED_GATE5_CONFIGURATION_PENDING"
+        )
     return report
-
-
-def serialized_report_contains_secret(report: dict[str, Any], secret_values: tuple[str, ...]) -> bool:
-    serialized = json.dumps(report, ensure_ascii=False, sort_keys=True)
-    return any(value and value in serialized for value in secret_values)
