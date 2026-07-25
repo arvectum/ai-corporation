@@ -9,9 +9,8 @@ from typing import Any, Callable
 
 from sqlalchemy.engine import make_url
 
-from src.shared.config.settings import Settings
-
 _POSTGRES_PORT_KEY = "5432/tcp"
+_DATABASE_ENV_KEY = "AI_CORP_DATABASE_URL"
 _REQUIRED_POSTGRES_ENV_KEYS = frozenset(
     {"POSTGRES_USER", "POSTGRES_PASSWORD", "POSTGRES_DB"}
 )
@@ -41,6 +40,30 @@ def _probe_host_listener(
         return HostListenerProbe(False, "connection_timeout")
     except OSError:
         return HostListenerProbe(False, "connection_failed")
+
+
+def _database_url_from_env_file(env_file: Path) -> str:
+    selected: str | None = None
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("export "):
+            stripped = stripped[len("export ") :].lstrip()
+        key, separator, value = stripped.partition("=")
+        if not separator or key.strip() != _DATABASE_ENV_KEY:
+            continue
+        candidate = value.strip()
+        if (
+            len(candidate) >= 2
+            and candidate[0] == candidate[-1]
+            and candidate[0] in {"'", '"'}
+        ):
+            candidate = candidate[1:-1]
+        selected = candidate
+    if not selected:
+        raise ValueError("runtime_database_url_missing")
+    return selected
 
 
 def _docker_container_ids(
@@ -215,8 +238,7 @@ def collect_runtime_database_topology(
 ) -> dict[str, Any]:
     if not env_file.is_file() or env_file.is_symlink():
         raise ValueError("runtime_env_file_not_regular")
-    settings = Settings(_env_file=env_file, _env_file_encoding="utf-8")
-    runtime_url = make_url(settings.database_url)
+    runtime_url = make_url(_database_url_from_env_file(env_file))
     if runtime_url.get_backend_name() != "postgresql":
         raise ValueError("runtime_database_not_postgresql")
     if not runtime_url.host or not runtime_url.port:
