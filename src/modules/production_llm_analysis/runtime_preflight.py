@@ -152,9 +152,12 @@ def collect_runtime_controlled_provider_preflight(
     if limit < 1 or limit > 100:
         raise ValueError("preflight_limit_out_of_range")
 
+    database_backend = make_url(settings.database_url).get_backend_name()
     connect_args: dict[str, Any] = {}
-    if settings.database_url.startswith("sqlite"):
+    if database_backend == "sqlite":
         connect_args["check_same_thread"] = False
+    elif database_backend == "postgresql":
+        connect_args["connect_timeout"] = 5
     engine = create_engine(
         settings.database_url,
         future=True,
