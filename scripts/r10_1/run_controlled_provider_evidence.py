@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Run one approved customer procurement twice through the R10.1 provider path.
 
-The API key is read only through the existing Settings secret boundary.  The
+The API key is read only through the existing Settings secret boundary. The
 command writes customer canonical files locally and a separate sanitized,
-quote-free manifest suitable for review.  It never publishes into the general
+quote-free manifest suitable for review. It never publishes into the general
 customer workflow and never accepts a credential as a command-line argument.
 """
 from __future__ import annotations
@@ -51,12 +51,14 @@ def _provider_secret_boundary(provider_name: str) -> tuple[str, str]:
     configured = (settings.llm_provider or "").strip().lower()
     if configured != provider_name:
         raise ControlledRunnerConfigurationError("configured_provider_not_approved")
-    if provider_name == "openai":
+    if provider_name in {"openai", "openai_compatible"}:
         base_url, api_key = settings.openai_base_url, settings.openai_api_key
     elif provider_name == "cloudru":
         base_url, api_key = settings.cloudru_base_url, settings.cloudru_api_key
     else:
-        raise ControlledRunnerConfigurationError("provider_not_supported_by_gate5_runner")
+        raise ControlledRunnerConfigurationError(
+            "provider_not_supported_by_gate5_runner"
+        )
     if not api_key:
         raise ControlledRunnerConfigurationError("provider_credential_missing")
     return base_url, api_key
@@ -82,12 +84,26 @@ def _metadata(
         "run_id": run.id,
         "procurement_id": run.registry_number,
         "tender_title": tender.title if tender else f"Закупка {run.registry_number}",
-        "tender_category": tender.law_type if tender and tender.law_type else "Закупка",
-        "customer_name": tender.customer_name if tender and tender.customer_name else str(run.customer_id),
+        "tender_category": (
+            tender.law_type if tender and tender.law_type else "Закупка"
+        ),
+        "customer_name": (
+            tender.customer_name
+            if tender and tender.customer_name
+            else str(run.customer_id)
+        ),
         "customer_inn": tender.customer_inn if tender else None,
         "customer_kpp": tender.customer_kpp if tender else None,
-        "publication_date": tender.publication_date.isoformat() if tender and tender.publication_date else None,
-        "deadline": tender.application_deadline.isoformat() if tender and tender.application_deadline else None,
+        "publication_date": (
+            tender.publication_date.isoformat()
+            if tender and tender.publication_date
+            else None
+        ),
+        "deadline": (
+            tender.application_deadline.isoformat()
+            if tender and tender.application_deadline
+            else None
+        ),
         "status": "analyzing",
         "warnings": list(warnings),
         "limitations": list(limitations),
@@ -99,8 +115,16 @@ def _metadata(
             "customer_inn": tender.customer_inn if tender else None,
             "customer_kpp": tender.customer_kpp if tender else None,
             "initial_price": tender.nmck_amount if tender else None,
-            "publication_date": tender.publication_date.isoformat() if tender and tender.publication_date else None,
-            "deadline": tender.application_deadline.isoformat() if tender and tender.application_deadline else None,
+            "publication_date": (
+                tender.publication_date.isoformat()
+                if tender and tender.publication_date
+                else None
+            ),
+            "deadline": (
+                tender.application_deadline.isoformat()
+                if tender and tender.application_deadline
+                else None
+            ),
         },
     }
 
@@ -123,7 +147,9 @@ def main() -> int:
             if run.registry_number != args.expected_registry_number:
                 raise ControlledRunnerConfigurationError("registry_number_not_approved")
             if not all((run.customer_id, run.project_id, run.procurement_case_id)):
-                raise ControlledRunnerConfigurationError("analysis_run_is_not_customer_owned")
+                raise ControlledRunnerConfigurationError(
+                    "analysis_run_is_not_customer_owned"
+                )
             case = session.scalar(
                 select(ProcurementCase).where(
                     ProcurementCase.id == run.procurement_case_id,
@@ -132,9 +158,13 @@ def main() -> int:
                 )
             )
             if not case:
-                raise ControlledRunnerConfigurationError("procurement_case_identity_mismatch")
+                raise ControlledRunnerConfigurationError(
+                    "procurement_case_identity_mismatch"
+                )
             if case.procurement_number and case.procurement_number != run.registry_number:
-                raise ControlledRunnerConfigurationError("procurement_case_registry_mismatch")
+                raise ControlledRunnerConfigurationError(
+                    "procurement_case_registry_mismatch"
+                )
 
             inputs = resolve_customer_run_inputs(session, run.registry_number)
             tender = session.scalar(
@@ -191,7 +221,9 @@ def main() -> int:
                     "manifest_path": str(bundle.manifest_path),
                     "manifest_hash": bundle.manifest["manifest_hash"],
                     "request_id": bundle.manifest["stable_identity"]["request_id"],
-                    "evidence_packet_hash": bundle.manifest["stable_identity"]["evidence_packet_hash"],
+                    "evidence_packet_hash": bundle.manifest["stable_identity"][
+                        "evidence_packet_hash"
+                    ],
                     "provider": policy.provider,
                     "model": policy.model,
                 },
