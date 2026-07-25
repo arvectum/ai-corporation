@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Callable, Sequence
 from uuid import uuid4
@@ -143,7 +143,9 @@ def _publication_summary(production: R10_1CanonicalProduction) -> dict[str, Any]
         "validated_result_hash": production.llm_result.validated_result_hash,
         "report_model_hash": production.report_model_hash,
         "requirements_file_sha256": production.persisted.requirements_file_sha256,
-        "canonical_report_file_sha256": production.persisted.canonical_report_file_sha256,
+        "canonical_report_file_sha256": (
+            production.persisted.canonical_report_file_sha256
+        ),
     }
 
 
@@ -186,7 +188,9 @@ def build_sanitized_controlled_evidence_manifest(
     first_identity = _stable_semantic_identity(first)
     second_identity = _stable_semantic_identity(second)
     if first_identity != second_identity:
-        raise ControlledEvidenceConflictError("controlled_evidence_repeat_identity_mismatch")
+        raise ControlledEvidenceConflictError(
+            "controlled_evidence_repeat_identity_mismatch"
+        )
 
     stable = {
         "provider": policy.provider,
@@ -225,6 +229,21 @@ def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
         json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _relocate_production(
+    production: R10_1CanonicalProduction,
+    destination: Path,
+) -> R10_1CanonicalProduction:
+    persisted = replace(
+        production.persisted,
+        requirements_path=destination / "requirements.json",
+        canonical_report_path=destination / "canonical_report.json",
+        report_json_path=destination / "report.json",
+        report_html_path=destination / "report.html",
+        steps_path=destination / "steps.json",
+    )
+    return replace(production, persisted=persisted)
 
 
 def run_controlled_provider_evidence(
@@ -283,11 +302,13 @@ def run_controlled_provider_evidence(
         manifest_path = stage / "controlled-evidence.manifest.json"
         _write_manifest(manifest_path, manifest)
         os.replace(stage, target)
+        first = _relocate_production(productions[0], target / "execution-1")
+        second = _relocate_production(productions[1], target / "execution-2")
         return ControlledEvidenceBundle(
             manifest=manifest,
             manifest_path=target / manifest_path.name,
-            first=productions[0],
-            second=productions[1],
+            first=first,
+            second=second,
         )
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)
