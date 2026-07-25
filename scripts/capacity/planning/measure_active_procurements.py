@@ -104,6 +104,35 @@ class ActiveProcurement:
         self.unknown_docs = sum(1 for d in self.documents if d.size_bytes is None)
 
 @dataclass
+class SweepScope:
+    target_laws: list[str] = field(default_factory=list)
+    target_region_codes: list[str] = field(default_factory=list)
+    target_date_from: str = ""
+    target_date_to: str = ""
+    completed_laws: list[str] = field(default_factory=list)
+    completed_region_codes: list[str] = field(default_factory=list)
+    completed_dates: list[str] = field(default_factory=list)
+    region_scope_complete: bool = False
+    date_scope_complete: bool = False
+    law_scope_complete: bool = False
+    source_scope_complete: bool = False
+
+@dataclass
+class SweepCounters:
+    zip_entries_total: int = 0
+    xml_entries_total: int = 0
+    notification_xml_total: int = 0
+    xml_parsed_successfully: int = 0
+    xml_parse_failed: int = 0
+    unique_procurements_before_dedup: int = 0
+    unique_procurements_after_dedup: int = 0
+    active_procurements: int = 0
+    excluded_completed: int = 0
+    excluded_cancelled: int = 0
+    excluded_deadline_passed: int = 0
+    excluded_unmapped_status: int = 0
+
+@dataclass
 class SourceProvenance:
     source_type: str  # eis_soap | demo
     query_started_at: str
@@ -115,6 +144,8 @@ class SourceProvenance:
     pagination_complete: bool
     source_errors: list[str]
     using_fallback: bool = False
+    scope: SweepScope | None = None
+    sweep_counters: SweepCounters | None = None
 
 @dataclass
 class CoverageReport:
@@ -259,7 +290,22 @@ def _parse_xml_procurement_status(root: ET.Element) -> str:
         node = root.find(path[0], _EIS_XML_NS)
         if node is not None and node.text:
             return node.text.strip()
-    return "published"
+    return "unknown"
+
+
+def _parse_eis_datetime(text: str) -> datetime | None:
+    cleaned = text.strip()
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+    ):
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+    return None
 
 
 def _parse_xml_application_deadline(root: ET.Element) -> str | None:
@@ -270,12 +316,43 @@ def _parse_xml_application_deadline(root: ET.Element) -> str | None:
     return None
 
 
+def _extract_attachments(
+    root: ET.Element, procurement_id: str
+) -> list[DocumentInfo]:
+    docs: list[DocumentInfo] = []
+    try:
+        for att_node in root.findall(".//ns4:attachmentInfo", _EIS_XML_NS):
+            fn_node = att_node.find("ns4:fileName", _EIS_XML_NS)
+            fs_node = att_node.find("ns4:fileSize", _EIS_XML_NS)
+            fu_node = att_node.find("ns4:url", _EIS_XML_NS)
+            fname = fn_node.text.strip() if fn_node is not None and fn_node.text else ""
+            fsize_txt = fs_node.text.strip() if fs_node is not None and fs_node.text else "0"
+            furl = fu_node.text.strip() if fu_node is not None and fu_node.text else ""
+            if not fname:
+                continue
+            fsize = int(fsize_txt) if fsize_txt.isdigit() else None
+            docs.append(DocumentInfo(
+                file_name=fname,
+                url=furl,
+                size_bytes=fsize,
+                provenance=DocumentSizeProvenance(
+                    method="eis_metadata",
+                    retrieved_at=datetime.now(UTC).isoformat(),
+                    url=furl,
+                ),
+                tender_id=procurement_id,
+            ))
+    except Exception:
+        pass
+    return docs
+
+
 def _fetch_active_from_getdocs_sweep(
     output_dir: Path | None = None,
     max_regions: int | None = None,
     lookback_days: int = 7,
     region_whitelist: list[str] | None = None,
-) -> tuple[list[ActiveProcurement], SourceProvenance]:
+) -> tuple[list[ActiveProcurement], SourceProvenance, SweepScope]:
     from src.modules.tender_operator_agent_demo.settings import (
         get_zakupki_soap_settings,
     )
@@ -314,6 +391,10 @@ def _fetch_active_from_getdocs_sweep(
         d = today - timedelta(days=i)
         dates_to_scan.append(format_eis_exact_date(d, timezone="Europe/Moscow"))
 
+    target_date_from = dates_to_scan[-1] if dates_to_scan else ""
+    target_date_to = dates_to_scan[0] if dates_to_scan else ""
+    target_laws = ["44fz"]
+
     archive_dir = (output_dir / "archives") if output_dir else Path(tempfile.mkdtemp(suffix="_archives"))
 
     seen_ids: set[str] = set()
@@ -323,8 +404,9 @@ def _fetch_active_from_getdocs_sweep(
     dates_scanned: list[str] = []
     archives_received = 0
     archives_downloaded = 0
-    xml_parsed = 0
-    total_raw = 0
+
+    counters = SweepCounters()
+    had_error = False
 
     for region in regions:
         regions_scanned.append(region)
@@ -345,84 +427,118 @@ def _fetch_active_from_getdocs_sweep(
                         archive_path = archive_dir / attachment.stored_name
                         with zipfile.ZipFile(archive_path) as zf:
                             for name in zf.namelist():
+                                counters.zip_entries_total += 1
                                 if not name.endswith(".xml"):
                                     continue
-                                xml_parsed += 1
-                                total_raw += 1
+                                counters.xml_entries_total += 1
+                                try:
+                                    raw_xml = zf.read(name)
+                                    root = ET.fromstring(raw_xml)
+                                except Exception:
+                                    counters.xml_parse_failed += 1
+                                    continue
+                                counters.xml_parsed_successfully += 1
+                                doc_type_key = name.split("_")[0] if "_" in name else Path(name).stem
+                                if doc_type_key not in _EIS_DOC_TYPE_LAW:
+                                    continue
+                                counters.notification_xml_total += 1
                                 procurement_id = _parse_xml_procurement_id(name)
+                                counters.unique_procurements_before_dedup += 1
                                 if procurement_id in seen_ids:
                                     continue
                                 seen_ids.add(procurement_id)
                                 law = _parse_xml_law(name)
-                            try:
-                                raw_xml = zf.read(name)
-                                root = ET.fromstring(raw_xml)
                                 status_text = _parse_xml_procurement_status(root)
-                                deadline = _parse_xml_application_deadline(root)
-                            except Exception:
-                                status_text = "published"
-                                deadline = None
-                            status_class = classify_eis_status(status_text)
-                            if status_class != "active":
-                                continue
-                            docs: list[DocumentInfo] = []
-                            try:
-                                for att_node in root.findall(".//ns4:attachmentInfo", _EIS_XML_NS):
-                                    fn_node = att_node.find("ns4:fileName", _EIS_XML_NS)
-                                    fs_node = att_node.find("ns4:fileSize", _EIS_XML_NS)
-                                    fu_node = att_node.find("ns4:url", _EIS_XML_NS)
-                                    fname = fn_node.text.strip() if fn_node is not None and fn_node.text else ""
-                                    fsize_txt = fs_node.text.strip() if fs_node is not None and fs_node.text else "0"
-                                    furl = fu_node.text.strip() if fu_node is not None and fu_node.text else ""
-                                    if not fname:
+                                deadline_str = _parse_xml_application_deadline(root)
+                                if status_text in ("unknown", "parse_failed"):
+                                    counters.excluded_unmapped_status += 1
+                                    continue
+                                status_class = classify_eis_status(status_text)
+                                if status_class == "excluded_explicit":
+                                    s_lower = status_text.strip().lower()
+                                    if s_lower == "completed":
+                                        counters.excluded_completed += 1
+                                    elif s_lower in ("cancelled", "canceled"):
+                                        counters.excluded_cancelled += 1
+                                    continue
+                                if status_class == "excluded_unmapped":
+                                    counters.excluded_unmapped_status += 1
+                                    continue
+                                if deadline_str:
+                                    deadline_dt = _parse_eis_datetime(deadline_str)
+                                    if deadline_dt is not None and deadline_dt < datetime.now(UTC):
+                                        counters.excluded_deadline_passed += 1
                                         continue
-                                    fsize = int(fsize_txt) if fsize_txt.isdigit() else None
-                                    docs.append(DocumentInfo(
-                                        file_name=fname,
-                                        url=furl,
-                                        size_bytes=fsize,
-                                        provenance=DocumentSizeProvenance(
-                                            method="eis_metadata",
-                                            retrieved_at=datetime.now(UTC).isoformat(),
-                                            url=furl,
-                                        ),
-                                        tender_id=procurement_id,
-                                    ))
-                            except Exception:
-                                pass
-                            procurements.append(ActiveProcurement(
-                                procurement_id=procurement_id,
-                                law=law,
-                                status=status_text,
-                                registry_number=procurement_id,
-                                documents=docs,
-                            ))
+                                docs = _extract_attachments(root, procurement_id)
+                                procurements.append(ActiveProcurement(
+                                    procurement_id=procurement_id,
+                                    law=law,
+                                    status=status_text,
+                                    registry_number=procurement_id,
+                                    documents=docs,
+                                ))
+                                counters.active_procurements += 1
                     except Exception as e:
                         source_errors.append(f"download/parse {region} {exact_date}: {e}")
+                        had_error = True
                 elif result.warnings:
                     for w in result.warnings:
                         source_errors.append(f"{region} {exact_date}: {w}")
             except Exception as e:
                 source_errors.append(f"{region} {exact_date}: {e}")
+                had_error = True
 
     completed_at = datetime.now(UTC)
+    counters.unique_procurements_after_dedup = len(seen_ids)
+
+    region_scope_complete = (len(regions_scanned) == len(regions)) and not had_error
+    date_scope_complete = (len(dates_scanned) == len(dates_to_scan)) and not had_error
+    law_scope_complete = region_scope_complete
+    source_scope_complete = region_scope_complete and date_scope_complete and law_scope_complete
+    pagination_complete = source_scope_complete and not had_error
+
+    scope = SweepScope(
+        target_laws=target_laws,
+        target_region_codes=list(regions),
+        target_date_from=target_date_from,
+        target_date_to=target_date_to,
+        completed_laws=target_laws,
+        completed_region_codes=list(regions_scanned),
+        completed_dates=list(dates_scanned),
+        region_scope_complete=region_scope_complete,
+        date_scope_complete=date_scope_complete,
+        law_scope_complete=law_scope_complete,
+        source_scope_complete=source_scope_complete,
+    )
+
     provenance = SourceProvenance(
         source_type="eis_getdocs_sweep",
         query_started_at=started_at.isoformat(),
         query_completed_at=completed_at.isoformat(),
-        laws_requested=["44fz"],
+        laws_requested=target_laws,
         statuses_requested=["published", "applying"],
-        records_received=total_raw,
-        unique_procurements=len(seen_ids),
-        pagination_complete=True,
+        records_received=counters.unique_procurements_before_dedup,
+        unique_procurements=counters.unique_procurements_after_dedup,
+        pagination_complete=pagination_complete,
         source_errors=source_errors,
+        scope=scope,
+        sweep_counters=counters,
     )
     logger.info(
-        "getDocs sweep: regions=%d dates=%d archives=%d/%d xml=%d unique=%d active=%d errors=%d",
+        "getDocs sweep: regions=%d dates=%d archives=%d/%d zip=%d xml=%d/%d ntf=%d "
+        "parse_ok=%d parse_fail=%d unique_before=%d unique_after=%d active=%d "
+        "completed=%d cancelled=%d deadline=%d unmapped=%d errors=%d",
         len(regions_scanned), len(dates_scanned), archives_downloaded, archives_received,
-        xml_parsed, len(seen_ids), len(procurements), len(source_errors),
+        counters.zip_entries_total, counters.xml_entries_total, counters.xml_parsed_successfully,
+        counters.notification_xml_total,
+        counters.xml_parsed_successfully, counters.xml_parse_failed,
+        counters.unique_procurements_before_dedup, counters.unique_procurements_after_dedup,
+        counters.active_procurements,
+        counters.excluded_completed, counters.excluded_cancelled,
+        counters.excluded_deadline_passed, counters.excluded_unmapped_status,
+        len(source_errors),
     )
-    return procurements, provenance
+    return procurements, provenance, scope
 
 
 def _fetch_active_from_eis_soap() -> tuple[list[ActiveProcurement], SourceProvenance]:
@@ -888,6 +1004,11 @@ def write_json_output(
 
     if provenance.coverage:
         output["coverage"] = asdict(provenance.coverage)
+    source = provenance.source
+    if source is not None and source.scope is not None:
+        output["scope"] = asdict(source.scope)
+    if source is not None and source.sweep_counters is not None:
+        output["sweep_counters"] = asdict(source.sweep_counters)
     if stats is not None:
         output["snapshot"] = _stats_to_dict(stats)
         output["size_statistics"] = {
@@ -1000,7 +1121,7 @@ def run_real(output_dir: Path) -> MeasurementProvenance:
     started_at = datetime.now(UTC)
 
     try:
-        procurements, source_prov = _fetch_active_from_getdocs_sweep(
+        procurements, source_prov, scope = _fetch_active_from_getdocs_sweep(
             output_dir=output_dir,
             region_whitelist=["72"],
             lookback_days=7,
@@ -1031,57 +1152,66 @@ def run_real(output_dir: Path) -> MeasurementProvenance:
         print(f"  Output files in:   {output_dir}\n")
         sys.exit(1)
 
-    # Filter to active only
-    excluded_unmapped = 0
-    excluded_explicit_total = 0
-    active: list[ActiveProcurement] = []
-    for p in procurements:
-        status_class = classify_eis_status(p.status)
-        if status_class == "active":
-            active.append(p)
-        elif status_class == "excluded_unmapped":
-            excluded_unmapped += 1
-        elif status_class == "excluded_explicit":
-            excluded_explicit_total += 1
+    counters = source_prov.sweep_counters or SweepCounters()
+    active = procurements
 
     coverage = compute_coverage(
         active,
-        excluded_unmapped=excluded_unmapped,
-        excluded_explicit=excluded_explicit_total,
+        excluded_unmapped=counters.excluded_unmapped_status,
+        excluded_deadline_passed=counters.excluded_deadline_passed,
+        excluded_explicit=counters.excluded_completed + counters.excluded_cancelled,
     )
-
-    not_active = excluded_unmapped + excluded_explicit_total
-    source_prov.unique_procurements = len(active) + not_active
-    source_prov.records_received = len(active) + not_active
 
     stats = compute_statistics(active)
     by_law = compute_by_law(active)
     sizing = compute_sizing(stats, coverage)
 
-    gate_pass = (
-        coverage.procurement_coverage_percent >= COVERAGE_THRESHOLD
-        and coverage.known_size_coverage_percent >= COVERAGE_THRESHOLD
+    scope_complete = (
+        scope.source_scope_complete
         and source_prov.pagination_complete
     )
 
-    if gate_pass:
+    is_full_national = (
+        scope_complete
+        and len(scope.target_region_codes) >= 99
+        and len(scope.target_laws) >= 3
+        and len(scope.completed_dates) >= 364
+    )
+
+    coverage_pass = (
+        coverage.procurement_coverage_percent >= COVERAGE_THRESHOLD
+        and coverage.known_size_coverage_percent >= COVERAGE_THRESHOLD
+    )
+
+    if is_full_national and coverage_pass:
         measurement_kind = "real"
         ssd_verdict = sizing.classification
         reason = None
+    elif scope_complete and coverage_pass:
+        measurement_kind = "real_partial"
+        ssd_verdict = "unavailable"
+        reason = (
+            "Partial scope: target covers "
+            f"{len(scope.target_region_codes)} regions, "
+            f"{len(scope.completed_dates)} days, "
+            f"{len(scope.target_laws)} law(s). "
+            "Full national sweep required for SSD verdict."
+        )
     else:
         measurement_kind = "incomplete"
         ssd_verdict = "unavailable"
         gate_fails = []
-        if coverage.procurement_coverage_percent < COVERAGE_THRESHOLD:
+        if not scope_complete:
             gate_fails.append(
-                f"procurement coverage {coverage.procurement_coverage_percent:.1f}% < {COVERAGE_THRESHOLD}%"
+                f"scope incomplete: region={scope.region_scope_complete} "
+                f"date={scope.date_scope_complete} law={scope.law_scope_complete} "
+                f"pagination={source_prov.pagination_complete}"
             )
-        if coverage.known_size_coverage_percent < COVERAGE_THRESHOLD:
+        if not coverage_pass:
             gate_fails.append(
-                f"document size coverage {coverage.known_size_coverage_percent:.1f}% < {COVERAGE_THRESHOLD}%"
+                f"coverage proc={coverage.procurement_coverage_percent:.1f}% "
+                f"doc_size={coverage.known_size_coverage_percent:.1f}%"
             )
-        if not source_prov.pagination_complete:
-            gate_fails.append("pagination incomplete")
         reason = "Coverage gate not passed: " + "; ".join(gate_fails)
 
     completed_at = datetime.now(UTC)
@@ -1097,10 +1227,10 @@ def run_real(output_dir: Path) -> MeasurementProvenance:
     )
 
     limitations = []
-    if not gate_pass:
+    if measurement_kind != "real":
         limitations.append({
             "category": "coverage",
-            "description": "Coverage gate not passed. Results are not representative.",
+            "description": reason or "Results are not representative for national verdict.",
         })
     if coverage.documents_with_unknown_size > 0:
         limitations.append({

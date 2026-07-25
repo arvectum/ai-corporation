@@ -512,3 +512,339 @@ class TestStreamedSize:
             f for f in os.listdir("/tmp") if f.startswith("tmp")
         } if os.path.isdir("/tmp") else set()
         assert tmp_files_after == tmp_files_before or len(tmp_files_after - tmp_files_before) == 0
+
+
+# ─── Sweep parser fixtures and tests ──────────────────────────────────────
+
+import io
+import zipfile
+from unittest.mock import MagicMock, patch
+from xml.etree import ElementTree as ET
+
+from scripts.capacity.planning.measure_active_procurements import (
+    _parse_xml_procurement_status,
+    _parse_xml_procurement_id,
+    _parse_xml_law,
+    _parse_eis_datetime,
+    _parse_xml_application_deadline,
+    _fetch_active_from_getdocs_sweep,
+    SweepCounters,
+    SourceProvenance,
+    SweepScope,
+)
+
+
+def _make_eis_xml(
+    procurement_id: str = "0325300006424000001",
+    status: str = "PUBLISHED",
+    deadline: str | None = "2025-12-31T12:00:00+03:00",
+    doc_type: str = "epNotificationEF2020",
+    attachment_count: int = 1,
+) -> bytes:
+    ns3 = "http://zakupki.gov.ru/oos/types/1"
+    ns4 = "http://zakupki.gov.ru/oos/common/1"
+    lines = [
+        f'<?xml version="1.0" encoding="UTF-8"?>',
+        f'<ns3:{doc_type} xmlns:ns3="{ns3}" xmlns:ns4="{ns4}">',
+        "  <ns3:commonInfo>",
+        f"    <ns3:purchaseNumber>{procurement_id}</ns3:purchaseNumber>",
+        f"    <ns3:status>{status}</ns3:status>",
+    ]
+    if deadline is not None:
+        lines.append(f"    <ns3:applicationDeadline>{deadline}</ns3:applicationDeadline>")
+    lines.extend([
+        "  </ns3:commonInfo>",
+    ])
+    for i in range(attachment_count):
+        lines.extend([
+            f"  <ns4:attachmentInfo>",
+            f"    <ns4:fileName>doc-{i}.pdf</ns4:fileName>",
+            f"    <ns4:fileSize>{100000 + i}</ns4:fileSize>",
+            f"    <ns4:url>http://example.com/doc-{i}.pdf</ns4:url>",
+            f"  </ns4:attachmentInfo>",
+        ])
+    lines.append(f"</ns3:{doc_type}>")
+    return "\n".join(lines).encode("utf-8")
+
+
+def _make_zip(entries: list[tuple[str, bytes]]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, content in entries:
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+class TestSweepParserUnit:
+    def test_parse_status_found(self):
+        xml = _make_eis_xml(status="PUBLISHED")
+        root = ET.fromstring(xml)
+        assert _parse_xml_procurement_status(root) == "PUBLISHED"
+
+    def test_parse_status_missing_returns_unknown(self):
+        xml = _make_eis_xml(status="")
+        root = ET.fromstring(xml)
+        assert _parse_xml_procurement_status(root) == "unknown"
+
+    def test_parse_status_no_status_node_returns_unknown(self):
+        xml = _make_eis_xml(status="PUBLISHED")
+        xml = xml.replace(b"<ns3:status>PUBLISHED</ns3:status>", b"")
+        root = ET.fromstring(xml)
+        assert _parse_xml_procurement_status(root) == "unknown"
+
+    def test_parse_procurement_id(self):
+        assert _parse_xml_procurement_id("epNotificationEF2020_0325300006424000001_001.xml") == "0325300006424000001"
+
+    def test_parse_law_44fz(self):
+        assert _parse_xml_law("epNotificationEF2020_xxx.xml") == "44fz"
+
+    def test_parse_law_223fz(self):
+        assert _parse_xml_law("epNotification223_xxx.xml") == "223fz"
+
+    def test_parse_eis_datetime_with_tz(self):
+        dt = _parse_eis_datetime("2025-12-31T12:00:00+03:00")
+        assert dt is not None
+        assert dt.year == 2025
+        assert dt.month == 12
+        assert dt.day == 31
+
+    def test_parse_eis_datetime_without_tz(self):
+        dt = _parse_eis_datetime("2025-12-31T12:00:00")
+        assert dt is not None
+
+    def test_parse_eis_datetime_date_only(self):
+        dt = _parse_eis_datetime("2025-12-31")
+        assert dt is not None
+
+    def test_parse_eis_datetime_invalid(self):
+        assert _parse_eis_datetime("not-a-date") is None
+
+    def test_parse_deadline_found(self):
+        xml = _make_eis_xml(deadline="2025-12-31T12:00:00+03:00")
+        root = ET.fromstring(xml)
+        assert _parse_xml_application_deadline(root) == "2025-12-31T12:00:00+03:00"
+
+    def test_parse_deadline_missing(self):
+        xml = _make_eis_xml(deadline=None)
+        root = ET.fromstring(xml)
+        assert _parse_xml_application_deadline(root) is None
+
+
+class TestSweepParserIntegration:
+    """Integration tests with mocked SOAP client returning fixture ZIPs."""
+
+    def _make_mock_result(self, archive_bytes: bytes | None = None, warnings: list[str] | None = None):
+        result = MagicMock()
+        result.archive_url = "http://example.com/archive.zip" if archive_bytes else None
+        result.warnings = warnings or []
+        return result
+
+    def _make_mock_attachment(self, archive_bytes: bytes):
+        att = MagicMock()
+        att.stored_name = "test_archive.zip"
+        return att
+
+    def _mock_sweep(self, archive_bytes: bytes, regions: list[str] | None = None):
+        with (
+            patch("src.modules.tender_operator_agent_demo.settings.get_zakupki_soap_settings") as mock_settings,
+            patch("src.modules.tender_operator_agent_demo.zakupki_soap_client.ZakupkiSoapClient") as mock_client_cls,
+        ):
+            settings = MagicMock()
+            settings.configured = True
+            settings.enabled = True
+            settings.token_configured = True
+            mock_settings.return_value = settings
+
+            client = MagicMock()
+            mock_client_cls.return_value = client
+
+            result = self._make_mock_result(archive_bytes)
+            client.get_docs_by_org_region.return_value = result
+
+            att = self._make_mock_attachment(archive_bytes)
+            client.download_archive.return_value = att
+
+            if archive_bytes:
+                real_zf = zipfile.ZipFile(io.BytesIO(archive_bytes))
+                zf_entries = {name: real_zf.read(name) for name in real_zf.namelist()}
+                zf_namelist = list(zf_entries.keys())
+                real_zf.close()
+            else:
+                zf_entries = {}
+                zf_namelist = []
+
+            with patch("zipfile.ZipFile") as mock_zf:
+                zf_instance = MagicMock()
+                mock_zf.return_value.__enter__.return_value = zf_instance
+                zf_instance.namelist.return_value = zf_namelist
+                zf_instance.read.side_effect = lambda name: zf_entries.get(name, b"")
+
+                procurements, prov, scope = _fetch_active_from_getdocs_sweep(
+                    region_whitelist=regions or ["72"],
+                    lookback_days=1,
+                )
+                return procurements, prov, scope
+
+    def test_a_three_notification_xmls_all_parsed(self):
+        """A. ZIP with 3 notification XMLs: xml_entries_total=3, xml_parsed_successfully=3."""
+        future = "2099-12-31T12:00:00+03:00"
+        zip_data = _make_zip([
+            ("epNotificationEF2020_0001_001.xml", _make_eis_xml("0001", "PUBLISHED", future)),
+            ("epNotificationEF2020_0002_001.xml", _make_eis_xml("0002", "PUBLISHED", future)),
+            ("epNotificationEF2020_0003_001.xml", _make_eis_xml("0003", "PUBLISHED", future)),
+        ])
+        _, prov, _ = self._mock_sweep(zip_data)
+        cnt = prov.sweep_counters
+        assert cnt is not None
+        assert cnt.xml_entries_total == 3, f"expected 3, got {cnt.xml_entries_total}"
+        assert cnt.xml_parsed_successfully == 3, f"expected 3, got {cnt.xml_parsed_successfully}"
+        assert cnt.xml_parse_failed == 0, f"expected 0, got {cnt.xml_parse_failed}"
+
+    def test_b_mixed_statuses_counters(self):
+        """B. ZIP: 2 active, 1 completed, 1 unknown, 1 deadline passed."""
+        future_deadline = "2030-12-31T12:00:00+03:00"
+        past_deadline = "2020-01-01T12:00:00+03:00"
+        zip_data = _make_zip([
+            ("epNotificationEF2020_0001_001.xml", _make_eis_xml("0001", "PUBLISHED", future_deadline)),
+            ("epNotificationEF2020_0002_001.xml", _make_eis_xml("0002", "APPLYING", future_deadline)),
+            ("epNotificationEF2020_0003_001.xml", _make_eis_xml("0003", "COMPLETED", future_deadline)),
+            ("epNotificationEF2020_0004_001.xml", _make_eis_xml("0004", "UNKNOWN_STATUS", future_deadline)),
+            ("epNotificationEF2020_0005_001.xml", _make_eis_xml("0005", "PUBLISHED", past_deadline)),
+        ])
+        _, prov, _ = self._mock_sweep(zip_data)
+        cnt = prov.sweep_counters
+        assert cnt is not None
+        assert cnt.active_procurements == 2, f"expected 2, got {cnt.active_procurements}"
+        assert cnt.excluded_completed == 1, f"expected 1, got {cnt.excluded_completed}"
+        assert cnt.excluded_unmapped_status == 1, f"expected 1, got {cnt.excluded_unmapped_status}"
+        assert cnt.excluded_deadline_passed == 1, f"expected 1, got {cnt.excluded_deadline_passed}"
+        assert cnt.xml_parsed_successfully == 5, f"expected 5, got {cnt.xml_parsed_successfully}"
+
+    def test_c_corrupted_xml_parse_failed(self):
+        """C. Corrupted XML: parse_failed increases, no procurement becomes active."""
+        zip_data = _make_zip([
+            ("epNotificationEF2020_0001_001.xml", b"not valid xml content"),
+        ])
+        _, prov, _ = self._mock_sweep(zip_data)
+        cnt = prov.sweep_counters
+        assert cnt is not None
+        assert cnt.xml_parse_failed == 1, f"expected 1, got {cnt.xml_parse_failed}"
+        assert cnt.xml_parsed_successfully == 0, f"expected 0, got {cnt.xml_parsed_successfully}"
+        assert cnt.active_procurements == 0, f"expected 0, got {cnt.active_procurements}"
+
+    def test_d_on_region_seven_days_partial_scope(self, tmp_path: Path):
+        """D. One region, 7 days: source_scope_complete=false, ssd_verdict=unavailable."""
+        zip_data = _make_zip([
+            ("epNotificationEF2020_0001_001.xml", _make_eis_xml("0001", "PUBLISHED")),
+        ])
+        real_zf = zipfile.ZipFile(io.BytesIO(zip_data))
+        zf_entries = {name: real_zf.read(name) for name in real_zf.namelist()}
+        zf_namelist = list(zf_entries.keys())
+        real_zf.close()
+
+        with (
+            patch("src.modules.tender_operator_agent_demo.settings.get_zakupki_soap_settings") as mock_settings,
+            patch("src.modules.tender_operator_agent_demo.zakupki_soap_client.ZakupkiSoapClient") as mock_client_cls,
+            patch("zipfile.ZipFile") as mock_zf,
+        ):
+            settings = MagicMock()
+            settings.configured = True
+            settings.last_token_hint = "test"
+            settings.token_configured = True
+            settings.enabled = True
+            mock_settings.return_value = settings
+            client = MagicMock()
+            mock_client_cls.return_value = client
+            result = self._make_mock_result(zip_data)
+            client.get_docs_by_org_region.return_value = result
+            att = self._make_mock_attachment(zip_data)
+            client.download_archive.return_value = att
+
+            zf_instance = MagicMock()
+            mock_zf.return_value.__enter__.return_value = zf_instance
+            zf_instance.namelist.return_value = zf_namelist
+            zf_instance.read.side_effect = lambda name: zf_entries.get(name, b"")
+
+            from scripts.capacity.planning.measure_active_procurements import run_real
+            try:
+                prov = run_real(tmp_path)
+                assert prov.measurement_kind == "real_partial", f"expected real_partial, got {prov.measurement_kind}"
+                assert prov.ssd_verdict == "unavailable", f"expected unavailable, got {prov.ssd_verdict}"
+            except SystemExit:
+                pytest.fail("run_real should not exit(1) for partial scope")
+
+    def test_g_all_xml_processed(self):
+        """G. All XML inside ZIP genuinely processed — every notification produces a unique procurement."""
+        future = "2099-12-31T12:00:00+03:00"
+        zip_data = _make_zip([
+            ("epNotificationEF2020_0010_001.xml", _make_eis_xml("0010", "PUBLISHED", future)),
+            ("epNotificationEF2020_0011_001.xml", _make_eis_xml("0011", "PUBLISHED", future)),
+            ("epNotificationEF2020_0012_001.xml", _make_eis_xml("0012", "PUBLISHED", future)),
+            ("readme.txt", b"not an xml file"),
+        ])
+        _, prov, scope = self._mock_sweep(zip_data)
+        cnt = prov.sweep_counters
+        assert cnt is not None
+        assert cnt.zip_entries_total == 4, f"expected 4, got {cnt.zip_entries_total}"
+        assert cnt.xml_entries_total == 3, f"expected 3, got {cnt.xml_entries_total}"
+        assert cnt.xml_parsed_successfully == 3, f"expected 3, got {cnt.xml_parsed_successfully}"
+        assert cnt.notification_xml_total == 3, f"expected 3, got {cnt.notification_xml_total}"
+        assert cnt.active_procurements == 3, f"expected 3, got {cnt.active_procurements}"
+
+
+class TestSweepScope:
+    def test_scope_fields_present(self, tmp_path: Path):
+        with (
+            patch("src.modules.tender_operator_agent_demo.settings.get_zakupki_soap_settings") as mock_settings,
+            patch("src.modules.tender_operator_agent_demo.zakupki_soap_client.ZakupkiSoapClient") as mock_client_cls,
+            patch("zipfile.ZipFile"),
+        ):
+            settings = MagicMock()
+            settings.configured = True
+            settings.enabled = True
+            settings.token_configured = True
+            mock_settings.return_value = settings
+            client = MagicMock()
+            mock_client_cls.return_value = client
+            result = MagicMock()
+            result.archive_url = None
+            result.warnings = []
+            client.get_docs_by_org_region.return_value = result
+
+            from scripts.capacity.planning.measure_active_procurements import run_real
+            try:
+                prov = run_real(tmp_path)
+                source = prov.source
+                assert source is not None
+                assert source.scope is not None
+                assert source.scope.target_region_codes == ["72"]
+                assert source.scope.target_laws == ["44fz"]
+                assert prov.measurement_kind == "real_partial"
+                assert prov.ssd_verdict == "unavailable"
+            except SystemExit:
+                pytest.fail("run_real should not exit(1) for partial scope")
+
+
+class TestPaginationComplete:
+    def test_false_on_source_error(self, tmp_path: Path):
+        """F. Source error: pagination_complete = false."""
+        with (
+            patch("src.modules.tender_operator_agent_demo.settings.get_zakupki_soap_settings") as mock_settings,
+            patch("src.modules.tender_operator_agent_demo.zakupki_soap_client.ZakupkiSoapClient") as mock_client_cls,
+        ):
+            settings = MagicMock()
+            settings.configured = True
+            settings.enabled = True
+            settings.token_configured = True
+            mock_settings.return_value = settings
+            client = MagicMock()
+            mock_client_cls.return_value = client
+            client.get_docs_by_org_region.side_effect = RuntimeError("API unreachable")
+
+            from scripts.capacity.planning.measure_active_procurements import run_real
+            prov = run_real(tmp_path)
+            assert prov.measurement_kind == "incomplete"
+            assert prov.ssd_verdict == "unavailable"
+            assert prov.source is not None
+            assert prov.source.pagination_complete is False
+            assert len(prov.source.source_errors) > 0
