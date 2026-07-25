@@ -1,126 +1,257 @@
 {
   "schema_version": "1.0.0",
-  "measurement_kind": "real",
-  "ssd_verdict": "GREEN",
+  "measurement_kind": "incomplete",
+  "ssd_verdict": "unavailable",
   "meta": {
     "tool": "measure_active_procurements.py",
     "version": "1.0.0",
-    "generated_at": "2026-07-25T08:33:25.058144+00:00"
+    "generated_at": "2026-07-25T14:57:38.622234+00:00"
   },
   "measurement_provenance": {
-    "measurement_kind": "real",
-    "snapshot_started_at_utc": "2026-07-25T08:33:19.738172+00:00",
-    "snapshot_completed_at_utc": "2026-07-25T08:33:25.058060+00:00",
+    "measurement_kind": "incomplete",
+    "snapshot_started_at_utc": "2026-07-25T14:57:33.307400+00:00",
+    "snapshot_completed_at_utc": "2026-07-25T14:57:38.622160+00:00",
     "snapshot_date": "2026-07-25",
     "source": {
       "source_type": "eis_getdocs_sweep",
-      "query_started_at": "2026-07-25T08:33:19.972750+00:00",
-      "query_completed_at": "2026-07-25T08:33:25.056185+00:00",
+      "query_started_at": "2026-07-25T14:57:33.482841+00:00",
+      "query_completed_at": "2026-07-25T14:57:38.620674+00:00",
       "laws_requested": [
-        "44fz"
+        "44fz",
+        "223fz",
+        "capital_repair"
       ],
       "statuses_requested": [
         "published",
         "applying"
       ],
-      "records_received": 5,
-      "unique_procurements": 5,
-      "pagination_complete": true,
+      "records_received": 190,
+      "unique_procurements": 178,
+      "pagination_complete": false,
       "source_errors": [
         "72 2026-07-25+03:00: ЕИС сообщил, что документы по запросу отсутствуют.",
         "72 2026-07-19+03:00: ЕИС сообщил, что документы по запросу отсутствуют."
       ],
-      "using_fallback": false
+      "using_fallback": false,
+      "scope": {
+        "target_laws": [
+          "44fz",
+          "223fz",
+          "capital_repair"
+        ],
+        "target_region_codes": [
+          "72"
+        ],
+        "target_date_from": "2026-07-19+03:00",
+        "target_date_to": "2026-07-25+03:00",
+        "completed_laws": [
+          "44fz"
+        ],
+        "completed_region_codes": [
+          "72"
+        ],
+        "completed_dates": [
+          "2026-07-25+03:00",
+          "2026-07-24+03:00",
+          "2026-07-23+03:00",
+          "2026-07-22+03:00",
+          "2026-07-21+03:00",
+          "2026-07-20+03:00",
+          "2026-07-19+03:00"
+        ],
+        "region_scope_complete": true,
+        "date_scope_complete": true,
+        "law_scope_complete": false,
+        "source_scope_complete": false,
+        "region_registry_source": "KLADR canonical, verified via EIS NSI getNsiOrgRegion",
+        "region_registry_version": "kladdr-2024",
+        "target_region_count": 1,
+        "implemented_laws": [
+          "44fz"
+        ],
+        "failed_laws": [
+          "223fz",
+          "capital_repair"
+        ]
+      },
+      "sweep_counters": {
+        "zip_entries_total": 190,
+        "xml_entries_total": 190,
+        "notification_xml_total": 190,
+        "xml_parsed_successfully": 190,
+        "xml_parse_failed": 0,
+        "unique_procurements_before_dedup": 190,
+        "unique_procurements_after_dedup": 178,
+        "active_procurements": 0,
+        "excluded_completed": 0,
+        "excluded_cancelled": 0,
+        "excluded_deadline_passed": 0,
+        "excluded_unmapped_status": 178,
+        "deadline_present_count": 0,
+        "deadline_parseable_count": 0
+      }
     },
     "coverage": {
-      "active_procurements_total": 5,
-      "active_procurements_with_document_manifest": 5,
-      "procurement_coverage_percent": 100.0,
-      "documents_total": 22,
-      "documents_with_known_size": 22,
+      "active_procurements_total": 0,
+      "active_procurements_with_document_manifest": 0,
+      "procurement_coverage_percent": 0.0,
+      "documents_total": 0,
+      "documents_with_known_size": 0,
       "documents_with_unknown_size": 0,
-      "known_size_coverage_percent": 100.0,
-      "excluded_unmapped_status": 0,
+      "known_size_coverage_percent": 0.0,
+      "excluded_unmapped_status": 178,
       "excluded_deadline_passed": 0,
-      "excluded_explicit": 0
+      "excluded_explicit": 0,
+      "discovered_procurements_total": 178,
+      "status_classified_procurements": 0,
+      "status_unclassified_procurements": 178,
+      "status_classification_coverage_percent": 0.0,
+      "deadline_present_procurements": 0,
+      "deadline_parseable_procurements": 0,
+      "deadline_coverage_percent": 0.0,
+      "coverage_reason": "status_population_not_classified"
     },
-    "ssd_verdict": "GREEN",
-    "reason": null
+    "ssd_verdict": "unavailable",
+    "reason": "Coverage gate not passed: scope incomplete: region=True date=True law=False pagination=False; coverage status=0.0% proc=0.0% doc_size=0.0%; reason=status_population_not_classified"
   },
   "coverage": {
-    "active_procurements_total": 5,
-    "active_procurements_with_document_manifest": 5,
-    "procurement_coverage_percent": 100.0,
-    "documents_total": 22,
-    "documents_with_known_size": 22,
+    "active_procurements_total": 0,
+    "active_procurements_with_document_manifest": 0,
+    "procurement_coverage_percent": 0.0,
+    "documents_total": 0,
+    "documents_with_known_size": 0,
     "documents_with_unknown_size": 0,
-    "known_size_coverage_percent": 100.0,
-    "excluded_unmapped_status": 0,
+    "known_size_coverage_percent": 0.0,
+    "excluded_unmapped_status": 178,
     "excluded_deadline_passed": 0,
-    "excluded_explicit": 0
+    "excluded_explicit": 0,
+    "discovered_procurements_total": 178,
+    "status_classified_procurements": 0,
+    "status_unclassified_procurements": 178,
+    "status_classification_coverage_percent": 0.0,
+    "deadline_present_procurements": 0,
+    "deadline_parseable_procurements": 0,
+    "deadline_coverage_percent": 0.0,
+    "coverage_reason": "status_population_not_classified"
+  },
+  "scope": {
+    "target_laws": [
+      "44fz",
+      "223fz",
+      "capital_repair"
+    ],
+    "target_region_codes": [
+      "72"
+    ],
+    "target_date_from": "2026-07-19+03:00",
+    "target_date_to": "2026-07-25+03:00",
+    "completed_laws": [
+      "44fz"
+    ],
+    "completed_region_codes": [
+      "72"
+    ],
+    "completed_dates": [
+      "2026-07-25+03:00",
+      "2026-07-24+03:00",
+      "2026-07-23+03:00",
+      "2026-07-22+03:00",
+      "2026-07-21+03:00",
+      "2026-07-20+03:00",
+      "2026-07-19+03:00"
+    ],
+    "region_scope_complete": true,
+    "date_scope_complete": true,
+    "law_scope_complete": false,
+    "source_scope_complete": false,
+    "region_registry_source": "KLADR canonical, verified via EIS NSI getNsiOrgRegion",
+    "region_registry_version": "kladdr-2024",
+    "target_region_count": 1,
+    "implemented_laws": [
+      "44fz"
+    ],
+    "failed_laws": [
+      "223fz",
+      "capital_repair"
+    ]
+  },
+  "sweep_counters": {
+    "zip_entries_total": 190,
+    "xml_entries_total": 190,
+    "notification_xml_total": 190,
+    "xml_parsed_successfully": 190,
+    "xml_parse_failed": 0,
+    "unique_procurements_before_dedup": 190,
+    "unique_procurements_after_dedup": 178,
+    "active_procurements": 0,
+    "excluded_completed": 0,
+    "excluded_cancelled": 0,
+    "excluded_deadline_passed": 0,
+    "excluded_unmapped_status": 178,
+    "deadline_present_count": 0,
+    "deadline_parseable_count": 0
   },
   "snapshot": {
-    "active_procurements": 5,
-    "documents": 22,
-    "known_bytes": 25687031,
+    "active_procurements": 0,
+    "documents": 0,
+    "known_bytes": 0,
     "unknown_documents": 0,
-    "mean_bytes": 5137406.2,
-    "p50_bytes": 526462,
-    "p75_bytes": 1763247,
-    "p90_bytes": 23176630,
-    "p95_bytes": 23176630,
-    "p99_bytes": 23176630,
-    "max_bytes": 23176630,
+    "mean_bytes": 0.0,
+    "p50_bytes": 0,
+    "p75_bytes": 0,
+    "p90_bytes": 0,
+    "p95_bytes": 0,
+    "p99_bytes": 0,
+    "max_bytes": 0,
     "packages_over_100mb": 0,
     "packages_over_250mb": 0,
     "packages_over_500mb": 0,
     "packages_over_1gib": 0,
-    "heavy_tail_top_1_pct": 0.9022697095666681,
-    "heavy_tail_top_5_pct": 0.9022697095666681,
-    "heavy_tail_top_10_pct": 0.9022697095666681
+    "heavy_tail_top_1_pct": 0.0,
+    "heavy_tail_top_5_pct": 0.0,
+    "heavy_tail_top_10_pct": 0.0
   },
   "size_statistics": {
-    "mean_bytes": 5137406.2,
-    "p50_bytes": 526462,
-    "p75_bytes": 1763247,
-    "p90_bytes": 23176630,
-    "p95_bytes": 23176630,
-    "p99_bytes": 23176630,
-    "max_bytes": 23176630,
+    "mean_bytes": 0.0,
+    "p50_bytes": 0,
+    "p75_bytes": 0,
+    "p90_bytes": 0,
+    "p95_bytes": 0,
+    "p99_bytes": 0,
+    "max_bytes": 0,
     "packages_over_100mb": 0,
     "packages_over_250mb": 0,
     "packages_over_500mb": 0,
     "packages_over_1gib": 0
   },
   "heavy_tail": {
-    "top_1_pct": 0.9022697095666681,
-    "top_5_pct": 0.9022697095666681,
-    "top_10_pct": 0.9022697095666681
+    "top_1_pct": 0.0,
+    "top_5_pct": 0.0,
+    "top_10_pct": 0.0
   },
-  "by_law_type": [
-    {
-      "law_type": "44fz",
-      "tenders": 5,
-      "documents": 22,
-      "known_bytes": 25687031
-    }
-  ],
+  "by_law_type": [],
   "sizing": {
-    "eis_active_bytes": 25687031,
-    "commercial_reserve_bytes": 12843515,
-    "p99_package_bytes": 23176630,
+    "eis_active_bytes": 0,
+    "commercial_reserve_bytes": 0,
+    "p99_package_bytes": 0,
     "max_processing_concurrency": 4,
     "processing_space_bytes": 161061273600,
     "persistent_results_and_logs_bytes": 53687091200,
-    "base_required_bytes": 214786895346,
+    "base_required_bytes": 214748364800,
     "ssd_capacity_decimal_bytes": 2000000000000,
     "ssd_capacity_gib": 1862.645149230957,
-    "remaining_bytes": 1785213104654,
-    "used_percent": 10.7393447673,
-    "classification": "GREEN",
-    "minimum_disk_bytes": 268483619182,
-    "minimum_disk_decimal_tb": 0.268483619182,
-    "minimum_disk_gib": 250.0448554586619,
+    "remaining_bytes": 1785251635200,
+    "used_percent": 10.73741824,
+    "classification": "unavailable",
+    "minimum_disk_bytes": 268435456000,
+    "minimum_disk_decimal_tb": 0.268435456,
+    "minimum_disk_gib": 250.0,
     "next_practical_disk_class": "1 TB"
-  }
+  },
+  "limitations": [
+    {
+      "category": "coverage",
+      "description": "Coverage gate not passed: scope incomplete: region=True date=True law=False pagination=False; coverage status=0.0% proc=0.0% doc_size=0.0%; reason=status_population_not_classified"
+    }
+  ]
 }

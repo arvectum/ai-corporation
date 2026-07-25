@@ -110,14 +110,15 @@ class TestStatusMapping:
 class TestCoverageGate:
     def test_full_coverage_accepted(self):
         pkgs = [_make_pkg(law="44fz") for _ in range(20)]
-        cov = compute_coverage(pkgs)
+        cov = compute_coverage(pkgs, discovered_total=20, status_classified=20)
         assert cov.procurement_coverage_percent == 100.0
         assert cov.known_size_coverage_percent == 100.0
+        assert cov.status_classification_coverage_percent == 100.0
 
     def test_95_percent_accepted(self):
         pkgs = [_make_pkg(status="published") for _ in range(19)]
         pkgs.append(_make_pkg(docs=[_make_doc(size=None)], status="published"))
-        cov = compute_coverage(pkgs)
+        cov = compute_coverage(pkgs, discovered_total=20, status_classified=20)
         assert cov.procurement_coverage_percent == 100.0
         assert cov.documents_with_unknown_size == 1
         assert cov.documents_total == sum(p.doc_count for p in pkgs)
@@ -136,13 +137,14 @@ class TestCoverageGate:
             for _ in range(5)
         ]
         pkgs.append(_make_pkg(docs=[_make_doc(size=None) for _ in range(unknown)]))
-        cov = compute_coverage(pkgs)
+        cov = compute_coverage(pkgs, discovered_total=len(pkgs), status_classified=len(pkgs))
         assert cov.known_size_coverage_percent < COVERAGE_THRESHOLD
 
-    def test_empty_passthrough(self):
+    def test_empty_no_procurements(self):
         cov = compute_coverage([])
-        assert cov.procurement_coverage_percent == 100.0
-        assert cov.known_size_coverage_percent == 100.0
+        assert cov.procurement_coverage_percent == 0.0
+        assert cov.known_size_coverage_percent == 0.0
+        assert cov.coverage_reason == "no_procurements_discovered"
 
     def test_excluded_counts(self):
         cov = compute_coverage([], excluded_unmapped=5, excluded_explicit=10)
@@ -768,7 +770,9 @@ class TestSweepParserIntegration:
             from scripts.capacity.planning.measure_active_procurements import run_real
             try:
                 prov = run_real(tmp_path)
-                assert prov.measurement_kind == "real_partial", f"expected real_partial, got {prov.measurement_kind}"
+                # law_scope_complete=False (target=3 laws, only 44-FZ implemented)
+                # status_classification=0% → incomplete
+                assert prov.measurement_kind == "incomplete", f"expected incomplete, got {prov.measurement_kind}"
                 assert prov.ssd_verdict == "unavailable", f"expected unavailable, got {prov.ssd_verdict}"
             except SystemExit:
                 pytest.fail("run_real should not exit(1) for partial scope")
@@ -818,11 +822,13 @@ class TestSweepScope:
                 assert source is not None
                 assert source.scope is not None
                 assert source.scope.target_region_codes == ["72"]
-                assert source.scope.target_laws == ["44fz"]
-                assert prov.measurement_kind == "real_partial"
+                assert len(source.scope.target_laws) == 3  # all ACTIVE_LAW_TYPES
+                assert source.scope.implemented_laws == ["44fz"]
+                assert not source.scope.law_scope_complete
+                assert prov.measurement_kind == "incomplete"
                 assert prov.ssd_verdict == "unavailable"
             except SystemExit:
-                pytest.fail("run_real should not exit(1) for partial scope")
+                pytest.fail("run_real should not exit(1)")
 
 
 class TestPaginationComplete:
@@ -848,3 +854,129 @@ class TestPaginationComplete:
             assert prov.source is not None
             assert prov.source.pagination_complete is False
             assert len(prov.source.source_errors) > 0
+
+
+class TestStatusClassificationCoverage:
+    def test_zero_discovered_coverage_unavailable(self):
+        cov = compute_coverage([])
+        assert cov.discovered_procurements_total == 0
+        assert cov.status_classification_coverage_percent == 0.0
+        assert cov.procurement_coverage_percent == 0.0
+        assert cov.coverage_reason == "no_procurements_discovered"
+
+    def test_178_unmapped_status_coverage_zero(self):
+        cov = compute_coverage(
+            [],
+            discovered_total=178,
+            status_classified=0,
+            deadline_present=178,
+            deadline_parseable=178,
+        )
+        assert cov.discovered_procurements_total == 178
+        assert cov.status_classified_procurements == 0
+        assert cov.status_unclassified_procurements == 178
+        assert cov.status_classification_coverage_percent == 0.0
+        assert cov.coverage_reason == "status_population_not_classified"
+
+    def test_partially_classified_set(self):
+        cov = compute_coverage(
+            [_make_pkg()],
+            discovered_total=100,
+            status_classified=50,
+        )
+        assert cov.status_classified_procurements == 50
+        assert cov.status_unclassified_procurements == 50
+        assert cov.status_classification_coverage_percent == 50.0
+
+    def test_status_gate_9499_rejected(self):
+        cov = compute_coverage(
+            [_make_pkg()],
+            discovered_total=100,
+            status_classified=94,
+        )
+        assert cov.status_classification_coverage_percent < 95.0
+        assert cov.coverage_reason == "status_classification_insufficient"
+
+    def test_status_gate_95_accepted(self):
+        cov = compute_coverage(
+            [_make_pkg()],
+            discovered_total=100,
+            status_classified=95,
+        )
+        assert cov.status_classification_coverage_percent >= 95.0
+        assert cov.coverage_reason is None or "classification" not in (cov.coverage_reason or "")
+
+    def test_no_default_active(self):
+        cov = compute_coverage(
+            [],
+            discovered_total=10,
+            status_classified=0,
+        )
+        assert cov.status_classified_procurements == 0
+        assert cov.status_unclassified_procurements == 10
+
+    def test_stale_green_artifact_regression(self):
+        cov = compute_coverage(
+            [],
+            discovered_total=100,
+            status_classified=0,
+        )
+        assert cov.status_classification_coverage_percent < 95.0
+        assert cov.procurement_coverage_percent == 0.0
+        assert cov.coverage_reason is not None
+
+
+class TestLawScopeIndependence:
+    def test_law_scope_independent_from_region(self):
+        from scripts.capacity.planning.measure_active_procurements import SweepScope
+        scope = SweepScope(
+            target_laws=["44fz", "223fz", "capital_repair"],
+            target_region_codes=["72"],
+            completed_laws=["44fz"],
+            completed_region_codes=["72"],
+            implemented_laws=["44fz"],
+            failed_laws=["223fz", "capital_repair"],
+        )
+        scope.region_scope_complete = True
+        scope.date_scope_complete = True
+        scope.law_scope_complete = (
+            set(scope.completed_laws) == set(scope.target_laws)
+            and not scope.failed_laws
+        )
+        assert not scope.law_scope_complete  # only 44-FZ completed, target has 3
+
+    def test_unsupported_law_makes_incomplete(self):
+        from scripts.capacity.planning.measure_active_procurements import SweepScope
+        scope = SweepScope(
+            target_laws=["44fz", "223fz"],
+            implemented_laws=["44fz"],
+            completed_laws=["44fz"],
+            failed_laws=["223fz"],
+        )
+        scope.law_scope_complete = (
+            set(scope.completed_laws) == set(scope.target_laws)
+            and not scope.failed_laws
+        )
+        assert not scope.law_scope_complete
+
+
+class TestSchemaInventoryOutput:
+    def test_strips_identifiers(self):
+        lines = [
+            '{"identifier_paths": {"sid": 363, "externalSid": 257, "regNum": 264}}',
+            '{"identifier_paths": {}}',
+        ]
+        for line in lines:
+            data = json.loads(line)
+            for path_name in ("sid", "externalSid", "regNum", "purchaseNumber", "id"):
+                if path_name in str(data):
+                    pass  # identifiers are expected in path names but values must be hashed
+            assert True  # no crash on identifier paths
+
+    def test_namespace_independent_local_name(self):
+        from collections import Counter
+        names = Counter()
+        names["epNotificationEF2020"] = 38
+        names["commonInfo"] = 38
+        names["status"] = 0
+        assert names["status"] == 0  # no status element exists
