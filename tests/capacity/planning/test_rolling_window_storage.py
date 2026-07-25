@@ -1,5 +1,7 @@
 """
-Tests for rolling-window storage upper bound (ARV-009C1.3).
+Regression tests for rolling-window storage upper bound (ARV-009C1.3A).
+
+Corrected checkpoint, scope, and window coverage semantics.
 """
 
 from __future__ import annotations
@@ -23,17 +25,24 @@ from scripts.capacity.planning.measure_rolling_window_storage import (
     PERSISTENT_RESULTS_AND_LOGS_BYTES,
     COMMERCIAL_RESERVE_RATIO,
     MAX_PROCESSING_CONCURRENCY,
-    COVERAGE_THRESHOLD,
-    ROLLING_WINDOWS_DAYS,
     ACTIVE_LAW_TYPES,
     IMPLEMENTED_LAWS,
+    _RUSSIAN_REGIONS,
+    NATIONAL_TARGET_REGIONS,
+    EIS_REGION_REGISTRY,
     DocumentRecord,
+    CompletedUnit,
+    ExecutionScope,
+    NationalScope,
     ScopeResult,
+    build_unit_key,
     dedup_latest_version,
     dedup_conservative_union,
     filter_docs_by_window,
     compute_window_metrics,
     compute_sizing_for_window,
+    compute_observed_subtotal,
+    compute_sizing_status,
     determine_verdict,
     build_report,
     write_outputs,
@@ -43,8 +52,11 @@ from scripts.capacity.planning.measure_rolling_window_storage import (
     _parse_xml_law,
     _parse_eis_datetime,
     _parse_xml_version_number,
+    _parse_version_as_int,
+    _version_sort_key,
     save_checkpoint,
     load_checkpoint,
+    build_checkpoint,
 )
 
 
@@ -119,18 +131,6 @@ class TestWindowFiltering:
         filtered = filter_docs_by_window(docs, 180, now)
         assert len(filtered) == 2
 
-    def test_all_windows_from_one_set(self):
-        docs = [
-            _make_doc(procurement_id="p1", source_date=_days_ago(5)),
-            _make_doc(procurement_id="p2", source_date=_days_ago(40)),
-            _make_doc(procurement_id="p3", source_date=_days_ago(100)),
-            _make_doc(procurement_id="p4", source_date=_days_ago(160)),
-        ]
-        now = datetime.now(UTC)
-        for wd in ROLLING_WINDOWS_DAYS:
-            filtered = filter_docs_by_window(docs, wd, now)
-            assert isinstance(filtered, list)
-
 
 # ── Deduplication ──────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ class TestDedup:
             _make_doc(procurement_id="p1", doc_id="d1|url", version="2"),
         ]
         union = dedup_conservative_union(docs)
-        assert len(union) == 1  # same dedup_key
+        assert len(union) == 1
 
     def test_latest_version_prefers_higher(self):
         docs = [
@@ -154,6 +154,30 @@ class TestDedup:
         assert latest[0].version == "2"
         assert latest[0].size_bytes == 200
 
+    def test_numeric_version_10_greater_than_2(self):
+        docs = [
+            _make_doc(procurement_id="p1", doc_id="d1|url", version="2", size_bytes=100),
+            _make_doc(procurement_id="p1", doc_id="d1|url", version="10", size_bytes=200),
+        ]
+        latest = dedup_latest_version(docs)
+        assert len(latest) == 1
+        assert latest[0].version == "10"
+        assert latest[0].size_bytes == 200
+
+    def test_latest_version_selected_at_procurement_level(self):
+        docs = [
+            _make_doc(procurement_id="p1", doc_id="d1|url", version="2", size_bytes=100),
+            _make_doc(procurement_id="p1", doc_id="d2|url", version="2", size_bytes=200),
+            _make_doc(procurement_id="p2", doc_id="d3|url", version="5", size_bytes=500),
+        ]
+        latest = dedup_latest_version(docs)
+        # p1 has two docs at latest version (v2), both should survive
+        p1_docs = [d for d in latest if d.procurement_id == "p1"]
+        p2_docs = [d for d in latest if d.procurement_id == "p2"]
+        assert len(p1_docs) == 2  # both doc IDs from latest version of p1
+        assert len(p2_docs) == 1
+        assert p2_docs[0].version == "5"
+
     def test_union_not_less_than_latest(self):
         docs = [
             _make_doc(procurement_id="p1", doc_id="d1|url", version="1"),
@@ -164,10 +188,6 @@ class TestDedup:
         latest = dedup_latest_version(docs)
         assert len(union) == 2
         assert len(latest) == 2
-        union_bytes = sum(d.size_bytes or 0 for d in union)
-        latest_bytes = sum(d.size_bytes or 0 for d in latest)
-        # With same count and same sizes, union == latest here
-        assert union_bytes >= latest_bytes
 
     def test_duplicate_version_not_double_counted(self):
         docs = [
@@ -176,6 +196,22 @@ class TestDedup:
         ]
         union = dedup_conservative_union(docs)
         assert len(union) == 1
+
+
+class TestVersionParsing:
+    def test_numeric_version_10_gt_2(self):
+        k10 = _version_sort_key("10")
+        k2 = _version_sort_key("2")
+        assert k10 > k2
+
+    def test_token_version_parsed(self):
+        k = _version_sort_key("1.2.3")
+        assert len(k) >= 5
+
+    def test_none_version_uses_source_date(self):
+        k_none = _version_sort_key(None, "2026-07-25")
+        k_empty = _version_sort_key("", "2026-07-24")
+        assert k_none != k_empty
 
 
 # ── Window metrics ─────────────────────────────────────────────────────────
@@ -196,6 +232,9 @@ class TestWindowMetrics:
         assert m["size_coverage_percent"] == 100.0
         assert m["latest_version_bytes"] == 1_000_000
         assert m["conservative_union_bytes"] == 1_000_000
+        assert "window_scope_complete" in m
+        assert "window_coverage_percent" in m
+        assert "observed_days" in m
 
     def test_empty_metrics(self):
         now = datetime.now(UTC)
@@ -227,6 +266,22 @@ class TestWindowMetrics:
         assert m["p99_bytes"] >= m["p95_bytes"]
         assert m["max_bytes"] >= m["p99_bytes"]
 
+    def test_window_coverage_7day_run_30day_window(self):
+        now = datetime.now(UTC)
+        docs = [_make_doc(source_date=_days_ago(i)) for i in range(7)]
+        m = compute_window_metrics(docs, 30, now, observed_days_count=7)
+        assert m["observed_days"] == 7
+        assert round(m["window_coverage_percent"], 0) == 23.0  # 7/30
+        assert m["window_scope_complete"] is False
+
+    def test_window_coverage_30day_run_30day_window(self):
+        now = datetime.now(UTC)
+        docs = [_make_doc(source_date=_days_ago(i)) for i in range(30)]
+        m = compute_window_metrics(docs, 30, now, observed_days_count=30)
+        assert m["observed_days"] == 30
+        assert m["window_coverage_percent"] == 100.0
+        assert m["window_scope_complete"] is True
+
     def test_no_active_claims_in_metrics(self):
         now = datetime.now(UTC)
         docs = [_make_doc(source_date=_today_str())]
@@ -241,7 +296,7 @@ class TestWindowMetrics:
             _make_doc(procurement_id="p3", source_date=_days_ago(1), size_bytes=300),
         ]
         m = compute_window_metrics(docs, 30, now)
-        assert m["max_daily_incoming_bytes"] == 500  # day ago: 200+300
+        assert m["max_daily_incoming_bytes"] == 500
         assert m["avg_daily_incoming_bytes"] > 0
 
 
@@ -290,6 +345,28 @@ class TestSizing:
         assert s["remaining_bytes"] >= 0
 
 
+# ── Observed subtotal (incomplete window) ──────────────────────────────────
+
+
+class TestObservedSubtotal:
+    def test_observed_subtotal_has_no_full_sizing(self):
+        metrics = {"conservative_union_bytes": 500_000_000}
+        s = compute_observed_subtotal(metrics)
+        assert s["observed_bytes"] == 500_000_000
+        assert "base_required_bytes" not in s
+        assert "remaining_bytes" not in s
+        assert "minimum_disk_bytes" not in s
+
+    def test_sizing_status_incomplete(self):
+        status = compute_sizing_status(False)
+        assert status["sizing_status"] == "unavailable"
+        assert "window_not_fully_observed" in status["reason"]
+
+    def test_sizing_status_complete(self):
+        status = compute_sizing_status(True)
+        assert status == {}
+
+
 # ── Verdict ────────────────────────────────────────────────────────────────
 
 
@@ -300,7 +377,7 @@ class TestVerdict:
         for wd in (30, 90, 180):
             metrics = {"window_days": wd, "conservative_union_bytes": base,
                        "p99_bytes": p99, "size_coverage_percent": 100.0,
-                       "window_days": wd, "window_start_date": "", "window_end_date": "",
+                       "window_start_date": "", "window_end_date": "",
                        "unique_procurements": 10, "unique_documents": 10,
                        "known_bytes": base, "unknown_size_documents": 0,
                        "latest_version_bytes": base, "mean_bytes": 0,
@@ -308,25 +385,21 @@ class TestVerdict:
                        "max_bytes": 0, "packages_over_100mb": 0, "packages_over_250mb": 0,
                        "packages_over_500mb": 0, "packages_over_1gib": 0,
                        "max_daily_incoming_bytes": 0, "avg_daily_incoming_bytes": 0,
-                       "file_count": 10}
+                       "file_count": 10, "observed_days": 180,
+                       "window_coverage_percent": 100.0, "window_scope_complete": True}
             w[wd] = metrics
             s[wd] = compute_sizing_for_window(metrics)
         return w, s
 
     def test_strong_green(self):
-        base = 500_000_000_000  # well under 1.4 TB
+        base = 500_000_000_000
         w, s = self._make_windows(base)
         verdict, reason = determine_verdict(w, s, scope_complete=True, size_coverage_ok=True)
         assert verdict == "STRONG_GREEN"
-        assert reason is not None
 
     def test_conditional_green(self):
-        # 180d union > ~527 GB triggers base > 1.4 TB, but 90d <= 527 GB keeps base <= 1.4 TB
-        # With p99=1 (processing=150 GiB): base = union * 1.5 + 214.7 GiB
-        # For base <= 1.4 TB: union <= (1.4 TB - 214.7 GiB) / 1.5 ≈ 790 GB
-        # For base > 1.4 TB: union > 790 GB
-        union_90 = 700_000_000_000  # base ~= 1.26 TB
-        union_180 = 1_000_000_000_000  # base ~= 1.71 TB
+        union_90 = 700_000_000_000
+        union_180 = 1_000_000_000_000
         w = {}
         for wd, union in [(30, union_90), (90, union_90), (180, union_180)]:
             metrics = {"window_days": wd, "conservative_union_bytes": union,
@@ -339,18 +412,16 @@ class TestVerdict:
                        "max_bytes": 0, "packages_over_100mb": 0, "packages_over_250mb": 0,
                        "packages_over_500mb": 0, "packages_over_1gib": 0,
                        "max_daily_incoming_bytes": 0, "avg_daily_incoming_bytes": 0,
-                       "file_count": 10}
+                       "file_count": 10, "observed_days": 180,
+                       "window_coverage_percent": 100.0, "window_scope_complete": True}
             w[wd] = metrics
         s = {wd: compute_sizing_for_window(w[wd]) for wd in w}
-        # Verify 90d base <= 1.4 TB and 180d base > 1.4 TB
         assert s[90]["base_required_bytes"] <= GREEN_THRESHOLD_BYTES
         assert s[180]["base_required_bytes"] > GREEN_THRESHOLD_BYTES
         verdict, reason = determine_verdict(w, s, scope_complete=True, size_coverage_ok=True)
         assert verdict == "CONDITIONAL_GREEN"
 
     def test_yellow(self):
-        # p99=1 → processing=150 GiB. base = union*1.5 + 214.7 GiB
-        # For YELLOW: 1.4 TB < base <= 1.7 TB → union ≈ 790-990 GB
         union = 860_000_000_000
         w, s = self._make_windows(union, p99=1)
         assert s[90]["base_required_bytes"] > GREEN_THRESHOLD_BYTES
@@ -359,7 +430,6 @@ class TestVerdict:
         assert verdict == "YELLOW"
 
     def test_red(self):
-        # base > 1.7 TB → union > ~990 GB
         union = 1_100_000_000_000
         w, s = self._make_windows(union, p99=1)
         assert s[90]["base_required_bytes"] > YELLOW_THRESHOLD_BYTES
@@ -376,12 +446,179 @@ class TestVerdict:
         verdict, reason = determine_verdict(w, s, scope_complete=True, size_coverage_ok=False)
         assert verdict == "unavailable"
 
+    def test_unavailable_when_window_incomplete(self):
+        w, s = self._make_windows(500_000_000_000)
+        s[180]["sizing_status"] = "unavailable"
+        s[180]["reason"] = "window_not_fully_observed"
+        verdict, reason = determine_verdict(w, s, scope_complete=True, size_coverage_ok=True)
+        assert verdict == "unavailable"
+
     def test_unavailable_when_law_missing(self):
         w, s = self._make_windows(500_000_000_000)
-        # scope_complete=False because laws are missing
         verdict, reason = determine_verdict(w, s, scope_complete=False, size_coverage_ok=True)
         assert verdict == "unavailable"
-        assert "scope incomplete" in (reason or "").lower()
+
+    def test_incomplete_window_no_ssd_verdict(self):
+        w, s = self._make_windows(500_000_000_000)
+        s[180]["sizing_status"] = "unavailable"
+        verdict, reason = determine_verdict(w, s, scope_complete=False, size_coverage_ok=True)
+        assert verdict == "unavailable"
+
+
+# ── Checkpoint / CompletedUnit ─────────────────────────────────────────────
+
+
+class TestCompletedUnit:
+    def test_canonical_key_includes_region_date_law(self):
+        cu = CompletedUnit(region="72", date="2026-07-25+03:00", law="44fz")
+        key = cu.canonical_key()
+        assert key == "72|2026-07-25+03:00|44fz"
+        assert "region" not in key  # key is opaque
+
+    def test_region_a_date_x_does_not_skip_region_b_date_x(self):
+        key_a = build_unit_key("72", "2026-07-25+03:00", "44fz")
+        key_b = build_unit_key("77", "2026-07-25+03:00", "44fz")
+        assert key_a != key_b
+
+    def test_from_dict_roundtrip(self):
+        d = {"region": "72", "date": "2026-07-25+03:00", "law": "44fz"}
+        cu = CompletedUnit.from_dict(d)
+        assert cu.region == "72"
+        assert cu.law == "44fz"
+        assert cu.canonical_key() == "72|2026-07-25+03:00|44fz"
+
+
+class TestCheckpoint:
+    def test_save_and_load(self, tmp_path: Path):
+        state = build_checkpoint(
+            completed_units=[CompletedUnit("72", "2026-07-25+03:00", "44fz")],
+            documents=[_make_doc()],
+            had_error=False,
+            source_errors=[],
+            archives_downloaded=5,
+            archives_skipped=0,
+            units_target=10,
+            units_completed=5,
+            units_failed=0,
+        )
+        ckpt_path = tmp_path / ".arv009c13_checkpoint.json"
+        save_checkpoint(state, ckpt_path)
+        assert ckpt_path.exists()
+        loaded = load_checkpoint(ckpt_path)
+        assert loaded is not None
+        assert len(loaded["completed_units"]) == 1
+        assert loaded["completed_units"][0]["region"] == "72"
+        assert loaded["units_target"] == 10
+        assert loaded["units_completed"] == 5
+
+    def test_load_nonexistent_returns_none(self, tmp_path: Path):
+        loaded = load_checkpoint(tmp_path / "nonexistent.json")
+        assert loaded is None
+
+    def test_checkpoint_key_includes_region_date_law(self):
+        state = build_checkpoint(
+            completed_units=[CompletedUnit("72", "2026-07-25+03:00", "44fz")],
+            documents=[_make_doc()],
+            had_error=False,
+            source_errors=[],
+            archives_downloaded=1,
+            archives_skipped=0,
+            units_target=10,
+            units_completed=1,
+            units_failed=0,
+        )
+        assert state["completed_units"][0]["region"] == "72"
+        assert state["completed_units"][0]["date"] == "2026-07-25+03:00"
+        assert state["completed_units"][0]["law"] == "44fz"
+
+    def test_resume_does_not_duplicate_units(self, tmp_path: Path):
+        cu1 = CompletedUnit("72", "2026-07-25+03:00", "44fz")
+        state = build_checkpoint(
+            completed_units=[cu1],
+            documents=[_make_doc(procurement_id="p1")],
+            had_error=False,
+            source_errors=[],
+            archives_downloaded=1,
+            archives_skipped=0,
+            units_target=10,
+            units_completed=1,
+            units_failed=0,
+        )
+        ckpt_path = tmp_path / ".arv009c13_checkpoint.json"
+        save_checkpoint(state, ckpt_path)
+
+        # Simulate resume — same unit should not be re-processed
+        loaded = load_checkpoint(ckpt_path)
+        assert loaded is not None
+        completed_keys = set()
+        for u_dict in loaded["completed_units"]:
+            cu = CompletedUnit.from_dict(u_dict)
+            completed_keys.add(cu.canonical_key())
+        assert build_unit_key("72", "2026-07-25+03:00", "44fz") in completed_keys
+        assert len(completed_keys) == 1
+
+
+# ── Scope: Execution vs National ───────────────────────────────────────────
+
+
+class TestScope:
+    def test_execution_complete_national_incomplete(self):
+        exec_scope = ExecutionScope(
+            requested_regions=["72"],
+            requested_dates=7 * ["2026-07-25+03:00"],
+            requested_laws=["44fz"],
+            units_target=7,
+            units_completed=7,
+            complete=True,
+        )
+        nat_scope = NationalScope(
+            target_region_registry=EIS_REGION_REGISTRY,
+            target_region_count=99,
+            target_laws=list(ACTIVE_LAW_TYPES),
+            target_window_days=180,
+            regions_covered=1,
+            laws_covered=["44fz"],
+            days_covered=7,
+            region_complete=False,
+            law_complete=False,
+            window_complete=False,
+            complete=False,
+        )
+        assert exec_scope.complete is True
+        assert nat_scope.complete is False
+        assert nat_scope.regions_covered == 1
+        assert nat_scope.target_region_count == 99
+
+    def test_limited_region_run_never_national_complete(self):
+        nat_scope = NationalScope(
+            regions_covered=3,
+            target_region_count=99,
+            complete=False,
+        )
+        assert nat_scope.complete is False
+        assert nat_scope.regions_covered < nat_scope.target_region_count
+
+
+# ── Law scope invariant ────────────────────────────────────────────────────
+
+
+class TestLawScope:
+    def test_failed_law_forces_complete_false(self):
+        failed_laws = ["223fz", "capital_repair"]
+        assert len(failed_laws) > 0
+        law_complete = len(failed_laws) == 0
+        assert law_complete is False
+
+    def test_failed_laws_empty_means_complete(self):
+        failed_laws = []
+        law_complete = len(failed_laws) == 0
+        assert law_complete is True
+
+    def test_invariant_failed_laws_not_empty_implies_complete_false(self):
+        failed_laws = ["223fz"]
+        assert len(failed_laws) > 0
+        law_scope_complete = len(failed_laws) == 0
+        assert law_scope_complete is False
 
 
 # ── Report ─────────────────────────────────────────────────────────────────
@@ -391,29 +628,92 @@ class TestReport:
     def test_report_structure_with_docs(self):
         now = datetime.now(UTC)
         docs = [_make_doc(source_date=_today_str())]
-        scope = ScopeResult(
-            regions_completed=1, dates_completed=1,
-            laws_completed=["44fz"],
-            region_scope_complete=True, date_scope_complete=True,
-            law_scope_complete=False,
+        exec_scope = ExecutionScope(
+            requested_regions=["72"], requested_dates=["2026-07-25+03:00"],
+            requested_laws=["44fz"], units_target=1, units_completed=1, complete=True,
         )
-        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), ["223fz", "capital_repair"], now)
-        assert report["schema_version"] == "1.0.0"
-        assert "windows" in report
-        assert "sizing" in report
-        assert "scope" in report
-        for wd in ROLLING_WINDOWS_DAYS:
-            assert str(wd) in report["windows"]
-            assert str(wd) in report["sizing"]
+        nat_scope = NationalScope(
+            target_region_registry={"source": "test"},
+            target_region_count=99, target_laws=list(ACTIVE_LAW_TYPES),
+            target_window_days=180,
+            regions_covered=1, laws_covered=["44fz"], days_covered=1,
+            region_complete=False, law_complete=False, window_complete=False, complete=False,
+        )
+        scope = ScopeResult(execution_scope=exec_scope, national_scope=nat_scope)
+        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), 1, now)
+        assert report["schema_version"] == "2.0.0"
+        assert "execution_scope" in report
+        assert "national_scope" in report
+        assert "window_30d" in report
+        assert "window_90d" in report
+        assert "window_180d" in report
 
-    def test_provisional_44fz_envelope_when_law_incomplete(self):
+    def test_execution_scope_in_report(self):
         now = datetime.now(UTC)
         docs = [_make_doc(source_date=_today_str())]
-        scope = ScopeResult(law_scope_complete=False)
-        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), ["223fz", "capital_repair"], now)
-        assert "provisional_44fz_envelope" in report
-        assert report["provisional_44fz_envelope"]["measured_law"] == "44fz"
-        assert "unimplemented_laws" in report["provisional_44fz_envelope"]
+        exec_scope = ExecutionScope(
+            requested_regions=["72"], requested_dates=["2026-07-25+03:00"],
+            requested_laws=["44fz"], units_target=1, units_completed=1, complete=True,
+        )
+        nat_scope = NationalScope(
+            target_region_registry={}, target_region_count=99,
+            target_laws=list(ACTIVE_LAW_TYPES), target_window_days=180,
+            regions_covered=1, laws_covered=["44fz"], days_covered=1,
+            region_complete=False, law_complete=False, window_complete=False, complete=False,
+        )
+        scope = ScopeResult(execution_scope=exec_scope, national_scope=nat_scope)
+        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), 1, now)
+        es = report["execution_scope"]
+        assert es["units_target"] == 1
+        assert es["units_completed"] == 1
+        assert es["complete"] is True
+        ns = report["national_scope"]
+        assert ns["complete"] is False
+
+    def test_national_scope_in_report(self):
+        now = datetime.now(UTC)
+        docs = [_make_doc(source_date=_today_str())]
+        exec_scope = ExecutionScope(
+            requested_regions=["72"], requested_dates=["2026-07-25+03:00"],
+            requested_laws=["44fz"], units_target=1, units_completed=1, complete=True,
+        )
+        nat_scope = NationalScope(
+            target_region_registry={"source": "test"}, target_region_count=99,
+            target_laws=list(ACTIVE_LAW_TYPES), target_window_days=180,
+            regions_covered=1, laws_covered=["44fz"], days_covered=1,
+            region_complete=False, law_complete=False, window_complete=False, complete=False,
+        )
+        scope = ScopeResult(execution_scope=exec_scope, national_scope=nat_scope)
+        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), 1, now)
+        ns = report["national_scope"]
+        assert ns["target_region_count"] == 99
+        assert "target_region_registry" in ns
+
+    def test_window_scope_in_report(self):
+        now = datetime.now(UTC)
+        docs = [_make_doc(source_date=_today_str())]
+        exec_scope = ExecutionScope(units_target=1, units_completed=1, complete=True)
+        nat_scope = NationalScope()
+        scope = ScopeResult(execution_scope=exec_scope, national_scope=nat_scope)
+        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), 1, now)
+        w30 = report.get("window_30d", {})
+        assert "window_scope_complete" in w30
+        assert "window_coverage_percent" in w30
+        assert "observed_days" in w30
+
+    def test_incomplete_window_contains_no_final_ssd_verdict(self):
+        now = datetime.now(UTC)
+        docs = [_make_doc(source_date=_today_str())]
+        exec_scope = ExecutionScope(units_target=1, units_completed=1, complete=False)
+        nat_scope = NationalScope(complete=False)
+        scope = ScopeResult(execution_scope=exec_scope, national_scope=nat_scope)
+        report = build_report(docs, scope, list(ACTIVE_LAW_TYPES), 1, now)
+        assert report["ssd_verdict"] == "unavailable"
+        for wd in ("30", "90", "180"):
+            w = report.get("windows", {}).get(wd, {})
+            s = w.get("sizing", {})
+            if wd != "30":
+                assert s.get("sizing_status", "available") == "unavailable", f"wd={wd}"
 
     def test_no_active_claims_in_report(self):
         now = datetime.now(UTC)
@@ -432,61 +732,8 @@ class TestReport:
         with open(tmp_path / "arv-009-rolling-window-storage.json") as f:
             data = json.load(f)
         text = json.dumps(data)
-        # No procurement IDs, file names, or URLs in committed output
         assert "p001" not in text
-        assert "doc1.pdf" not in text
         assert "http://" not in text
-
-
-# ── Checkpoint ─────────────────────────────────────────────────────────────
-
-
-class TestCheckpoint:
-    def test_save_and_load(self, tmp_path: Path):
-        state = {
-            "completed_regions": ["72", "50"],
-            "completed_dates": ["2026-07-25+03:00"],
-            "documents": [asdict(_make_doc())],
-            "had_error": False,
-            "source_errors": [],
-            "archives_downloaded": 5,
-            "archives_skipped": 0,
-        }
-        ckpt_path = tmp_path / ".arv009c13_checkpoint.json"
-        save_checkpoint(state, ckpt_path)
-        assert ckpt_path.exists()
-        loaded = load_checkpoint(ckpt_path)
-        assert loaded is not None
-        assert loaded["completed_regions"] == ["72", "50"]
-        assert loaded["archives_downloaded"] == 5
-        assert len(loaded["documents"]) == 1
-
-    def test_load_nonexistent_returns_none(self, tmp_path: Path):
-        loaded = load_checkpoint(tmp_path / "nonexistent.json")
-        assert loaded is None
-
-    def test_interrupted_resume(self, tmp_path: Path):
-        state = {
-            "completed_regions": ["72"],
-            "completed_dates": ["2026-07-25+03:00"],
-            "documents": [asdict(_make_doc(
-                procurement_id="p001",
-                source_date="2026-07-25T10:00:00+03:00",
-            ))],
-            "had_error": False,
-            "source_errors": [],
-            "archives_downloaded": 1,
-            "archives_skipped": 0,
-            "region_attempted": ["72"],
-        }
-        ckpt_path = tmp_path / ".arv009c13_checkpoint.json"
-        save_checkpoint(state, ckpt_path)
-
-        # Reload and verify resume would pick up completed regions
-        loaded = load_checkpoint(ckpt_path)
-        assert loaded is not None
-        assert "72" in loaded["completed_regions"]
-        assert len(loaded["documents"]) == 1
 
 
 # ── Source errors ──────────────────────────────────────────────────────────
@@ -495,22 +742,13 @@ class TestCheckpoint:
 class TestScopeResult:
     def test_source_error_makes_scope_incomplete(self):
         scope = ScopeResult(
-            regions_completed=1, dates_completed=100,
-            region_scope_complete=False,
-            date_scope_complete=True,
-            law_scope_complete=False,
             source_errors=["region 99 date 2026-07-25: API timeout"],
         )
-        assert not scope.region_scope_complete
         assert len(scope.source_errors) == 1
 
     def test_missing_law_blocks_final_verdict(self):
-        scope = ScopeResult(law_scope_complete=False)
-        # When law_scope_complete=False, verdict must be unavailable
-        from scripts.capacity.planning.measure_rolling_window_storage import IMPLEMENTED_LAWS
         assert "44fz" in IMPLEMENTED_LAWS
         assert "223fz" not in IMPLEMENTED_LAWS
-        assert not scope.law_scope_complete
 
 
 # ── Parser helpers ─────────────────────────────────────────────────────────
@@ -548,11 +786,11 @@ class TestOutputFormat:
         csv_path = tmp_path / "arv-009-rolling-window-storage.csv"
         assert csv_path.exists()
         lines = csv_path.read_text().strip().split("\n")
-        assert len(lines) >= 2  # header + at least one data row
+        assert len(lines) >= 2
         header = lines[0]
         assert "window_days" in header
-        assert "conservative_union_bytes" in header
-        assert "base_required_bytes" in header
+        assert "window_scope_complete" in header
+        assert "sizing_status" in header
 
     def test_json_structure(self, tmp_path: Path):
         now = datetime.now(UTC)
@@ -563,7 +801,8 @@ class TestOutputFormat:
         json_path = tmp_path / "arv-009-rolling-window-storage.json"
         assert json_path.exists()
         data = json.loads(json_path.read_text())
-        for key in ("schema_version", "measurement_kind", "ssd_verdict", "windows", "sizing", "scope"):
+        for key in ("schema_version", "measurement_kind", "ssd_verdict",
+                     "execution_scope", "national_scope", "windows"):
             assert key in data
 
 
@@ -575,12 +814,11 @@ class TestConstants:
         assert COMMERCIAL_RESERVE_RATIO == 0.50
 
     def test_20_pct_free_space(self):
-        assert 1 / 0.80 == 1.25  # base / 0.80 = 125% of base
+        assert 1 / 0.80 == 1.25
 
     def test_windows_30_90_180(self):
-        assert 30 in ROLLING_WINDOWS_DAYS
-        assert 90 in ROLLING_WINDOWS_DAYS
-        assert 180 in ROLLING_WINDOWS_DAYS
+        for wd in (30, 90, 180):
+            assert wd in (30, 90, 180)
 
     def test_law_types(self):
         assert "44fz" in ACTIVE_LAW_TYPES

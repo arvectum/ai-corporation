@@ -1,4 +1,4 @@
-window_days,unique_procurements,unique_documents,known_bytes,unknown_size_documents,size_coverage_pct,latest_version_bytes,conservative_union_bytes,p50_bytes,p95_bytes,p99_bytes,base_required_bytes,remaining_bytes,verdict
-30,178,802,598264735,0,100.0,598264735,598264735,418420,7116281,79078627,215645761902,1784354238098,unavailable
-90,178,802,598264735,0,100.0,598264735,598264735,418420,7116281,79078627,215645761902,1784354238098,unavailable
-180,178,802,598264735,0,100.0,598264735,598264735,418420,7116281,79078627,215645761902,1784354238098,unavailable
+window_days,unique_procurements,unique_documents,known_bytes,size_coverage_pct,conservative_union_bytes,window_scope_complete,sizing_status,ssd_verdict
+30,178,802,598264735,100.0,598264735,False,unavailable,unavailable
+90,178,802,598264735,100.0,598264735,False,unavailable,unavailable
+180,178,802,598264735,100.0,598264735,False,unavailable,unavailable

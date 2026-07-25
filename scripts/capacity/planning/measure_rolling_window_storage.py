@@ -1,25 +1,7 @@
 """
-ARV-009C1.3 — Rolling-window EIS storage upper bound.
+ARV-009C1.3A — Rolling-window EIS storage upper bound.
 
-Sweeps EIS getDocsByOrgRegion across all regions for up to 180 lookback
-days, collects document metadata from export ZIP XMLs, deduplicates,
-and computes storage upper bounds for 30/90/180-day rolling windows.
-
-Usage:
-    python scripts/capacity/planning/measure_rolling_window_storage.py \
-        --output-dir /tmp/arv009c1
-
-    # Resume from checkpoint
-    python scripts/capacity/planning/measure_rolling_window_storage.py \
-        --output-dir /tmp/arv009c1 --resume
-
-    # Limited regions for testing
-    python scripts/capacity/planning/measure_rolling_window_storage.py \
-        --output-dir /tmp/arv009c1 --max-regions 3 --lookback-days 7
-
-    # Custom delay between SOAP requests
-    python scripts/capacity/planning/measure_rolling_window_storage.py \
-        --output-dir /tmp/arv009c1 --delay 0.5
+Corrected checkpoint, scope, and window coverage semantics.
 """
 
 from __future__ import annotations
@@ -29,7 +11,9 @@ import json
 import logging
 import math
 import os
+import re as _re
 import signal
+import subprocess
 import sys
 import time
 import zipfile
@@ -42,8 +26,6 @@ from xml.etree import ElementTree as ET
 
 logger = logging.getLogger(__name__)
 
-# ── Constants ──────────────────────────────────────────────────────────────
-
 SSD_CAPACITY_DECIMAL_BYTES = 2_000_000_000_000
 ONE_GIB = 1_073_741_824
 ONE_TIB = 1_099_511_627_776
@@ -53,8 +35,6 @@ PROCESSING_SPACE_MIN_BYTES = 150 * ONE_GIB
 PERSISTENT_RESULTS_AND_LOGS_BYTES = 50 * ONE_GIB
 COMMERCIAL_RESERVE_RATIO = 0.50
 MAX_PROCESSING_CONCURRENCY = 4
-COVERAGE_THRESHOLD = 95.0
-ROLLING_WINDOWS_DAYS = (30, 90, 180)
 
 ACTIVE_LAW_TYPES = ("44fz", "223fz", "capital_repair")
 IMPLEMENTED_LAWS = ["44fz"]
@@ -83,6 +63,8 @@ EIS_REGION_REGISTRY = {
 }
 
 _RUSSIAN_REGIONS = EIS_REGION_REGISTRY["codes"]
+NATIONAL_TARGET_REGIONS = _RUSSIAN_REGIONS
+NATIONAL_TARGET_WINDOW_DAYS = 180
 
 DEFAULT_DELAY_SECONDS = 0.0
 MAX_RETRIES = 3
@@ -110,15 +92,33 @@ def _handle_sigint(signum: int, frame: Any) -> None:
     _interrupted = True
 
 
+# ── Checkpoint / CompletedUnit ─────────────────────────────────────────────
+
+
+@dataclass
+class CompletedUnit:
+    region: str
+    date: str
+    law: str
+
+    def canonical_key(self) -> str:
+        return f"{self.region}|{self.date}|{self.law}"
+
+    @staticmethod
+    def from_dict(d: dict) -> CompletedUnit:
+        return CompletedUnit(region=d["region"], date=d["date"], law=d["law"])
+
+
+def build_unit_key(region: str, date_str: str, law: str) -> str:
+    return f"{region}|{date_str}|{law}"
+
+
 # ── EIS helpers ────────────────────────────────────────────────────────────
 
 
 def _parse_eis_datetime(text: str) -> datetime | None:
     cleaned = text.strip()
-    # Strip trailing timezone offset like +03:00 or -05:00 for date-only formats
-    import re as _re
     cleaned_no_tz = _re.sub(r"[+-]\d{2}:\d{2}$", "", cleaned)
-
     for fmt in (
         "%Y-%m-%dT%H:%M:%S%z",
         "%Y-%m-%dT%H:%M:%S.%f%z",
@@ -129,7 +129,6 @@ def _parse_eis_datetime(text: str) -> datetime | None:
             return datetime.strptime(cleaned, fmt)
         except ValueError:
             continue
-    # Try date-only without timezone suffix (e.g. "2026-07-25+03:00" -> "2026-07-25")
     try:
         return datetime.strptime(cleaned_no_tz, "%Y-%m-%d")
     except ValueError:
@@ -158,7 +157,36 @@ def _parse_xml_version_number(root: ET.Element) -> str | None:
     return None
 
 
-# ── Document extraction ────────────────────────────────────────────────
+# ── Version comparison ─────────────────────────────────────────────────────
+
+
+def _parse_version_as_int(v: str) -> int | None:
+    try:
+        return int(v)
+    except (ValueError, TypeError):
+        return None
+
+
+def _version_sort_key(v: str | None, source_date: str = "") -> tuple:
+    if v is None or v.strip() == "":
+        return (0, 0, source_date)
+    parsed_int = _parse_version_as_int(v)
+    if parsed_int is not None:
+        return (1, parsed_int, "")
+    return (2, *tuple(v.split(".")), "")
+
+
+def _pick_latest_doc_in_group(group: list[DocumentRecord]) -> DocumentRecord:
+    best = group[0]
+    for d in group[1:]:
+        if _version_sort_key(d.version, d.source_date) > _version_sort_key(
+            best.version, best.source_date
+        ):
+            best = d
+    return best
+
+
+# ── Document extraction ────────────────────────────────────────────────────
 
 
 @dataclass
@@ -176,11 +204,12 @@ class DocumentRecord:
     def dedup_key(self) -> str:
         return f"{self.law}|{self.procurement_id}|{self.doc_id}"
 
+    def procurement_group_key(self) -> str:
+        return f"{self.law}|{self.procurement_id}"
+
 
 def _extract_documents_from_archive(
-    archive_path: Path,
-    region: str,
-    date_str: str,
+    archive_path: Path, region: str, date_str: str,
 ) -> list[DocumentRecord]:
     docs: list[DocumentRecord] = []
     try:
@@ -233,13 +262,21 @@ def _extract_documents_from_archive(
 
 
 def dedup_latest_version(docs: list[DocumentRecord]) -> list[DocumentRecord]:
-    seen: dict[str, DocumentRecord] = {}
+    groups: dict[str, list[DocumentRecord]] = defaultdict(list)
     for d in docs:
+        groups[d.procurement_group_key()].append(d)
+    selected: list[DocumentRecord] = []
+    for gkey, group in groups.items():
+        version_groups: dict[str, list[DocumentRecord]] = defaultdict(list)
+        for d in group:
+            vk = d.version or ""
+            version_groups[vk].append(d)
+        best_version = max(version_groups.keys(), key=lambda v: _version_sort_key(v, ""))
+        selected.extend(version_groups[best_version])
+    seen: dict[str, DocumentRecord] = {}
+    for d in selected:
         key = d.dedup_key()
-        existing = seen.get(key)
-        if existing is None:
-            seen[key] = d
-        elif (d.version or "") > (existing.version or ""):
+        if key not in seen:
             seen[key] = d
     return list(seen.values())
 
@@ -247,21 +284,44 @@ def dedup_latest_version(docs: list[DocumentRecord]) -> list[DocumentRecord]:
 def dedup_conservative_union(docs: list[DocumentRecord]) -> list[DocumentRecord]:
     seen: dict[str, DocumentRecord] = {}
     for d in docs:
-        seen[d.dedup_key()] = d
+        key = d.dedup_key()
+        if key not in seen:
+            seen[key] = d
     return list(seen.values())
 
 
-# ── Scope result ───────────────────────────────────────────────────────────
+# ── Scope dataclasses ──────────────────────────────────────────────────────
+
+
+@dataclass
+class ExecutionScope:
+    requested_regions: list[str] = field(default_factory=list)
+    requested_dates: list[str] = field(default_factory=list)
+    requested_laws: list[str] = field(default_factory=list)
+    units_target: int = 0
+    units_completed: int = 0
+    complete: bool = False
+
+
+@dataclass
+class NationalScope:
+    target_region_registry: dict = field(default_factory=dict)
+    target_region_count: int = 0
+    target_laws: list[str] = field(default_factory=list)
+    target_window_days: int = 180
+    regions_covered: int = 0
+    laws_covered: list[str] = field(default_factory=list)
+    days_covered: int = 0
+    region_complete: bool = False
+    law_complete: bool = False
+    window_complete: bool = False
+    complete: bool = False
 
 
 @dataclass
 class ScopeResult:
-    regions_completed: int = 0
-    dates_completed: int = 0
-    laws_completed: list[str] = field(default_factory=list)
-    region_scope_complete: bool = False
-    date_scope_complete: bool = False
-    law_scope_complete: bool = False
+    execution_scope: ExecutionScope = field(default_factory=ExecutionScope)
+    national_scope: NationalScope = field(default_factory=NationalScope)
     source_errors: list[str] = field(default_factory=list)
 
 
@@ -269,9 +329,7 @@ class ScopeResult:
 
 
 def filter_docs_by_window(
-    docs: list[DocumentRecord],
-    window_days: int,
-    snapshot_date: datetime,
+    docs: list[DocumentRecord], window_days: int, snapshot_date: datetime,
 ) -> list[DocumentRecord]:
     cutoff = snapshot_date - timedelta(days=window_days)
     return [d for d in docs if d.source_date and _date_in_window(d.source_date, cutoff)]
@@ -283,7 +341,6 @@ def _date_in_window(date_str: str, cutoff: datetime) -> bool:
         return False
     if dt.tzinfo is not None:
         return dt >= cutoff
-    # Naive datetime (date-only) — compare as dates
     return dt.date() >= cutoff.date()
 
 
@@ -291,9 +348,9 @@ def compute_window_metrics(
     docs: list[DocumentRecord],
     window_days: int,
     snapshot_date: datetime,
+    observed_days_count: int | None = None,
 ) -> dict[str, Any]:
     window_docs = filter_docs_by_window(docs, window_days, snapshot_date)
-
     window_start = (snapshot_date - timedelta(days=window_days)).strftime("%Y-%m-%d")
 
     latest_docs = dedup_latest_version(window_docs)
@@ -320,7 +377,7 @@ def compute_window_metrics(
         if n == 0:
             return 0
         idx = max(0, min(n - 1, int(math.ceil(rank * n / 100) - 1)))
-        return pkg_sizes[idx]
+        return int(pkg_sizes[idx])
 
     over_100mb = sum(1 for s in pkg_sizes if s > 100_000_000)
     over_250mb = sum(1 for s in pkg_sizes if s > 250_000_000)
@@ -336,8 +393,21 @@ def compute_window_metrics(
     max_daily = max(daily_values) if daily_values else 0
     avg_daily = (sum(daily_values) / len(daily_values)) if daily_values else 0.0
 
+    if observed_days_count is None:
+        observed_days_count = len(daily_values)
+
+    window_coverage_percent = (
+        min(100.0, observed_days_count / window_days * 100.0) if window_days > 0 else 0.0
+    )
+    window_scope_complete = observed_days_count >= window_days
+
+    file_count = len(window_docs)
+
     return {
         "window_days": window_days,
+        "observed_days": observed_days_count,
+        "window_coverage_percent": round(window_coverage_percent, 1),
+        "window_scope_complete": window_scope_complete,
         "window_start_date": window_start,
         "window_end_date": snapshot_date.strftime("%Y-%m-%d"),
         "unique_procurements": len(procurements),
@@ -360,11 +430,18 @@ def compute_window_metrics(
         "packages_over_1gib": over_1gib,
         "max_daily_incoming_bytes": max_daily,
         "avg_daily_incoming_bytes": round(avg_daily, 1),
-        "file_count": len(window_docs),
+        "file_count": file_count,
     }
 
 
-# ── Sizing ─────────────────────────────────────────────────────────────────
+# ── Sizing (only for complete windows) ─────────────────────────────────────
+
+
+def compute_observed_subtotal(window_metrics: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "observed_bytes": window_metrics.get("conservative_union_bytes", 0),
+        "observed_processing_floor": PROCESSING_SPACE_MIN_BYTES,
+    }
 
 
 def compute_sizing_for_window(window_metrics: dict[str, Any]) -> dict[str, Any]:
@@ -395,6 +472,15 @@ def compute_sizing_for_window(window_metrics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def compute_sizing_status(window_scope_complete: bool) -> dict[str, Any]:
+    if not window_scope_complete:
+        return {
+            "sizing_status": "unavailable",
+            "reason": "window_not_fully_observed",
+        }
+    return {}
+
+
 # ── Verdict ────────────────────────────────────────────────────────────────
 
 
@@ -412,6 +498,8 @@ def determine_verdict(
     s90 = sizing.get(90)
     if s180 is None:
         return "unavailable", "180-day window data not available."
+    if s180.get("sizing_status") == "unavailable":
+        return "unavailable", s180.get("reason", "window not fully observed")
     b180 = s180["base_required_bytes"]
     b90 = s90["base_required_bytes"] if s90 else b180
     if b180 <= GREEN_THRESHOLD_BYTES:
@@ -461,6 +549,41 @@ def load_checkpoint(path: Path) -> dict[str, Any] | None:
     return None
 
 
+def build_checkpoint(
+    completed_units: list[CompletedUnit],
+    documents: list[DocumentRecord],
+    had_error: bool,
+    source_errors: list[str],
+    archives_downloaded: int,
+    archives_skipped: int,
+    units_target: int,
+    units_completed: int,
+    units_failed: int,
+    interrupted: bool = False,
+    region_attempted: list[str] | None = None,
+) -> dict[str, Any]:
+    units_remaining = units_target - units_completed - units_failed
+    if units_remaining < 0:
+        units_remaining = 0
+    return {
+        "interrupted": interrupted,
+        "units_target": units_target,
+        "units_completed": units_completed,
+        "units_failed": units_failed,
+        "units_remaining": units_remaining,
+        "completed_units": [
+            {"region": u.region, "date": u.date, "law": u.law}
+            for u in completed_units
+        ],
+        "documents": [asdict(d) for d in documents],
+        "had_error": had_error,
+        "source_errors": source_errors,
+        "archives_downloaded": archives_downloaded,
+        "archives_skipped": archives_skipped,
+        "region_attempted": region_attempted or [],
+    }
+
+
 # ── Sweep ──────────────────────────────────────────────────────────────────
 
 
@@ -471,16 +594,10 @@ def run_sweep(
     region_whitelist: list[str] | None = None,
     delay_seconds: float = DEFAULT_DELAY_SECONDS,
     resume: bool = False,
-) -> tuple[list[DocumentRecord], ScopeResult, list[str], list[str]]:
-    from src.modules.tender_operator_agent_demo.settings import (
-        get_zakupki_soap_settings,
-    )
-    from src.modules.tender_operator_agent_demo.zakupki_soap_client import (
-        ZakupkiSoapClient,
-    )
-    from src.tender_research.sync.eis_params import (
-        format_eis_exact_date,
-    )
+) -> tuple[list[DocumentRecord], ScopeResult, int, int, int]:
+    from src.modules.tender_operator_agent_demo.settings import get_zakupki_soap_settings
+    from src.modules.tender_operator_agent_demo.zakupki_soap_client import ZakupkiSoapClient
+    from src.tender_research.sync.eis_params import format_eis_exact_date
 
     settings = get_zakupki_soap_settings()
     if not settings.configured:
@@ -510,32 +627,39 @@ def run_sweep(
     archive_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / CHECKPOINT_FILENAME
 
-    # Load checkpoint state
-    completed_regions: set[str] = set()
-    completed_dates: set[str] = set()
+    completed_units: list[CompletedUnit] = []
+    completed_keys: set[str] = set()
     documents: list[DocumentRecord] = []
     had_error = False
     source_errors: list[str] = []
     archives_downloaded = 0
     archives_skipped = 0
-    region_attempted: set[str] = set()
+    region_attempted: list[str] = []
+    units_completed = 0
+    units_failed = 0
+
+    units_target = len(regions) * len(dates_to_scan) * len(implemented_laws)
 
     if resume:
         ckpt = load_checkpoint(checkpoint_path)
         if ckpt:
-            completed_regions = set(ckpt.get("completed_regions", []))
-            completed_dates = set(ckpt.get("completed_dates", []))
+            for u_dict in ckpt.get("completed_units", []):
+                cu = CompletedUnit.from_dict(u_dict)
+                completed_units.append(cu)
+                completed_keys.add(cu.canonical_key())
             doc_dicts = ckpt.get("documents", [])
             documents = [DocumentRecord(**d) for d in doc_dicts]
             had_error = ckpt.get("had_error", False)
             source_errors = ckpt.get("source_errors", [])
             archives_downloaded = ckpt.get("archives_downloaded", 0)
             archives_skipped = ckpt.get("archives_skipped", 0)
-            region_attempted = set(ckpt.get("region_attempted", []))
+            region_attempted = ckpt.get("region_attempted", [])
+            units_completed = ckpt.get("units_completed", 0)
+            units_failed = ckpt.get("units_failed", 0)
             logger.info(
-                "Resumed: %d regions, %d dates, %d docs, %d errors",
-                len(completed_regions), len(completed_dates), len(documents),
-                len(source_errors),
+                "Resumed: %d completed_units, %d docs, %d errors, target=%d completed=%d failed=%d",
+                len(completed_units), len(documents),
+                len(source_errors), units_target, units_completed, units_failed,
             )
 
     signal.signal(signal.SIGINT, _handle_sigint)
@@ -543,25 +667,23 @@ def run_sweep(
     for region in regions:
         if _interrupted:
             break
-        if region in completed_regions:
-            continue
-        region_attempted.add(region)
+        region_attempted.append(region)
+        region_in_progress = False
 
         for exact_date in dates_to_scan:
             if _interrupted:
                 break
-            if exact_date in completed_dates:
-                continue
-
             for law in implemented_laws:
                 if _interrupted:
                     break
-
+                unit_key = build_unit_key(region, exact_date, law)
+                if unit_key in completed_keys:
+                    continue
+                region_in_progress = True
                 doc_type = "epNotificationEF2020"
                 try:
                     if delay_seconds > 0 and (archives_downloaded > 0 or archives_skipped > 0):
                         time.sleep(delay_seconds)
-
                     result = client.get_docs_by_org_region(
                         org_region=region,
                         exact_date=exact_date,
@@ -579,56 +701,77 @@ def run_sweep(
                 except Exception as e:
                     source_errors.append(f"{region} {exact_date} {law}: {e}")
                     had_error = True
+                    units_failed += 1
 
-                # Checkpoint after each (region, date, law) combo
-                ckpt_data = {
-                    "completed_regions": list(completed_regions),
-                    "completed_dates": list(completed_dates),
-                    "documents": [asdict(d) for d in documents],
-                    "had_error": had_error,
-                    "source_errors": source_errors,
-                    "archives_downloaded": archives_downloaded,
-                    "archives_skipped": archives_skipped,
-                    "region_attempted": list(region_attempted),
-                }
+                cu = CompletedUnit(region=region, date=exact_date, law=law)
+                completed_units.append(cu)
+                completed_keys.add(cu.canonical_key())
+                units_completed += 1
+
+                ckpt_data = build_checkpoint(
+                    completed_units=completed_units,
+                    documents=documents,
+                    had_error=had_error,
+                    source_errors=source_errors,
+                    archives_downloaded=archives_downloaded,
+                    archives_skipped=archives_skipped,
+                    units_target=units_target,
+                    units_completed=units_completed,
+                    units_failed=units_failed,
+                    interrupted=_interrupted,
+                    region_attempted=region_attempted,
+                )
                 save_checkpoint(ckpt_data, checkpoint_path)
 
-            completed_dates.add(exact_date)
-
-        completed_regions.add(region)
-        # Region done — update checkpoint with region completion
-        ckpt_data = {
-            "completed_regions": list(completed_regions),
-            "completed_dates": list(completed_dates),
-            "documents": [asdict(d) for d in documents],
-            "had_error": had_error,
-            "source_errors": source_errors,
-            "archives_downloaded": archives_downloaded,
-            "archives_skipped": archives_skipped,
-            "region_attempted": list(region_attempted),
-        }
-        save_checkpoint(ckpt_data, checkpoint_path)
-
     if _interrupted:
-        logger.info("Sweep interrupted. %d regions, %d dates, %d docs collected.",
-                     len(completed_regions), len(completed_dates), len(documents))
+        logger.info("Sweep interrupted. %d units completed, %d docs collected.",
+                     units_completed, len(documents))
 
-    failed_laws = [l for l in target_laws if l not in implemented_laws]
-    law_scope_complete = not failed_laws
-    region_scope_complete = len(completed_regions) == len(regions) and not had_error
-    date_scope_complete = len(completed_dates) == len(dates_to_scan) and not had_error
+    execution_complete = units_completed == units_target and not _interrupted
+
+    exec_scope = ExecutionScope(
+        requested_regions=list(regions),
+        requested_dates=dates_to_scan,
+        requested_laws=list(implemented_laws),
+        units_target=units_target,
+        units_completed=units_completed,
+        complete=execution_complete,
+    )
+
+    completed_region_set = set()
+    completed_date_set = set()
+    completed_laws_set = set()
+    for cu in completed_units:
+        completed_region_set.add(cu.region)
+        completed_date_set.add(cu.date)
+        completed_laws_set.add(cu.law)
+
+    failed_laws = [l for l in target_laws if l not in completed_laws_set]
+
+    national_region_complete = len(completed_region_set) == len(NATIONAL_TARGET_REGIONS) and not had_error
+    national_law_complete = len(failed_laws) == 0
+    national_window_complete = len(completed_date_set) >= NATIONAL_TARGET_WINDOW_DAYS
+
+    nat_scope = NationalScope(
+        target_region_registry=dict(EIS_REGION_REGISTRY),
+        target_region_count=len(NATIONAL_TARGET_REGIONS),
+        target_laws=list(target_laws),
+        target_window_days=NATIONAL_TARGET_WINDOW_DAYS,
+        regions_covered=len(completed_region_set),
+        laws_covered=sorted(completed_laws_set),
+        days_covered=len(completed_date_set),
+        region_complete=national_region_complete,
+        law_complete=national_law_complete,
+        window_complete=national_window_complete,
+        complete=national_region_complete and national_law_complete and national_window_complete,
+    )
 
     scope = ScopeResult(
-        regions_completed=len(completed_regions),
-        dates_completed=len(completed_dates),
-        laws_completed=list(implemented_laws),
-        region_scope_complete=region_scope_complete,
-        date_scope_complete=date_scope_complete,
-        law_scope_complete=law_scope_complete,
+        execution_scope=exec_scope,
+        national_scope=nat_scope,
         source_errors=source_errors,
     )
 
-    # Clean up archives
     for f in archive_dir.iterdir():
         try:
             if f.is_file():
@@ -636,7 +779,7 @@ def run_sweep(
         except OSError:
             pass
 
-    return documents, scope, target_laws, failed_laws
+    return documents, scope, units_completed, units_failed, units_target
 
 
 # ── Output ─────────────────────────────────────────────────────────────────
@@ -646,74 +789,102 @@ def build_report(
     documents: list[DocumentRecord],
     scope: ScopeResult,
     target_laws: list[str],
-    failed_laws: list[str],
+    lookback_days: int,
     generated_at: datetime,
 ) -> dict[str, Any]:
     snapshot_date = datetime.now(UTC)
+
     windows: dict[int, dict[str, Any]] = {}
     sizing: dict[int, dict[str, Any]] = {}
+    if isinstance(lookback_days, int):
+        observed_days = lookback_days
+    else:
+        observed_days = len({d.source_date for d in documents if d.source_date})
 
-    for wd in ROLLING_WINDOWS_DAYS:
-        wm = compute_window_metrics(documents, wd, snapshot_date)
+    for wd in (30, 90, 180):
+        wm = compute_window_metrics(
+            documents, wd, snapshot_date,
+            observed_days_count=observed_days,
+        )
         windows[wd] = wm
-        sizing[wd] = compute_sizing_for_window(wm)
+        if wm["window_scope_complete"]:
+            sizing[wd] = compute_sizing_for_window(wm)
+        else:
+            sizing[wd] = compute_observed_subtotal(wm)
+            sizing[wd].update(compute_sizing_status(False))
 
-    scope_complete = (
-        scope.region_scope_complete
-        and scope.date_scope_complete
-        and scope.law_scope_complete
-        and not failed_laws
-    )
+    failed_laws = [l for l in target_laws if l not in scope.national_scope.laws_covered]
 
+    exec_complete = scope.execution_scope.complete
+    nat_complete = scope.national_scope.complete
     windows_ok = all(
-        w.get("size_coverage_percent", 0) >= COVERAGE_THRESHOLD
+        w.get("size_coverage_percent", 0) >= 95.0
         for w in windows.values()
     )
+    scope_complete = exec_complete and nat_complete and not failed_laws
 
     verdict, reason = determine_verdict(windows, sizing, scope_complete, windows_ok)
 
-    # Provisional 44-FZ envelope when law scope is incomplete
-    provisional = None
-    if not scope.law_scope_complete:
-        w180 = windows.get(180, {})
-        s180 = sizing.get(180, {})
-        remaining = s180.get("remaining_bytes", 0) if s180 else 0
-        remaining_fmt = _fmt_bytes(remaining) if remaining else "N/A"
-        provisional = {
-            "measured_law": "44fz",
-            "unimplemented_laws": failed_laws,
-            "window_days": w180.get("window_days", 180),
-            "measured_bytes": w180.get("conservative_union_bytes", 0),
-            "remaining_on_2tb_after_44fz": remaining_fmt,
-        }
+    commit_sha = ""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        )
+        commit_sha = result.stdout.strip()
+    except Exception:
+        commit_sha = "unknown"
 
     report = {
-        "schema_version": "1.0.0",
-        "measurement_kind": "incomplete" if not scope_complete else "real_partial",
+        "schema_version": "2.0.0",
+        "measurement_kind": "incomplete",
         "ssd_verdict": verdict,
         "verdict_reason": reason,
         "meta": {
             "tool": "measure_rolling_window_storage.py",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "generated_at": generated_at.isoformat(),
+            "generator_commit_sha": commit_sha,
         },
-        "scope": {
-            "target_laws": target_laws,
-            "failed_laws": failed_laws,
-            "completed_laws": scope.laws_completed,
-            "regions_completed": scope.regions_completed,
-            "dates_completed": scope.dates_completed,
-            "region_scope_complete": scope.region_scope_complete,
-            "date_scope_complete": scope.date_scope_complete,
-            "law_scope_complete": scope.law_scope_complete,
-            "source_errors": scope.source_errors,
+        "execution_scope": {
+            "requested_regions": scope.execution_scope.requested_regions,
+            "requested_dates": scope.execution_scope.requested_dates,
+            "requested_laws": scope.execution_scope.requested_laws,
+            "units_target": scope.execution_scope.units_target,
+            "units_completed": scope.execution_scope.units_completed,
+            "complete": exec_complete,
         },
-        "windows": {str(k): v for k, v in sorted(windows.items())},
-        "sizing": {str(k): v for k, v in sorted(sizing.items())},
+        "national_scope": {
+            "target_region_registry": scope.national_scope.target_region_registry,
+            "target_region_count": scope.national_scope.target_region_count,
+            "target_laws": scope.national_scope.target_laws,
+            "target_window_days": scope.national_scope.target_window_days,
+            "regions_covered": scope.national_scope.regions_covered,
+            "laws_covered": scope.national_scope.laws_covered,
+            "days_covered": scope.national_scope.days_covered,
+            "region_complete": scope.national_scope.region_complete,
+            "law_complete": scope.national_scope.law_complete,
+            "window_complete": scope.national_scope.window_complete,
+            "complete": nat_complete,
+        },
+        "source_errors": scope.source_errors,
     }
 
-    if provisional is not None:
-        report["provisional_44fz_envelope"] = provisional
+    for wd in (30, 90, 180):
+        w = windows[wd]
+        s = sizing[wd]
+        w_key = str(wd)
+        w_report = dict(w)
+        w_report["sizing"] = s
+        report[f"window_{wd}d"] = w_report
+        if "windows" not in report:
+            report["windows"] = {}
+        w_with_sizing = dict(w)
+        w_with_sizing["sizing"] = s
+        report["windows"][w_key] = w_with_sizing
+
+    if "windows" not in report:
+        report["windows"] = {}
 
     return report
 
@@ -724,23 +895,21 @@ def write_outputs(report: dict[str, Any], output_dir: Path) -> None:
     logger.info("Wrote %s", json_path)
 
     csv_path = output_dir / OUTPUT_CSV
-    lines = [
-        "window_days,unique_procurements,unique_documents,known_bytes,unknown_size_documents,"
-        "size_coverage_pct,latest_version_bytes,conservative_union_bytes,"
-        "p50_bytes,p95_bytes,p99_bytes,base_required_bytes,remaining_bytes,verdict"
-    ]
-    windows = report.get("windows", {})
-    sizing = report.get("sizing", {})
     verdict = report.get("ssd_verdict", "unavailable")
-    for wd, wm in sorted(windows.items(), key=lambda x: int(x[0])):
-        s = sizing.get(wd, {})
+    lines = [
+        "window_days,unique_procurements,unique_documents,known_bytes,"
+        "size_coverage_pct,conservative_union_bytes,"
+        "window_scope_complete,sizing_status,ssd_verdict"
+    ]
+    for wd in (30, 90, 180):
+        w = report.get("windows", {}).get(str(wd), {})
+        s = w.get("sizing", {})
+        sizing_st = s.get("sizing_status", "available")
         lines.append(
-            f"{wd},{wm.get('unique_procurements',0)},{wm.get('unique_documents',0)},"
-            f"{wm.get('known_bytes',0)},{wm.get('unknown_size_documents',0)},"
-            f"{wm.get('size_coverage_percent',0)},{wm.get('latest_version_bytes',0)},"
-            f"{wm.get('conservative_union_bytes',0)},"
-            f"{wm.get('p50_bytes',0)},{wm.get('p95_bytes',0)},{wm.get('p99_bytes',0)},"
-            f"{s.get('base_required_bytes',0)},{s.get('remaining_bytes',0)},{verdict}"
+            f"{wd},{w.get('unique_procurements',0)},{w.get('unique_documents',0)},"
+            f"{w.get('known_bytes',0)},{w.get('size_coverage_percent',0)},"
+            f"{w.get('conservative_union_bytes',0)},"
+            f"{w.get('window_scope_complete',False)},{sizing_st},{verdict}"
         )
     csv_path.write_text("\n".join(lines) + "\n")
     logger.info("Wrote %s", csv_path)
@@ -751,7 +920,7 @@ def write_outputs(report: dict[str, Any], output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="ARV-009C1.3 — Rolling-window EIS storage upper bound."
+        description="ARV-009C1.3A — Rolling-window EIS storage upper bound."
     )
     parser.add_argument("--output-dir", default="/tmp/arv009c1")
     parser.add_argument("--lookback-days", type=int, default=180)
@@ -772,7 +941,7 @@ def main() -> None:
     generated_at = datetime.now(UTC)
 
     try:
-        documents, scope, target_laws, failed_laws = run_sweep(
+        documents, scope, units_completed, units_failed, units_target = run_sweep(
             output_dir=output_dir,
             lookback_days=args.lookback_days,
             max_regions=args.max_regions,
@@ -783,43 +952,57 @@ def main() -> None:
     except RuntimeError as e:
         logger.error("Sweep blocked: %s", e)
         report = {
-            "schema_version": "1.0.0",
+            "schema_version": "2.0.0",
             "measurement_kind": "incomplete",
             "ssd_verdict": "unavailable",
             "verdict_reason": str(e),
             "meta": {
                 "tool": "measure_rolling_window_storage.py",
-                "version": "1.0.0",
+                "version": "2.0.0",
                 "generated_at": generated_at.isoformat(),
             },
         }
         write_outputs(report, output_dir)
         sys.exit(1)
 
+    target_laws = list(ACTIVE_LAW_TYPES)
     logger.info(
-        "Sweep complete: regions=%d dates=%d docs=%d errors=%d",
-        scope.regions_completed, scope.dates_completed,
+        "Sweep complete: units=%d/%d failures=%d docs=%d errors=%d",
+        units_completed, units_target, units_failed,
         len(documents), len(scope.source_errors),
     )
 
-    report = build_report(documents, scope, target_laws, failed_laws, generated_at)
+    report = build_report(
+        documents, scope, target_laws, args.lookback_days, generated_at,
+    )
     write_outputs(report, output_dir)
 
-    print(f"\n  ARV-009C1.3 — ROLLING WINDOW STORAGE UPPER BOUND")
-    print(f"  Regions completed: {scope.regions_completed}")
-    print(f"  Dates completed:   {scope.dates_completed}")
-    print(f"  Laws completed:    {scope.laws_completed}")
-    print(f"  Total documents:   {len(documents)}")
-    print(f"  Scope complete:    region={scope.region_scope_complete} "
-          f"date={scope.date_scope_complete} law={scope.law_scope_complete}")
-    print(f"  Verdict:           {report.get('ssd_verdict', 'unavailable')}")
-    if report.get("verdict_reason"):
-        print(f"  Reason:            {report['verdict_reason']}")
-    for wd, wm in sorted(report.get("windows", {}).items(), key=lambda x: int(x[0])):
-        s = report.get("sizing", {}).get(wd, {})
-        print(f"  Window {wd}d: {wm.get('unique_procurements',0)} procurements, "
-              f"{_fmt_bytes(wm.get('conservative_union_bytes',0))} union, "
-              f"base required {_fmt_bytes(s.get('base_required_bytes',0))}")
+    units_remaining = units_target - units_completed - units_failed
+    if units_remaining < 0:
+        units_remaining = 0
+    exec_complete = scope.execution_scope.complete
+    nat_complete = scope.national_scope.complete
+    w30 = report.get("window_30d", {})
+    w90 = report.get("window_90d", {})
+    w180 = report.get("window_180d", {})
+
+    print(f"\n  ARV-009C1.3A — ROLLING WINDOW STORAGE UPPER BOUND (corrected)")
+    print(f"  Units:      {units_completed}/{units_target} completed, "
+          f"{units_failed} failed, {units_remaining} remaining")
+    print(f"  Regions:    {scope.national_scope.regions_covered}")
+    print(f"  Dates:      {scope.national_scope.days_covered} days")
+    print(f"  Laws:       {scope.national_scope.laws_covered}")
+    print(f"  Execution scope complete: {exec_complete}")
+    print(f"  National scope complete:  {nat_complete}")
+    print(f"  Verdict:    {report.get('ssd_verdict', 'unavailable')}")
+    for wd in (30, 90, 180):
+        w = report.get("windows", {}).get(str(wd), {})
+        s = w.get("sizing", {})
+        wsc = w.get("window_scope_complete", False)
+        ss = s.get("sizing_status", "available")
+        print(f"  Window {wd}d: {w.get('unique_procurements',0)} procurements, "
+              f"{_fmt_bytes(w.get('conservative_union_bytes', 0))} union, "
+              f"complete={wsc} sizing={ss}")
     print(f"  Output files in:   {output_dir}\n")
 
 
