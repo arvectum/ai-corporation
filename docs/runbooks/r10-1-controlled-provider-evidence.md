@@ -8,7 +8,7 @@ This runbook is only for one explicitly approved provider, model, pricing policy
 
 - Run only on the operator-controlled host that already contains the approved database and extracted procurement documents.
 - Keep the provider credential in the existing `AI_CORP_...` settings boundary. Never pass a credential as a command-line argument, commit it, paste it into an approval policy, or upload it with evidence.
-- The runner supports the existing OpenAI-compatible `openai` and `cloudru` configuration paths only.
+- The runner supports the existing OpenAI-compatible `openai`, `openai_compatible` and `cloudru` configuration paths only.
 - Do not upload `execution-1/` or `execution-2/`: they contain customer canonical outputs. Only `controlled-evidence.manifest.json` is designed for sanitized review.
 - A timeout, unavailable provider, malformed response, unsupported claim, grounding failure, budget failure or repeat semantic mismatch leaves no published target directory.
 
@@ -17,12 +17,14 @@ This runbook is only for one explicitly approved provider, model, pricing policy
 Set exactly one of the existing secret boundaries locally:
 
 ```bash
-export AI_CORP_LLM_PROVIDER=openai
+export AI_CORP_LLM_PROVIDER=openai_compatible
 export AI_CORP_LLM_MODEL='<approved-model-id>'
 export AI_CORP_OPENAI_API_KEY='<set-locally-do-not-copy>'
 ```
 
-or:
+`openai` is also accepted as the configured provider name for the same secret boundary.
+
+Or use Cloud.ru:
 
 ```bash
 export AI_CORP_LLM_PROVIDER=cloudru
@@ -39,7 +41,7 @@ The pricing values must come from the provider's approved current tariff. The po
 ```json
 {
   "policy_version": "<approval-id-and-date>",
-  "provider": "<openai-or-cloudru>",
+  "provider": "<openai-compatible-alias-or-cloudru>",
   "model": "<exact-approved-model-id>",
   "budget": {
     "limits": {
@@ -54,14 +56,14 @@ The pricing values must come from the provider's approved current tariff. The po
     "pricing": {
       "input_cost_per_1k_tokens": 0.0,
       "output_cost_per_1k_tokens": 0.0,
-      "currency": "USD",
+      "currency": "<three-letter-currency-code>",
       "pricing_table_version": "<provider-tariff-version-or-date>"
     }
   }
 }
 ```
 
-Replace every placeholder and every zero limit with an explicitly approved positive value. The schema rejects unknown fields, including `api_key`.
+Replace every placeholder and every zero limit with an explicitly approved positive value. The policy provider and model must exactly match `AI_CORP_LLM_PROVIDER` and `AI_CORP_LLM_MODEL`. The schema rejects unknown fields, including `api_key`.
 
 ## 3. Approve one existing customer-owned run
 
@@ -102,7 +104,7 @@ A successful controlled run must contain:
 - `raw_response_stored=false`;
 - no credential, raw provider body, evidence quote, raw tender text or local path in the sanitized manifest.
 
-The controlled run is rejected when grounded claim semantics differ between executions, even when both individual provider calls otherwise succeed.
+The controlled run is rejected when grounded claim semantics differ between executions, even when both individual provider calls otherwise succeed. Provider request IDs, provider confidence, usage, timing, cost and raw-response hashes are retained per execution but are not treated as stable identities.
 
 ## Explicit non-goals
 
