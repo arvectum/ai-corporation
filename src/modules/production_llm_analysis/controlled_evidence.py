@@ -27,7 +27,7 @@ class ControlledEvidenceError(RuntimeError):
 
 
 class ControlledEvidenceConflictError(ControlledEvidenceError):
-    """The target exists or repeated executions produced conflicting identities."""
+    """The target exists or repeated executions produced conflicting semantics."""
 
 
 class ApprovedControlledProviderPolicy(BaseModel):
@@ -91,21 +91,41 @@ def _claim_summary(claim: Any) -> dict[str, Any]:
     }
 
 
+def _claim_semantics(claim: Any) -> dict[str, Any]:
+    """Return grounded content while excluding provider-owned confidence metadata."""
+
+    return {
+        "claim_id": claim.claim_id,
+        "field_path": claim.field_path,
+        "value": claim.value,
+        "support_status": claim.support_status.value,
+        "validated_confidence": claim.validated_confidence,
+        "confidence_basis": claim.confidence_basis.value,
+        "evidence_references": [
+            reference.model_dump(mode="json") for reference in claim.evidence_references
+        ],
+        "validation_errors": list(claim.validation_errors),
+        "limitations": list(claim.limitations),
+    }
+
+
 def _grounded_claims_hash(production: R10_1CanonicalProduction) -> str:
     result = production.llm_result
     return canonical_sha256(
         {
             "accepted_claims": [
-                claim.model_dump(mode="json") for claim in result.accepted_claims
+                _claim_semantics(claim) for claim in result.accepted_claims
             ],
             "rejected_claims": [
-                claim.model_dump(mode="json") for claim in result.rejected_claims
+                _claim_semantics(claim) for claim in result.rejected_claims
             ],
         }
     )
 
 
-def _stable_publication_identity(production: R10_1CanonicalProduction) -> dict[str, Any]:
+def _stable_semantic_identity(production: R10_1CanonicalProduction) -> dict[str, Any]:
+    """Identity that must remain stable despite request IDs, timing and usage variance."""
+
     result = production.llm_result
     return {
         "request_id": result.request_id,
@@ -114,6 +134,13 @@ def _stable_publication_identity(production: R10_1CanonicalProduction) -> dict[s
         "source_analysis_run_id": production.source_analysis_run_id,
         "source_graph_hash": production.source_graph_hash,
         "production_model_hash": production.production_model_hash,
+    }
+
+
+def _publication_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
+    return {
+        **_stable_semantic_identity(production),
+        "validated_result_hash": production.llm_result.validated_result_hash,
         "report_model_hash": production.report_model_hash,
         "requirements_file_sha256": production.persisted.requirements_file_sha256,
         "canonical_report_file_sha256": production.persisted.canonical_report_file_sha256,
@@ -137,7 +164,7 @@ def _execution_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
         "sanitized_error_code": result.sanitized_error_code,
         "raw_response_sha256": result.raw_response_sha256,
         "raw_response_stored": False,
-        "publication": _stable_publication_identity(production),
+        "publication": _publication_summary(production),
     }
 
 
@@ -156,8 +183,8 @@ def build_sanitized_controlled_evidence_manifest(
     if first_result.model != policy.model or second_result.model != policy.model:
         raise ControlledEvidenceError("controlled_evidence_model_policy_mismatch")
 
-    first_identity = _stable_publication_identity(first)
-    second_identity = _stable_publication_identity(second)
+    first_identity = _stable_semantic_identity(first)
+    second_identity = _stable_semantic_identity(second)
     if first_identity != second_identity:
         raise ControlledEvidenceConflictError("controlled_evidence_repeat_identity_mismatch")
 
@@ -215,9 +242,10 @@ def run_controlled_provider_evidence(
 ) -> ControlledEvidenceBundle:
     """Execute the same approved input twice and publish only matching evidence.
 
-    Canonical files remain local inside the controlled output root.  The manifest
-    is deliberately quote-free and credential-free so it can be reviewed or
-    uploaded independently from the customer documents.
+    Canonical files remain local inside the controlled output root. The manifest
+    is quote-free and credential-free so it can be reviewed independently from
+    customer documents. Volatile provider request IDs, latency, usage and raw
+    response hashes are retained per execution but are not treated as stable.
     """
 
     target = output_root.resolve()
