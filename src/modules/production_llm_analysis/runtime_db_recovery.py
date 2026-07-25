@@ -156,12 +156,32 @@ def _replace_database_url_line(text_value: str, database_url: str) -> str:
     return "\n".join(output) + suffix
 
 
-def _atomic_repair_env_file(env_file: Path, database_url: URL) -> None:
+def _prepare_backup_directory(env_file: Path, backup_dir: Path) -> Path:
+    env_parent = env_file.parent.resolve()
+    raw_backup = backup_dir.expanduser()
+    if raw_backup.exists() and raw_backup.is_symlink():
+        raise ValueError("runtime_env_backup_directory_symlink")
+    raw_backup.mkdir(parents=True, exist_ok=True, mode=0o700)
+    resolved_backup = raw_backup.resolve()
+    if resolved_backup == env_parent or env_parent in resolved_backup.parents:
+        raise ValueError("runtime_env_backup_must_be_outside_checkout")
+    os.chmod(resolved_backup, stat.S_IRWXU)
+    return resolved_backup
+
+
+def _atomic_repair_env_file(
+    env_file: Path,
+    database_url: URL,
+    *,
+    backup_dir: Path,
+) -> None:
     if not env_file.is_file() or env_file.is_symlink():
         raise ValueError("runtime_env_file_not_regular")
+    backup_root = _prepare_backup_directory(env_file, backup_dir)
     original = env_file.read_text(encoding="utf-8")
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    backup = env_file.with_name(f"{env_file.name}.backup-{timestamp}")
+    backup_name = f"{env_file.parent.name}-{env_file.name}.backup-{timestamp}"
+    backup = backup_root / backup_name
     if backup.exists():
         raise ValueError("runtime_env_backup_collision")
     backup.write_text(original, encoding="utf-8")
@@ -193,6 +213,7 @@ def recover_runtime_database_access(
     container: str,
     docker_context: str,
     repair: bool,
+    backup_dir: Path | None = None,
     limit: int = 30,
     docker_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     probe: Callable[[str | URL], DatabaseProbe] = _probe_database,
@@ -201,6 +222,8 @@ def recover_runtime_database_access(
         raise ValueError("preflight_limit_out_of_range")
     if not env_file.is_file() or env_file.is_symlink():
         raise ValueError("runtime_env_file_not_regular")
+    if repair and backup_dir is None:
+        raise ValueError("runtime_env_backup_directory_required")
 
     runtime_settings = Settings(_env_file=env_file, _env_file_encoding="utf-8")
     runtime_probe = probe(runtime_settings.database_url)
@@ -226,6 +249,7 @@ def recover_runtime_database_access(
             "database_password_recorded": False,
             "container_environment_recorded": False,
             "env_file_path_recorded": False,
+            "backup_path_recorded": False,
             "provider_called": False,
         },
     }
@@ -255,7 +279,12 @@ def recover_runtime_database_access(
                 database_url=container_url.render_as_string(hide_password=False),
             )
             if repair:
-                _atomic_repair_env_file(env_file, container_url)
+                assert backup_dir is not None
+                _atomic_repair_env_file(
+                    env_file,
+                    container_url,
+                    backup_dir=backup_dir,
+                )
                 report["repair_performed"] = True
                 report["backup_created"] = True
                 selected_settings = Settings(
