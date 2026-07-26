@@ -1,0 +1,28 @@
+benchmark_id: ARV-067-ELECTRICAL-FIXTURES
+ontology_version: 1.0.0
+status: contract_fixture_only
+metrics:
+  category_recall:
+    numerator: correctly_resolved_fixture_categories
+    denominator: resolvable_synonym_cases
+  required_attribute_recall:
+    numerator: correctly_resolved_required_attributes
+    denominator: required_attributes_present_in_truth
+  false_match_rate:
+    numerator: no_match_truth_cases_predicted_as_exact_likely_or_partial
+    denominator: no_match_truth_cases
+  uncertain_rate:
+    numerator: cases_predicted_uncertain
+    denominator: all_match_cases
+release_note: >-
+  These fixtures prove schema and deterministic policy consistency only. They do
+  not claim production extraction accuracy. Live category metrics require frozen,
+  independently reviewed procurement truth packs under ARV-001/ARV-005.
+case_files:
+  - synonym_cases.yaml
+  - match_cases.yaml
+expected_counts:
+  categories: 4
+  synonym_cases_min: 8
+  match_cases_min: 12
+  labels_covered: [EXACT, LIKELY_ANALOG, PARTIAL, UNCERTAIN, NO_MATCH]

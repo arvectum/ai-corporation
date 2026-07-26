@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/ontology.schema.json",
+  "title": "ARV-067 electrical ontology",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "ontology_id",
+    "version",
+    "status",
+    "locale",
+    "runtime_import",
+    "purpose",
+    "normalization",
+    "match_labels",
+    "match_policy",
+    "reason_codes",
+    "value_sets",
+    "categories",
+    "benchmark_contract"
+  ],
+  "properties": {
+    "ontology_id": {"const": "ARV-067-ELECTRICAL"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "status": {"const": "research_asset"},
+    "locale": {"const": "ru-RU"},
+    "runtime_import": {"const": false},
+    "purpose": {"type": "string", "minLength": 20},
+    "normalization": {"type": "object"},
+    "match_labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["EXACT", "LIKELY_ANALOG", "PARTIAL", "UNCERTAIN", "NO_MATCH"]},
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "match_policy": {"type": "object"},
+    "reason_codes": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "outcome", "description"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Z0-9_]+$"},
+          "outcome": {"enum": ["EXACT", "LIKELY_ANALOG", "PARTIAL", "UNCERTAIN", "NO_MATCH"]},
+          "description": {"type": "string", "minLength": 10}
+        }
+      }
+    },
+    "value_sets": {"type": "object"},
+    "categories": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title_ru", "category_aliases", "canonical_marks", "source_basis", "attributes"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+          "title_ru": {"type": "string", "minLength": 5},
+          "category_aliases": {"type": "array", "minItems": 3, "items": {"type": "string"}},
+          "canonical_marks": {"type": "object"},
+          "source_basis": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "role", "url", "note"],
+              "properties": {
+                "id": {"type": "string"},
+                "role": {"type": "string"},
+                "url": {"type": "string", "pattern": "^https://"},
+                "note": {"type": "string"}
+              }
+            }
+          },
+          "attributes": {
+            "type": "array",
+            "minItems": 5,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "title_ru", "required", "type", "comparator", "aliases"],
+              "properties": {
+                "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+                "title_ru": {"type": "string"},
+                "required": {"type": "boolean"},
+                "type": {"enum": ["boolean", "enum", "integer", "number", "set", "string"]},
+                "unit": {"type": "string"},
+                "minimum": {"type": "number"},
+                "maximum": {"type": "number"},
+                "value_set": {"type": "string"},
+                "allowed_values": {"type": "array"},
+                "comparator": {"enum": ["contains", "exact", "maximum", "minimum"]},
+                "aliases": {"type": "array", "minItems": 2, "items": {"type": "string"}}
+              }
+            }
+          }
+        }
+      }
+    },
+    "benchmark_contract": {"type": "object"}
+  }
+}

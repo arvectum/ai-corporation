@@ -1,0 +1,60 @@
+fixture_id: ARV-067-ELECTRICAL-SYNONYMS
+ontology_version: 1.0.0
+cases:
+  - input: "Силовой кабель АВВГ П 4х16, 0,66 кВ"
+    expected_category: power_cable_low_voltage
+    expected_mark: AVVG-P
+    expected_attributes:
+      conductor_count: 4
+      cross_section_mm2: 16
+      rated_voltage_kv: 0.66
+  - input: "кабель ВВГнг А LS 3×2,5 1кВ"
+    expected_category: power_cable_low_voltage
+    expected_mark: VVGng(A)-LS
+    expected_attributes:
+      conductor_count: 3
+      cross_section_mm2: 2.5
+      rated_voltage_kv: 1.0
+  - input: "провод СИП4 2х16"
+    expected_category: self_supporting_insulated_wire
+    expected_mark: SIP-4
+    expected_attributes:
+      conductor_count: 2
+      cross_section_mm2: 16
+  - input: "самонесущий изолированный провод СИП-4 4×16 0,6/1 кВ"
+    expected_category: self_supporting_insulated_wire
+    expected_mark: SIP-4
+    expected_attributes:
+      conductor_count: 4
+      cross_section_mm2: 16
+      rated_voltage_kv: 1.0
+  - input: "автомат 3P C 10A 10кА 400В"
+    expected_category: miniature_circuit_breaker
+    expected_attributes:
+      poles: 3
+      trip_curve: C
+      rated_current_a: 10
+      breaking_capacity_ka: 10
+      rated_voltage_v: 400
+  - input: "модульный автоматический выключатель 1 полюс, характеристика B, 16 А, 6 кА"
+    expected_category: miniature_circuit_breaker
+    expected_attributes:
+      poles: 1
+      trip_curve: B
+      rated_current_a: 16
+      breaking_capacity_ka: 6
+  - input: "контактор 3P 25A катушка 220В AC категория AC-3"
+    expected_category: electromagnetic_contactor
+    expected_attributes:
+      poles: 3
+      rated_operational_current_a: 25
+      coil_voltage_v: 220
+      coil_current_type: AC
+      utilization_category: AC-3
+  - input: "электромагнитный контактор 40 А, Uc 24 V DC, AC-3"
+    expected_category: electromagnetic_contactor
+    expected_attributes:
+      rated_operational_current_a: 40
+      coil_voltage_v: 24
+      coil_current_type: DC
+      utilization_category: AC-3

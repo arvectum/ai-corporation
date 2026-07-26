@@ -1,0 +1,431 @@
+ontology_id: ARV-067-ELECTRICAL
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+purpose: >-
+  Versioned category contract for deterministic normalization and offline
+  matching experiments in electrical procurement positions. It is not a
+  certification rulebook and is not imported by the production resolver.
+
+normalization:
+  text:
+    unicode_form: NFKC
+    casefold: true
+    replace_yo_with_e: true
+    collapse_whitespace: true
+    punctuation_to_space: [";", ":", "(", ")", "[", "]", "{"]
+    multiplication_signs: ["x", "х", "×", "*"]
+  numbers:
+    decimal_separator: "."
+    accepted_decimal_separators: [".", ","]
+  units:
+    mm2:
+      canonical: mm2
+      aliases: ["мм2", "мм²", "mm2", "mm²", "кв мм", "кв.мм"]
+    kV:
+      canonical: kV
+      aliases: ["кв", "kv", "кВ"]
+    V:
+      canonical: V
+      aliases: ["в", "v", "вольт", "вольта", "вольтов"]
+    A:
+      canonical: A
+      aliases: ["а", "a", "ампер", "ампера", "амперов"]
+    kA:
+      canonical: kA
+      aliases: ["ка", "ka", "кА"]
+    Hz:
+      canonical: Hz
+      aliases: ["гц", "hz", "Гц"]
+
+match_labels:
+  - EXACT
+  - LIKELY_ANALOG
+  - PARTIAL
+  - UNCERTAIN
+  - NO_MATCH
+
+match_policy:
+  evaluation_order:
+    - category
+    - required_presence
+    - required_compatibility
+    - optional_compatibility
+    - identity
+  exact: >-
+    Same category, all requested required attributes are present and compatible,
+    no requested optional attribute conflicts, and both sides provide the same
+    canonical_mark.
+  likely_analog: >-
+    Same category and all requested required/optional attributes are compatible,
+    but canonical_mark differs or is absent.
+  partial: >-
+    Same category and all required attributes are compatible, while one or more
+    requested optional attributes conflict or are missing.
+  uncertain: >-
+    Same category, no hard incompatibility is proven, but at least one requested
+    required attribute is absent or unparseable.
+  no_match: >-
+    Category differs or at least one requested required attribute is incompatible.
+  numeric_tolerance:
+    exact_relative: 0.000001
+    exact_absolute: 0.000001
+
+reason_codes:
+  - id: CATEGORY_MISMATCH
+    outcome: NO_MATCH
+    description: Candidate belongs to another ontology category.
+  - id: REQUIRED_ATTRIBUTE_MISSING
+    outcome: UNCERTAIN
+    description: A requested required attribute is absent or not parseable.
+  - id: EXACT_VALUE_MISMATCH
+    outcome: NO_MATCH
+    description: A required attribute with exact comparison differs.
+  - id: MINIMUM_CAPABILITY_INSUFFICIENT
+    outcome: NO_MATCH
+    description: Candidate value is lower than the requested minimum capability.
+  - id: SET_NOT_CONTAINED
+    outcome: NO_MATCH
+    description: Candidate does not contain all requested required set members.
+  - id: OPTIONAL_ATTRIBUTE_MISSING
+    outcome: PARTIAL
+    description: A requested optional attribute is absent.
+  - id: OPTIONAL_VALUE_MISMATCH
+    outcome: PARTIAL
+    description: A requested optional attribute is incompatible.
+  - id: CANONICAL_MARK_DIFFERS
+    outcome: LIKELY_ANALOG
+    description: Technical requirements match but the canonical mark differs.
+  - id: CANONICAL_MARK_MISSING
+    outcome: LIKELY_ANALOG
+    description: Technical requirements match but one side has no canonical mark.
+  - id: ALL_REQUESTED_ATTRIBUTES_MATCH
+    outcome: EXACT
+    description: Category, requested attributes and canonical mark match.
+
+value_sets:
+  conductor_material:
+    copper: ["медь", "медный", "медная", "cu"]
+    aluminium: ["алюминий", "алюминиевый", "алюминиевая", "al"]
+    aluminium_alloy: ["алюминиевый сплав", "сплав алюминия", "al alloy"]
+  insulation_material:
+    pvc: ["пвх", "поливинилхлорид", "pvc"]
+    xlpe: ["сшитый полиэтилен", "спэ", "xlpe"]
+    halogen_free_polymer: ["безгалогенная композиция", "hf", "halogen free"]
+  fire_performance:
+    standard: ["обычное исполнение", "без индекса нг"]
+    ng_a: ["нг(a)", "нг а", "не распространяет горение категория a"]
+    ng_a_ls: ["нг(a)-ls", "нг а ls", "пониженное дымо- и газовыделение"]
+    ng_a_hf: ["нг(a)-hf", "нг а hf", "без галогенов"]
+    frls: ["frls", "огнестойкий ls"]
+  current_type:
+    AC: ["переменный", "переменного тока", "ac", "~"]
+    DC: ["постоянный", "постоянного тока", "dc", "="]
+  breaker_curve:
+    B: ["b", "характеристика b", "кривая b"]
+    C: ["c", "характеристика c", "кривая c"]
+    D: ["d", "характеристика d", "кривая d"]
+  utilization_category:
+    AC-1: ["ac-1", "ас-1"]
+    AC-3: ["ac-3", "ас-3"]
+    AC-4: ["ac-4", "ас-4"]
+
+categories:
+  - id: power_cable_low_voltage
+    title_ru: Кабель силовой низковольтный с пластмассовой изоляцией
+    category_aliases:
+      - кабель силовой
+      - силовой кабель
+      - кабель 0,66 кв
+      - кабель 1 кв
+      - ввг
+      - аввг
+      - ввгнг
+      - аввгнг
+    canonical_marks:
+      AVVG-P: ["аввг-п", "аввг п", "аввгп"]
+      AVVGng(A)-LS: ["аввгнг(a)-ls", "аввгнг а ls", "аввгнг-ls"]
+      VVGng(A)-LS: ["ввгнг(a)-ls", "ввгнг а ls", "ввгнг-ls"]
+      VVG: ["ввг"]
+    source_basis:
+      - id: GOST-31996-2012
+        role: scope_and_parameter_vocabulary
+        url: https://protect.gost.ru/gost/details/3fc51d04-aca0-4ad3-befe-695a344db5fd
+        note: Rated voltage, conductor count, nominal cross-section and construction vocabulary.
+    attributes:
+      - id: conductor_material
+        title_ru: Материал токопроводящей жилы
+        required: true
+        type: enum
+        value_set: conductor_material
+        comparator: exact
+        aliases: ["материал жилы", "материал токопроводящей жилы", "жила", "проводник"]
+      - id: conductor_count
+        title_ru: Число токопроводящих жил
+        required: true
+        type: integer
+        minimum: 1
+        maximum: 5
+        comparator: exact
+        aliases: ["число жил", "количество жил", "жил", "кол-во жил"]
+      - id: cross_section_mm2
+        title_ru: Номинальное сечение основной жилы
+        required: true
+        type: number
+        unit: mm2
+        minimum: 1.5
+        comparator: exact
+        aliases: ["сечение", "номинальное сечение", "сечение жилы", "сечение основной жилы"]
+      - id: rated_voltage_kv
+        title_ru: Номинальное напряжение
+        required: true
+        type: number
+        unit: kV
+        minimum: 0.38
+        comparator: minimum
+        aliases: ["номинальное напряжение", "напряжение кабеля", "u0/u"]
+      - id: insulation_material
+        title_ru: Материал изоляции
+        required: true
+        type: enum
+        value_set: insulation_material
+        comparator: exact
+        aliases: ["изоляция", "материал изоляции", "тип изоляции"]
+      - id: fire_performance
+        title_ru: Исполнение по пожарной безопасности
+        required: false
+        type: enum
+        value_set: fire_performance
+        comparator: exact
+        aliases: ["пожарное исполнение", "нераспространение горения", "дымовыделение", "индекс нг"]
+      - id: core_shape
+        title_ru: Форма жилы
+        required: false
+        type: enum
+        allowed_values: [round, sector]
+        comparator: exact
+        aliases: ["форма жилы", "круглая жила", "секторная жила"]
+      - id: core_flexibility
+        title_ru: Исполнение жилы
+        required: false
+        type: enum
+        allowed_values: [solid, stranded]
+        comparator: exact
+        aliases: ["однопроволочная", "многопроволочная", "класс жилы"]
+
+  - id: self_supporting_insulated_wire
+    title_ru: Провод самонесущий изолированный для воздушных линий
+    category_aliases:
+      - сип
+      - провод сип
+      - самонесущий изолированный провод
+      - провод для воздушной линии
+      - провод воздушной линии
+    canonical_marks:
+      SIP-1: ["сип-1", "сип 1", "сип1"]
+      SIP-2: ["сип-2", "сип 2", "сип2"]
+      SIP-3: ["сип-3", "сип 3", "сип3"]
+      SIP-4: ["сип-4", "сип 4", "сип4"]
+      SIP-5: ["сип-5", "сип 5", "сип5"]
+    source_basis:
+      - id: GOST-31946-2012
+        role: scope_and_parameter_vocabulary
+        url: https://protect.gost.ru/gost/details/b7913807-aca3-4e25-9d0f-f5bc5785d484
+        note: SIP/protected-wire scope, rated voltage and construction vocabulary.
+    attributes:
+      - id: conductor_material
+        title_ru: Материал токопроводящей жилы
+        required: true
+        type: enum
+        value_set: conductor_material
+        comparator: exact
+        aliases: ["материал жилы", "материал проводника", "проводник"]
+      - id: conductor_count
+        title_ru: Число изолированных жил
+        required: true
+        type: integer
+        minimum: 1
+        maximum: 6
+        comparator: exact
+        aliases: ["число жил", "количество жил", "жил"]
+      - id: cross_section_mm2
+        title_ru: Номинальное сечение жилы
+        required: true
+        type: number
+        unit: mm2
+        minimum: 16
+        comparator: exact
+        aliases: ["сечение", "номинальное сечение", "сечение жилы"]
+      - id: rated_voltage_kv
+        title_ru: Номинальное напряжение
+        required: true
+        type: number
+        unit: kV
+        minimum: 0.6
+        comparator: minimum
+        aliases: ["номинальное напряжение", "напряжение провода"]
+      - id: neutral_carrier
+        title_ru: Несущая нулевая жила
+        required: false
+        type: boolean
+        comparator: exact
+        aliases: ["несущая нулевая жила", "нулевая несущая", "несущая жила"]
+      - id: insulation_material
+        title_ru: Материал изоляции
+        required: false
+        type: enum
+        value_set: insulation_material
+        comparator: exact
+        aliases: ["изоляция", "материал изоляции"]
+
+  - id: miniature_circuit_breaker
+    title_ru: Модульный автоматический выключатель переменного тока
+    category_aliases:
+      - автоматический выключатель
+      - модульный автомат
+      - автомат
+      - автомат защиты
+      - mcb
+    canonical_marks: {}
+    source_basis:
+      - id: GOST-IEC-60898-1-2020
+        role: scope_and_parameter_vocabulary
+        url: https://protect.gost.ru/gost/details/8fcc0e72-206d-4876-a320-92f59b97a659
+        note: AC circuit-breakers up to 440 V, 125 A and 25 kA; current standard has published corrections.
+    attributes:
+      - id: poles
+        title_ru: Количество полюсов
+        required: true
+        type: integer
+        minimum: 1
+        maximum: 4
+        comparator: exact
+        aliases: ["полюсов", "количество полюсов", "число полюсов", "p"]
+      - id: rated_current_a
+        title_ru: Номинальный ток
+        required: true
+        type: number
+        unit: A
+        minimum: 0.5
+        comparator: exact
+        aliases: ["номинальный ток", "ток", "in"]
+      - id: trip_curve
+        title_ru: Характеристика мгновенного расцепления
+        required: true
+        type: enum
+        value_set: breaker_curve
+        comparator: exact
+        aliases: ["характеристика срабатывания", "кривая", "характеристика расцепления"]
+      - id: breaking_capacity_ka
+        title_ru: Номинальная отключающая способность
+        required: true
+        type: number
+        unit: kA
+        minimum: 3
+        comparator: minimum
+        aliases: ["отключающая способность", "предельная отключающая способность", "icu", "icn"]
+      - id: rated_voltage_v
+        title_ru: Номинальное рабочее напряжение
+        required: true
+        type: number
+        unit: V
+        minimum: 220
+        comparator: minimum
+        aliases: ["номинальное напряжение", "рабочее напряжение", "ue"]
+      - id: current_type
+        title_ru: Род тока
+        required: true
+        type: enum
+        value_set: current_type
+        comparator: exact
+        aliases: ["род тока", "тип напряжения", "ac dc"]
+      - id: din_modules
+        title_ru: Ширина в модулях
+        required: false
+        type: number
+        minimum: 1
+        comparator: maximum
+        aliases: ["ширина в модулях", "модульных расстояний", "din модулей"]
+
+  - id: electromagnetic_contactor
+    title_ru: Электромеханический контактор
+    category_aliases:
+      - контактор
+      - магнитный контактор
+      - электромагнитный контактор
+      - пускатель без реле
+    canonical_marks: {}
+    source_basis:
+      - id: GOST-IEC-60947-4-1-2021
+        role: scope_and_parameter_vocabulary
+        url: https://protect.gost.ru/gost/details/d18d1abc-c0f4-4516-92d9-7974ada5d540
+        note: Electromechanical contactors and motor-starters; active from 2022-03-01.
+    attributes:
+      - id: poles
+        title_ru: Количество главных полюсов
+        required: true
+        type: integer
+        minimum: 1
+        maximum: 4
+        comparator: exact
+        aliases: ["полюсов", "главных полюсов", "количество полюсов"]
+      - id: rated_operational_current_a
+        title_ru: Номинальный рабочий ток
+        required: true
+        type: number
+        unit: A
+        minimum: 1
+        comparator: minimum
+        aliases: ["номинальный рабочий ток", "рабочий ток", "ie"]
+      - id: coil_voltage_v
+        title_ru: Напряжение катушки управления
+        required: true
+        type: number
+        unit: V
+        minimum: 12
+        comparator: exact
+        aliases: ["напряжение катушки", "катушка управления", "uc"]
+      - id: coil_current_type
+        title_ru: Род тока катушки
+        required: true
+        type: enum
+        value_set: current_type
+        comparator: exact
+        aliases: ["род тока катушки", "катушка ac", "катушка dc"]
+      - id: utilization_category
+        title_ru: Категория применения
+        required: true
+        type: enum
+        value_set: utilization_category
+        comparator: exact
+        aliases: ["категория применения", "категория использования", "ac-3"]
+      - id: auxiliary_contacts
+        title_ru: Вспомогательные контакты
+        required: false
+        type: set
+        allowed_values: ["1NO", "1NC", "2NO", "2NC"]
+        comparator: contains
+        aliases: ["вспомогательные контакты", "дополнительные контакты", "no nc"]
+      - id: rated_operational_voltage_v
+        title_ru: Номинальное рабочее напряжение главной цепи
+        required: false
+        type: number
+        unit: V
+        minimum: 110
+        comparator: minimum
+        aliases: ["рабочее напряжение главной цепи", "ue"]
+
+benchmark_contract:
+  primary_metrics:
+    - category_recall
+    - required_attribute_recall
+    - false_match_rate
+    - uncertain_rate
+  release_gates:
+    category_recall_min: 0.95
+    false_match_rate_max: 0.02
+    fixture_cases_min: 12
+  warning: >-
+    Fixture metrics are contract checks, not production accuracy claims. A live
+    benchmark requires independently accepted truth packs under ARV-001/ARV-005.

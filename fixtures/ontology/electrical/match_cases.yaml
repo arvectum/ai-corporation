@@ -1,0 +1,272 @@
+fixture_id: ARV-067-ELECTRICAL-MATCH
+ontology_version: 1.0.0
+cases:
+  - id: cable_exact_mark
+    requirement:
+      category: power_cable_low_voltage
+      canonical_mark: AVVG-P
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 0.66
+        insulation_material: pvc
+    candidate:
+      category: power_cable_low_voltage
+      canonical_mark: AVVG-P
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 0.66
+        insulation_material: pvc
+    expected_label: EXACT
+    expected_reasons: [ALL_REQUESTED_ATTRIBUTES_MATCH]
+
+  - id: cable_higher_voltage_analog
+    requirement:
+      category: power_cable_low_voltage
+      canonical_mark: AVVG-P
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 0.66
+        insulation_material: pvc
+    candidate:
+      category: power_cable_low_voltage
+      canonical_mark: OTHER-AL-PVC
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 1.0
+        insulation_material: pvc
+    expected_label: LIKELY_ANALOG
+    expected_reasons: [CANONICAL_MARK_DIFFERS]
+
+  - id: cable_wrong_conductor_material
+    requirement:
+      category: power_cable_low_voltage
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 0.66
+        insulation_material: pvc
+    candidate:
+      category: power_cable_low_voltage
+      attributes:
+        conductor_material: copper
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 1.0
+        insulation_material: pvc
+    expected_label: NO_MATCH
+    expected_reasons: [EXACT_VALUE_MISMATCH]
+
+  - id: cable_missing_required_voltage
+    requirement:
+      category: power_cable_low_voltage
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 0.66
+        insulation_material: pvc
+    candidate:
+      category: power_cable_low_voltage
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        insulation_material: pvc
+    expected_label: UNCERTAIN
+    expected_reasons: [REQUIRED_ATTRIBUTE_MISSING]
+
+  - id: sip_exact
+    requirement:
+      category: self_supporting_insulated_wire
+      canonical_mark: SIP-4
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 1.0
+    candidate:
+      category: self_supporting_insulated_wire
+      canonical_mark: SIP-4
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 1.0
+    expected_label: EXACT
+    expected_reasons: [ALL_REQUESTED_ATTRIBUTES_MATCH]
+
+  - id: sip_wrong_core_count
+    requirement:
+      category: self_supporting_insulated_wire
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 4
+        cross_section_mm2: 16
+        rated_voltage_kv: 1.0
+    candidate:
+      category: self_supporting_insulated_wire
+      attributes:
+        conductor_material: aluminium
+        conductor_count: 2
+        cross_section_mm2: 16
+        rated_voltage_kv: 1.0
+    expected_label: NO_MATCH
+    expected_reasons: [EXACT_VALUE_MISMATCH]
+
+  - id: breaker_higher_breaking_capacity_analog
+    requirement:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 3
+        rated_current_a: 10
+        trip_curve: C
+        breaking_capacity_ka: 6
+        rated_voltage_v: 400
+        current_type: AC
+    candidate:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 3
+        rated_current_a: 10
+        trip_curve: C
+        breaking_capacity_ka: 10
+        rated_voltage_v: 400
+        current_type: AC
+    expected_label: LIKELY_ANALOG
+    expected_reasons: [CANONICAL_MARK_MISSING]
+
+  - id: breaker_insufficient_breaking_capacity
+    requirement:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 3
+        rated_current_a: 10
+        trip_curve: C
+        breaking_capacity_ka: 10
+        rated_voltage_v: 400
+        current_type: AC
+    candidate:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 3
+        rated_current_a: 10
+        trip_curve: C
+        breaking_capacity_ka: 6
+        rated_voltage_v: 400
+        current_type: AC
+    expected_label: NO_MATCH
+    expected_reasons: [MINIMUM_CAPABILITY_INSUFFICIENT]
+
+  - id: breaker_wrong_curve
+    requirement:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 1
+        rated_current_a: 16
+        trip_curve: B
+        breaking_capacity_ka: 6
+        rated_voltage_v: 230
+        current_type: AC
+    candidate:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 1
+        rated_current_a: 16
+        trip_curve: C
+        breaking_capacity_ka: 6
+        rated_voltage_v: 230
+        current_type: AC
+    expected_label: NO_MATCH
+    expected_reasons: [EXACT_VALUE_MISMATCH]
+
+  - id: breaker_category_mismatch
+    requirement:
+      category: miniature_circuit_breaker
+      attributes:
+        poles: 3
+        rated_current_a: 10
+        trip_curve: C
+        breaking_capacity_ka: 6
+        rated_voltage_v: 400
+        current_type: AC
+    candidate:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 10
+        coil_voltage_v: 220
+        coil_current_type: AC
+        utilization_category: AC-3
+    expected_label: NO_MATCH
+    expected_reasons: [CATEGORY_MISMATCH]
+
+  - id: contactor_higher_current_analog
+    requirement:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 25
+        coil_voltage_v: 220
+        coil_current_type: AC
+        utilization_category: AC-3
+    candidate:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 32
+        coil_voltage_v: 220
+        coil_current_type: AC
+        utilization_category: AC-3
+    expected_label: LIKELY_ANALOG
+    expected_reasons: [CANONICAL_MARK_MISSING]
+
+  - id: contactor_wrong_coil_voltage
+    requirement:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 25
+        coil_voltage_v: 220
+        coil_current_type: AC
+        utilization_category: AC-3
+    candidate:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 25
+        coil_voltage_v: 24
+        coil_current_type: DC
+        utilization_category: AC-3
+    expected_label: NO_MATCH
+    expected_reasons: [EXACT_VALUE_MISMATCH]
+
+  - id: contactor_optional_contacts_partial
+    requirement:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 25
+        coil_voltage_v: 220
+        coil_current_type: AC
+        utilization_category: AC-3
+        auxiliary_contacts: [1NO, 1NC]
+    candidate:
+      category: electromagnetic_contactor
+      attributes:
+        poles: 3
+        rated_operational_current_a: 25
+        coil_voltage_v: 220
+        coil_current_type: AC
+        utilization_category: AC-3
+        auxiliary_contacts: [1NO]
+    expected_label: PARTIAL
+    expected_reasons: [OPTIONAL_VALUE_MISMATCH]
