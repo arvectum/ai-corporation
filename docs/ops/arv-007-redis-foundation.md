@@ -131,6 +131,18 @@ reset_redis_runtime()  # clears settings cache + closes Redis client
 
 `reset_redis_runtime()` calls `invalidate_settings_cache()` (clears `@lru_cache` on `get_settings()`) then `close_client()`. There is no direct access to private `_client_instance`/`_client_disabled` globals from test code.
 
+## CI History
+
+The quality job (`make check`) failed consistently across all commits until `894ca57`. The root cause was **ruff 0.16.0** adding new default rules:
+- `PIE810`: merge `startswith` calls with a tuple
+- `RUF022`: sort `__all__` entries
+- `S110` / `BLE001`: suppress blind `except Exception:` / `try-except-pass` where intentional
+- `I001`: sort import blocks
+- `UP017`: use `datetime.UTC` alias (Python 3.11+)
+- `C408`: use dict literal instead of `dict()` call
+
+The redis-integration job required `make test-redis-integration` to use `-v` and `2>&1 | tee output/pytest-redis.log` to pass consistently on CI.
+
 ## Deferred to ARV-008
 
 - Worker process / consumer

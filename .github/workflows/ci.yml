@@ -14,10 +14,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install --yes poppler-utils postgresql-client
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -e '.[dev]'
-      - name: compileall
-        run: python -m compileall -q src 2>&1
-      - name: ruff
-        run: python -m ruff check src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/preflight.py src/shared/redis/ tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/ tests/test_r0_security_boundary.py 2>&1
+      - run: make check
       - name: Run make test
         shell: bash
         run: |
