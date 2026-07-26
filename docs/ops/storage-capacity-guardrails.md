@@ -36,15 +36,17 @@ the storage state is reported as `storage_unknown` and ingestion is blocked
 
 ### Thresholds
 
-| Used % | State | Canonical env | Compatibility env |
-|--------|-------|---------------|-------------------|
-| < 70 % | `normal` | `ARVECTUM_STORAGE_WARNING_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_WARNING_PERCENT` |
-| 70–79 % | `warning` | `ARVECTUM_STORAGE_CRITICAL_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_CRITICAL_PERCENT` |
-| 80–89 % | `critical` | `ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` |
-| ≥ 90 % | `ingestion_protected` | — | — |
+| Условие | State | Canonical env | Compatibility env |
+|---------|-------|---------------|-------------------|
+| used < warning | `normal` | — | — |
+| warning <= used < critical | `warning` | `ARVECTUM_STORAGE_WARNING_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_WARNING_PERCENT` |
+| critical <= used < protected | `critical` | `ARVECTUM_STORAGE_CRITICAL_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_CRITICAL_PERCENT` |
+| used >= protected | `ingestion_protected` | `ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` |
 | N/A | `storage_unknown` | — | — |
 
 All threshold env vars accept integer values (0–100).
+
+**Defaults:** `warning = 70`, `critical = 80`, `protected = 90`.
 
 Thresholds are validated at config load time:
 
@@ -85,14 +87,14 @@ uses safe reason codes.
 
 ### Blocked operations
 
-When the state is `ingestion_protected` or `storage_unknown`, the following
-mass operations are blocked (fail-closed):
+When the state is `ingestion_protected` or `storage_unknown`, ingestion is blocked
+on the following entrypoints (fail-closed):
 
-- Full SOAP sweeps (EIS national sweeps)
-- Mass download of procurement documents
-- Tender-research prepare/download flow is protected
-- Any operation decorated with `@mass_ingestion`
-- Future batch file-ingestion flows must connect the gate at implementation time
+- `prepare_tender_for_analysis()` — service-level gate
+- `POST /api/tender-research/prepare` — synchronous API
+- `POST /api/tender-research/jobs/prepare` — background job submission
+- `run_prepare_job()` — background worker recheck (job is `fail_job`'d with `current_step="gate_check"`)
+- Any function explicitly decorated with `@mass_ingestion`
 
 The gate returns machine-readable errors with HTTP 503:
 
@@ -113,8 +115,11 @@ The gate returns machine-readable errors with HTTP 503:
 
 ### Not yet covered
 
-- Future national SOAP sweep runtime (not yet implemented)
-- Future bulk download endpoints (not yet implemented)
+The following do NOT have a storage gate yet and must be protected when implemented:
+
+- Future national SOAP sweep runtime
+- Future bulk procurement download endpoints
+- Future batch file-ingestion flow (e.g., DocumentSet creation)
 
 ### Permitted operations
 

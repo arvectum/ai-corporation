@@ -103,6 +103,7 @@ def get_storage_snapshot() -> StorageSnapshot:
     if not storage_root.exists():
         logger.warning("Storage root does not exist: %s", storage_root)
         return StorageSnapshot(
+            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
             checked_at=now,
             reason=_public_reason(StorageState.STORAGE_UNKNOWN, "missing"),
@@ -111,6 +112,7 @@ def get_storage_snapshot() -> StorageSnapshot:
     if not storage_root.is_dir():
         logger.warning("Storage root is not a directory: %s", storage_root)
         return StorageSnapshot(
+            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
             checked_at=now,
             reason=_public_reason(StorageState.STORAGE_UNKNOWN, "not_directory"),
@@ -120,6 +122,7 @@ def get_storage_snapshot() -> StorageSnapshot:
     if not mv:
         logger.warning("Storage root %s resolves to system disk; expected external mount", storage_root)
         return StorageSnapshot(
+            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
             checked_at=now,
             mount_verified=False,
@@ -131,6 +134,7 @@ def get_storage_snapshot() -> StorageSnapshot:
     except OSError as exc:
         logger.error("disk_usage failed for %s: %s", storage_root, exc)
         return StorageSnapshot(
+            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
             checked_at=now,
             mount_verified=True,
@@ -150,6 +154,7 @@ def get_storage_snapshot() -> StorageSnapshot:
     )
 
     return StorageSnapshot(
+        storage_root=str(storage_root),
         filesystem_total_bytes=total,
         filesystem_used_bytes=used,
         filesystem_free_bytes=free,

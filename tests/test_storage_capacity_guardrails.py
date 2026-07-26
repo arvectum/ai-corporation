@@ -877,3 +877,83 @@ def test_normal_path_worker_passes_gate(monkeypatch, session):
                         pass
     mock_mark.assert_called_once()
     mock_prepare.assert_called_once()
+
+
+# =============================================================================
+# ARV-010 FINAL MERGE GATE — storage_root filling + root env resolution
+# =============================================================================
+
+
+def test_internal_snapshot_contains_resolved_root(mock_settings):
+    """Successful snapshot returns storage_root in internal object."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mock_settings.return_value.arvectum_storage_root = tmpdir
+        with patch("src.shared.storage.capacity._mount_verified", return_value=True):
+            with patch("shutil.disk_usage", return_value=_mock_disk_usage(int(SAMPLE_DISK_TOTAL * 0.40))):
+                snap = get_storage_snapshot()
+                # Internal snapshot has the resolved path
+                assert snap.storage_root is not None
+                assert isinstance(snap.storage_root, str)
+                # The path should match the resolved tmpdir
+                from pathlib import Path
+                assert Path(snap.storage_root).samefile(tmpdir)
+
+
+def test_internal_snapshot_storage_root_on_missing_path(mock_settings):
+    """Unknown snapshot with configured-but-missing path contains storage_root."""
+    mock_settings.return_value.arvectum_storage_root = "/nonexistent/storage/path/xyz123"
+    snap = get_storage_snapshot()
+    assert snap.state == StorageState.STORAGE_UNKNOWN
+    assert snap.reason == "storage_root_missing"
+    # Internal snapshot should still contain the configured path
+    assert snap.storage_root is not None
+    assert "nonexistent" in snap.storage_root
+
+
+def test_public_snapshot_omits_storage_root(mock_settings):
+    """PublicStorageSnapshot never leaks storage_root or absolute paths."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        mock_settings.return_value.arvectum_storage_root = tmpdir
+        with patch("src.shared.storage.capacity._mount_verified", return_value=True):
+            with patch("shutil.disk_usage", return_value=_mock_disk_usage(int(SAMPLE_DISK_TOTAL * 0.40))):
+                pub = public_storage_snapshot()
+                assert not hasattr(pub, "storage_root")
+                assert pub.reason == "threshold_normal"
+                assert "/tmp" not in pub.reason
+
+
+def test_public_snapshot_unknown_no_absolute_path_leak(mock_settings):
+    """Unknown public snapshot does not leak path in reason."""
+    mock_settings.return_value.arvectum_storage_root = "/some/secret/storage/path"
+    pub = public_storage_snapshot()
+    assert not hasattr(pub, "storage_root")
+    assert pub.reason in ("storage_root_missing", "storage_root_not_configured")
+    assert "/some/secret" not in pub.reason
+
+
+def test_root_env_canonical_loaded(monkeypatch):
+    """ARVECTUM_STORAGE_ROOT canonical env is loaded by Settings."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", "/canonical/storage")
+    s = get_settings()
+    assert s.arvectum_storage_root == "/canonical/storage"
+    get_settings.cache_clear()
+
+
+def test_root_env_compatibility_fallback(monkeypatch):
+    """AI_CORP_ARVECTUM_STORAGE_ROOT compatibility env works as fallback."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_ROOT", "/compat/storage")
+    s = get_settings()
+    assert s.arvectum_storage_root == "/compat/storage"
+    get_settings.cache_clear()
+
+
+def test_root_env_canonical_takes_priority(monkeypatch):
+    """Canonical ARVECTUM_STORAGE_ROOT has priority over compatibility."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", "/canonical/storage")
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_ROOT", "/compat/storage")
+    s = get_settings()
+    assert s.arvectum_storage_root == "/canonical/storage"
+    get_settings.cache_clear()

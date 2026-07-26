@@ -69,4 +69,4 @@ tmp/*_context.json
 /local_config/
 
 # R9 test artifacts (backup/restore smoke tests)
-output/
+/output/
