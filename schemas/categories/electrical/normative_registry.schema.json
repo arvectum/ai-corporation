@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/normative_registry.schema.json",
+  "title": "ARV-067 electrical normative base",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registry_id",
+    "version",
+    "status",
+    "runtime_import",
+    "checked_at",
+    "purpose",
+    "authorities_required",
+    "documents",
+    "precedence_policy",
+    "decision_policy",
+    "coverage"
+  ],
+  "properties": {
+    "registry_id": {
+      "const": "ARV-067-ELECTRICAL-NORMATIVE-BASE"
+    },
+    "version": {
+      "type": "string"
+    },
+    "status": {
+      "const": "research_asset"
+    },
+    "runtime_import": {
+      "const": false
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date"
+    },
+    "purpose": {
+      "type": "string"
+    },
+    "authorities_required": {
+      "type": "array",
+      "minItems": 6
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 35,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title_ru",
+          "authority",
+          "document_type",
+          "status",
+          "source_url",
+          "access",
+          "applies_to",
+          "use_for"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title_ru": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "document_type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string",
+            "pattern": "^https://"
+          },
+          "access": {
+            "type": "string"
+          },
+          "applies_to": {
+            "type": "array",
+            "minItems": 1
+          },
+          "use_for": {
+            "type": "array",
+            "minItems": 1
+          },
+          "notes": {
+            "type": "string"
+          },
+          "observed_in": {
+            "type": "array"
+          }
+        }
+      }
+    },
+    "precedence_policy": {
+      "type": "array",
+      "minItems": 5
+    },
+    "decision_policy": {
+      "type": "object"
+    },
+    "coverage": {
+      "type": "object"
+    }
+  }
+}
