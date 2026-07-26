@@ -104,3 +104,17 @@ def client(session: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _allow_ingestion_by_default():
+    """Allow ingestion in all tests by default.
+    Storage-specific tests (test_storage_capacity_guardrails.py) handle their own mocking.
+    Patches check_ingestion_allowed at every import site so the storage gate doesn't
+    block ingestion flows in tests that don't configure storage settings.
+    """
+    import unittest.mock
+    with unittest.mock.patch("src.tender_research.rag.prepare_service.check_ingestion_allowed", return_value=None):
+        with unittest.mock.patch("src.tender_research.rag.job_runner.check_ingestion_allowed", return_value=None):
+            with unittest.mock.patch("src.tender_research.api.check_ingestion_allowed", return_value=None):
+                yield
