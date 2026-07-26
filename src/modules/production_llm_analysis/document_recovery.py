@@ -488,6 +488,19 @@ def _same_filesystem(staging: Path, final_parent: Path) -> bool:
         return False
 
 
+def _soap_settings_from_env_file(env_file: Path):
+    """Read SOAP settings without leaving the explicit env file in process env."""
+    original_environment = os.environ.copy()
+    try:
+        load_dotenv(env_file, override=True)
+        clear_zakupki_soap_settings_cache()
+        return get_zakupki_soap_settings()
+    finally:
+        os.environ.clear()
+        os.environ.update(original_environment)
+        clear_zakupki_soap_settings_cache()
+
+
 def _extract_to_stage(document, source, extracted, extractor, config, extract_dir):
     fake = SimpleNamespace(
         text_extraction_status="pending",
@@ -525,12 +538,10 @@ def recover_procurement_documents(
     if request.env_file.is_symlink() or not request.env_file.is_file():
         raise ValueError("env_file must be a regular non-symlink file")
     settings = Settings(_env_file=request.env_file, _env_file_encoding="utf-8")
-    load_dotenv(request.env_file, override=True)
     get_settings.cache_clear()
-    clear_zakupki_soap_settings_cache()
     engine = engine_factory(settings.database_url)
     session_factory = sessionmaker(bind=engine)
-    soap_settings = get_zakupki_soap_settings()
+    soap_settings = _soap_settings_from_env_file(request.env_file)
     staging = None
     try:
         with session_factory() as session:
