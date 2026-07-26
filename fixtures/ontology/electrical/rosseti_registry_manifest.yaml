@@ -1,0 +1,56 @@
+fixture_id: ARV-067-ROSSETI-REGISTRY-MANIFEST
+version: 1.0.0
+observed_at: '2026-07-27'
+official_page_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+snapshots:
+- id: rosseti_primary_2026_06_10
+  title: Раздел I. Первичное оборудование, материалы и системы, допущенные к применению на объектах ПАО «Россети» на 10.06.2026
+  official_page_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  snapshot_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+  pages: 325
+  registry: primary
+  source_kind: user_supplied_official_snapshot
+- id: rosseti_secondary_2026_06_10
+  title: Раздел II. Вторичное оборудование, материалы и системы, допущенные к применению на объектах ПАО «Россети» на 10.06.2026
+  official_page_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  snapshot_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+  pages: 110
+  registry: secondary
+  source_kind: user_supplied_official_snapshot
+expected:
+  primary_sections: 21
+  secondary_sections: 7
+  total_sections: 28
+  primary_registry_last_row_start: 970
+  secondary_registry_last_row_start: 271
+section_ids:
+- switches
+- high_voltage_bushings
+- insulators
+- cables_fittings_pipes
+- package_transformer_substations
+- medium_voltage_switchgear
+- gas_insulated_switchgear
+- surge_protection_fuses
+- overhead_line_towers
+- tower_foundations
+- conductors_ground_wires_sip
+- line_hardware
+- rigid_busbars_busducts
+- disconnectors_earthing_switches
+- reactors
+- power_transformers
+- combined_instrument_transformers
+- voltage_transformers
+- current_transformers
+- stationary_batteries
+- other_primary
+- automated_metering_systems
+- automated_process_control_systems
+- instrumentation
+- relay_protection_automation
+- communications
+- auxiliary_power_supply
+- other_secondary
+release_note: The manifest records section-level nomenclature and source fingerprints. It does not reproduce the full product
+  registry or its copyrighted layout.
