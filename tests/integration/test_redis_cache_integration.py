@@ -1,8 +1,7 @@
 import os
 import time
-import json
 import pytest
-from src.shared.redis.client import close_client
+from src.shared.redis.client import close_client, reset_redis_runtime
 from src.shared.redis.cache import get, set, delete
 
 
@@ -57,6 +56,18 @@ class TestCacheIntegration:
         with pytest.raises(ValueError, match="secret"):
             set(key, "secret-api-key-12345")
 
+    def test_secret_like_key_rejected_in_nested_dict(self):
+        _cleanup()
+        key = "arvectum:test:cache:secret_nested"
+        with pytest.raises(ValueError, match="secret"):
+            set(key, {"data": {"secret_token": "abc"}})
+
+    def test_secret_like_value_rejected_in_list(self):
+        _cleanup()
+        key = "arvectum:test:cache:secret_list"
+        with pytest.raises(ValueError, match="secret"):
+            set(key, ["safe", "password123"])
+
     def test_corrupt_value_handled_as_miss(self):
         _cleanup()
         import redis as redis_py
@@ -65,15 +76,11 @@ class TestCacheIntegration:
         r.set(key, "not-json")
         assert get(key) is None
 
-    def test_cache_outage_fail_open(self):
+    def test_cache_outage_fail_open(self, monkeypatch):
         _cleanup()
-        from src.shared.redis.client import close_client, get_client
         close_client()
-        env_url = os.environ.get("AI_CORP_REDIS_URL", "redis://127.0.0.1:6379/1")
-        try:
-            os.environ["AI_CORP_REDIS_URL"] = "redis://127.0.0.1:19999/0"
-            val = get("some_key")
-            assert val is None
-        finally:
-            os.environ["AI_CORP_REDIS_URL"] = env_url
-            close_client()
+        monkeypatch.setenv("AI_CORP_REDIS_URL", "redis://127.0.0.1:19999/0")
+        reset_redis_runtime()
+        val = get("some_key")
+        assert val is None
+        reset_redis_runtime()

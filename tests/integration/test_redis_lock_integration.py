@@ -1,8 +1,9 @@
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 import pytest
 from src.shared.redis.client import close_client
-from src.shared.redis.errors import RedisAlreadyLockedError, RedisLockTimeoutError, RedisUnavailableError
+from src.shared.redis.errors import RedisAlreadyLockedError, RedisLockTimeoutError
 from src.shared.redis.lock import acquire, release
 
 
@@ -62,11 +63,29 @@ class TestLockIntegration:
         assert token2
         release(key, token2)
 
-    def test_concurrent_lock_one_winner(self):
+    def test_wait_timeout_raises(self):
         _cleanup()
-        key = "arvectum:test:lock:test_concurrent"
+        key = "arvectum:test:lock:test_wait_timeout"
         token1 = acquire(key, ttl_seconds=5)
         assert token1
-        with pytest.raises(RedisAlreadyLockedError):
-            acquire(key, ttl_seconds=5, wait_timeout_seconds=None)
+        with pytest.raises(RedisLockTimeoutError):
+            acquire(key, ttl_seconds=5, wait_timeout_seconds=0.1)
         release(key, token1)
+
+    def test_concurrent_lock_one_winner(self):
+        _cleanup()
+        key = "arvectum:test:lock:concurrent"
+
+        def try_acquire():
+            try:
+                return acquire(key, ttl_seconds=5, wait_timeout_seconds=2)
+            except (RedisAlreadyLockedError, RedisLockTimeoutError):
+                return None
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [pool.submit(try_acquire) for _ in range(5)]
+            tokens = [f.result() for f in futures]
+        tokens = [t for t in tokens if t is not None]
+        assert len(tokens) == 1, f"Expected 1 winner, got {len(tokens)}"
+        if tokens:
+            release(key, tokens[0])

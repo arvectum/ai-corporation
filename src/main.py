@@ -224,10 +224,13 @@ def readiness() -> dict[str, object]:
     storage_metrics = storage_metrics_dict()
     redis_health = health_snapshot()
     redis_ready = redis_health.get("status") == "healthy"
-    customer_pilot_ready = (
-        not settings.arvectum_redis_enabled or redis_ready
-    )
-    overall_status = "ok" if writable and storage_metrics.get("ingestion_allowed", False) else "degraded"
+    redis_required = settings.arvectum_redis_enabled
+    customer_pilot_ready = not redis_required or redis_ready
+    overall_status = "ok"
+    if not writable or not storage_metrics.get("ingestion_allowed", False):
+        overall_status = "degraded"
+    elif redis_required and not redis_ready:
+        overall_status = "degraded"
     return {
         "status": overall_status,
         "data_writable": writable,

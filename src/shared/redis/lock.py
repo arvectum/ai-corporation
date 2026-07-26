@@ -42,7 +42,8 @@ def acquire(
         try:
             acquired = client.set(key, tok, nx=True, px=ttl_ms)
         except Exception as exc:
-            raise RedisUnavailableError(f"Redis lock acquire failed: {type(exc).__name__}") from exc
+            category = type(exc).__name__
+            raise RedisUnavailableError(f"Redis lock acquire failed: {category}") from exc
         if acquired:
             return tok
         if deadline is not None and time.monotonic() >= deadline:
@@ -59,4 +60,5 @@ def release(key: str, token: str) -> bool:
         result = client.eval(_LUA_RELEASE, 1, key, token)
         return bool(result)
     except Exception as exc:
-        raise RedisUnavailableError(f"Redis lock release failed: {type(exc).__name__}") from exc
+        category = type(exc).__name__
+        raise RedisUnavailableError(f"Redis lock release failed: {category}") from exc

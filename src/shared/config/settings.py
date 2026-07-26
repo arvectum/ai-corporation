@@ -226,5 +226,9 @@ def get_settings() -> Settings:
     return Settings()
 
 
+def invalidate_settings_cache() -> None:
+    get_settings.cache_clear()
+
+
 def _split_csv(raw_value: str) -> list[str]:
     return [item.strip() for item in raw_value.split(",") if item.strip()]

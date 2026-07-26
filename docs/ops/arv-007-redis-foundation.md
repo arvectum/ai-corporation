@@ -48,6 +48,13 @@ User-controlled or potentially sensitive dimensions (idempotency key) are SHA-25
 | Cache get/set    | Fail open (cache miss)     |
 | Rate-limit check | Fail closed                |
 
+## Ownership-Safe Primitives
+
+Both lock and idempotency use token-based ownership:
+
+- **Lock**: `acquire()` returns a random token; `release(key, token)` uses Lua compare-and-delete — only the owner can release.
+- **Idempotency**: `claim()` returns a random token (`str | None`); `release(key, token)` uses the same Lua compare-and-delete pattern. A foreign token cannot release or overwrite the claim.
+
 ## Single-Instance Lease Limitations
 
 Redis lock uses a single-instance SET NX PX with Lua compare-and-delete release. Redlock/multi-node consensus is not implemented. The lock provides best-effort mutual exclusion within TTL bounds. If the Redis instance fails, the lock is released when TTL expires.
@@ -57,6 +64,10 @@ Redis lock uses a single-instance SET NX PX with Lua compare-and-delete release.
 ```bash
 # Start Redis (test profile, loopback port 16379)
 make redis-start
+
+# Start Redis (no public port, with mandatory password)
+export ARVECTUM_REDIS_PASSWORD='your-password'
+docker compose -f docker-compose.redis.yml up -d
 
 # Ping
 make redis-ping
@@ -77,6 +88,7 @@ make redis-clean
 `GET /health/ready` includes:
 ```json
 {
+  "status": "ok|degraded",
   "redis": {
     "enabled": true,
     "status": "healthy|disabled|unavailable",
@@ -89,7 +101,7 @@ make redis-clean
 }
 ```
 
-Redis URL, password, and raw exceptions are never exposed in health responses.
+The overall `status` is `degraded` when Redis is enabled but unavailable, even if storage is healthy. Redis URL, password, and raw exceptions are never exposed in health responses.
 
 ## Troubleshooting
 
@@ -103,7 +115,21 @@ Redis URL, password, and raw exceptions are never exposed in health responses.
 - Redis URL is read from environment only (`.env.local` or CI secrets).
 - Redis password is never committed to tracked files.
 - Secrets, credentials, and raw idempotency keys are never written to Redis keys or values.
-- Cache adapter rejects payloads with secret-like key prefixes.
+- Cache adapter rejects payloads with secret-like key prefixes (recursive check for nested dicts/lists).
+- Error messages never include raw exception class names — only sanitized category labels.
+- Raw exceptions, connection strings, and keys are never logged.
+
+## Test State Reset
+
+When tests modify environment variables (e.g. to simulate Redis outage), the correct reset sequence is:
+
+```python
+# After monkeypatching env vars:
+from src.shared.redis.client import reset_redis_runtime
+reset_redis_runtime()  # clears settings cache + closes Redis client
+```
+
+`reset_redis_runtime()` calls `invalidate_settings_cache()` (clears `@lru_cache` on `get_settings()`) then `close_client()`. There is no direct access to private `_client_instance`/`_client_disabled` globals from test code.
 
 ## Deferred to ARV-008
 

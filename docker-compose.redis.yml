@@ -3,11 +3,11 @@ services:
   redis:
     image: redis:7.4.9-alpine
     container_name: arvectum-redis
-    command: ["redis-server", "--requirepass", "${ARVECTUM_REDIS_PASSWORD:-CHANGE_ME}"]
-    env_file:
-      - .env.local
+    command: ["redis-server", "--requirepass", "${ARVECTUM_REDIS_PASSWORD:?ARVECTUM_REDIS_PASSWORD must be set}"]
+    environment:
+      REDISCLI_AUTH: "${ARVECTUM_REDIS_PASSWORD:?ARVECTUM_REDIS_PASSWORD must be set}"
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a ${ARVECTUM_REDIS_PASSWORD:-CHANGE_ME} ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 5s
       timeout: 3s
       retries: 10

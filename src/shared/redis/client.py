@@ -15,6 +15,23 @@ _client_instance: redis_py.Redis | None = None
 _client_lock: Lock = Lock()
 _client_disabled: bool = False
 
+_ERROR_CATEGORIES = {
+    "connection": "connection_error",
+    "timeout": "timeout",
+    "auth": "authentication_error",
+    "pool": "pool_exhausted",
+    "protocol": "protocol_error",
+    "response": "protocol_error",
+}
+
+
+def _sanitize_error_category(exc: Exception) -> str:
+    class_name = type(exc).__name__.lower()
+    for key, category in _ERROR_CATEGORIES.items():
+        if key in class_name:
+            return category
+    return "unknown"
+
 
 def _build_client() -> redis_py.Redis | None:
     settings = get_settings()
@@ -59,9 +76,16 @@ def close_client() -> None:
             try:
                 _client_instance.close()
             except Exception:
-                logger.exception("Error closing Redis client")
+                logger.warning("Redis client close failed", extra={"operation": "close"})
             _client_instance = None
         _client_disabled = False
+
+
+def reset_redis_runtime() -> None:
+    from src.shared.config.settings import invalidate_settings_cache
+
+    invalidate_settings_cache()
+    close_client()
 
 
 def ping() -> dict:
@@ -77,8 +101,8 @@ def ping() -> dict:
         elapsed_ms = round((time.monotonic() - start) * 1000, 1)
         return {"enabled": True, "status": "healthy", "latency_ms": elapsed_ms, "error_category": None}
     except redis_py.RedisError as exc:
-        category = type(exc).__name__
-        logger.warning("Redis ping failed: %s", exc)
+        category = _sanitize_error_category(exc)
+        logger.warning("Redis ping failed: operation=ping category=%s", category)
         return {"enabled": True, "status": "unavailable", "latency_ms": None, "error_category": category}
 
 

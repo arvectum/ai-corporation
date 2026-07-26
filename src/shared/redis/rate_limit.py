@@ -46,4 +46,5 @@ def check(key: str, limit: int | None = None, window_seconds: int | None = None)
             "reset_after_seconds": max(0, reset_at - int(__import__("time").time())),
         }
     except Exception as exc:
-        raise RedisUnavailableError(f"Redis rate limit check failed: {type(exc).__name__}") from exc
+        category = type(exc).__name__
+        raise RedisUnavailableError(f"Redis rate limit check failed: {category}") from exc

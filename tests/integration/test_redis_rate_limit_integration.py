@@ -1,4 +1,5 @@
 import os
+from concurrent.futures import ThreadPoolExecutor
 import pytest
 from src.shared.redis.client import close_client
 from src.shared.redis.rate_limit import check
@@ -42,13 +43,27 @@ class TestRateLimitIntegration:
         assert result["allowed"] is False
         assert result["retry_after_seconds"] > 0
 
-    def test_concurrent_rate_increments(self):
+    def test_sequential_increments(self):
         _cleanup()
-        key = "arvectum:test:ratelimit:concurrent"
+        key = "arvectum:test:ratelimit:sequential"
         for i in range(5):
             result = check(key, limit=10, window_seconds=60)
             assert result["allowed"] is True
             assert result["remaining"] == 10 - (i + 1)
+
+    def test_concurrent_increments(self):
+        _cleanup()
+        key = "arvectum:test:ratelimit:concurrent"
+
+        def inc():
+            return check(key, limit=10, window_seconds=60)
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [pool.submit(inc) for _ in range(5)]
+            results = [f.result() for f in futures]
+        assert all(r["allowed"] for r in results)
+        final = check(key, limit=10, window_seconds=60)
+        assert final["remaining"] <= 5
 
     def test_tenant_isolation(self):
         _cleanup()
