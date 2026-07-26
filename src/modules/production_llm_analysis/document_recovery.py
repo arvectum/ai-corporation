@@ -38,6 +38,7 @@ from src.tender_research.models import (
     ProcurementTender,
     ProcurementTenderDocument,
 )
+from src.tender_research.rag.chunker import normalize_text
 from src.tender_research.rag.indexer import DocumentChunkIndexer
 from src.tender_research.repository import TenderRepository
 
@@ -353,25 +354,51 @@ def _chunk_snapshot(chunks, documents, tender_id):
     nonempty = 0
     tokens = 0
     counts = {document_id: 0 for document_id in ids}
+    document_lengths: dict[str, int] = {}
+    for document in documents:
+        value = (
+            _utf8_nonempty(Path(document.extracted_text_path))
+            if document.extracted_text_path
+            else None
+        )
+        if value is None:
+            valid = False
+            continue
+        document_lengths[document.id] = len(normalize_text(value))
     ordered = []
+    previous_start: dict[str, int] = {}
+    previous_index: dict[str, int] = {}
     for chunk in sorted(chunks, key=lambda item: (item.document_id, item.chunk_index)):
         value = chunk.text or ""
         if value.strip():
             nonempty += 1
         counts[chunk.document_id] = counts.get(chunk.document_id, 0) + 1
         tokens += int(chunk.token_estimate or 0)
+        expected_index = previous_index.get(chunk.document_id, -1) + 1
+        document_length = document_lengths.get(chunk.document_id, 0)
         if (
             chunk.tender_id != tender_id
             or chunk.document_id not in ids
             or not value.strip()
             or not isinstance(chunk.text_hash, str)
             or HASH_RE.fullmatch(chunk.text_hash) is None
+            or chunk.text_hash.lower()
+            != hashlib.sha256(value.encode("utf-8")).hexdigest()
+            or chunk.chunk_index < 0
+            or chunk.chunk_index != expected_index
             or chunk.char_start < 0
             or chunk.char_end <= chunk.char_start
-            or chunk.char_end > len(value)
+            or chunk.char_end > document_length
+            or (chunk.chunk_index == 0 and chunk.char_start != 0)
+            or (
+                chunk.document_id in previous_start
+                and chunk.char_start < previous_start[chunk.document_id]
+            )
             or chunk.token_estimate <= 0
         ):
             valid = False
+        previous_start[chunk.document_id] = chunk.char_start
+        previous_index[chunk.document_id] = chunk.chunk_index
         ordered.append(
             (
                 chunk.document_id,
@@ -383,6 +410,8 @@ def _chunk_snapshot(chunks, documents, tender_id):
             )
         )
     valid = valid and nonempty == len(chunks) and tokens > 0 and all(counts.values())
+    if any(document_id not in document_lengths for document_id in ids):
+        valid = False
     return (
         valid,
         {
@@ -486,11 +515,12 @@ def recover_procurement_documents(
     extraction_helper: Callable[..., None] = _try_extract,
     chunk_indexer_factory: Callable[..., Any] = DocumentChunkIndexer,
     engine_factory: Callable[..., Any] = create_engine,
+    root_validator: Callable[[Path, Path], Path] = validate_data_root,
 ) -> dict[str, Any]:
     """Run a complete dry-run preflight; persistence requires explicit ``apply``."""
     if request.build_chunks and not request.apply:
         raise ValueError("--build-chunks requires --apply")
-    data_root = validate_data_root(request.data_root, request.backup_dir)
+    data_root = root_validator(request.data_root, request.backup_dir)
     backup_dir = _safe_backup_dir(request.backup_dir, data_root, create=request.apply)
     if request.env_file.is_symlink() or not request.env_file.is_file():
         raise ValueError("env_file must be a regular non-symlink file")
@@ -568,7 +598,11 @@ def recover_procurement_documents(
                         classification="ALREADY_RECOVERED_AND_CHUNKED",
                         final_status="ALREADY_RECOVERED_AND_CHUNKED",
                     )
-                if request.apply and existing_metrics["files_valid"]:
+                if (
+                    request.apply
+                    and request.build_chunks
+                    and existing_metrics["files_valid"]
+                ):
                     return _run_chunks_only(
                         request,
                         session,
@@ -580,6 +614,13 @@ def recover_procurement_documents(
                         revision,
                         chunk_indexer_factory,
                     )
+                if existing_metrics["files_valid"]:
+                    return _report(
+                        **base,
+                        **existing_metrics,
+                        classification="DOCUMENTS_ALREADY_RESTORED_CHUNKS_NOT_REQUESTED",
+                        final_status="DOCUMENTS_ALREADY_RESTORED_CHUNKS_NOT_REQUESTED",
+                    )
                 return _report(
                     **base,
                     classification="EXISTING_STATE_CONFLICT",
@@ -588,10 +629,7 @@ def recover_procurement_documents(
             final_parent = final_dir.parent
             staging_parent = final_parent
             if not final_parent.exists():
-                if request.apply:
-                    final_parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-                else:
-                    staging_parent = data_root.parent
+                staging_parent = data_root.parent
             staging = Path(
                 tempfile.mkdtemp(
                     prefix=f".r10-1-recovery-staging-{uuid.uuid4().hex}-",
@@ -787,7 +825,14 @@ def _publish_and_commit(
 ):
     backup = _backup_documents(backup_dir, request.registry_number, documents, chunks)
     published = False
+    created_parents: list[Path] = []
     try:
+        parent = final_dir.parent
+        while not parent.exists():
+            created_parents.append(parent)
+            parent = parent.parent
+        for directory in reversed(created_parents):
+            directory.mkdir(mode=0o700)
         os.replace(stage_procurement, final_dir)
         published = True
         base["persistent_filesystem_mutation_performed"] = True
@@ -801,38 +846,44 @@ def _publish_and_commit(
             document.text_extraction_status = "extracted"
             document.extracted_text_chars = len(_utf8_nonempty(extracted) or "")
             document.size_bytes = source.stat().st_size
-        repo = TenderRepository(session)
-        indexer = indexer_factory(repo, load_config())
-        indexer.build_for_tender(tender.id, commit=False)
-        first_chunks = list(
-            session.execute(
-                select(ProcurementDocumentChunk).where(
-                    ProcurementDocumentChunk.tender_id == tender.id
-                )
-            ).scalars()
-        )
-        valid_first, metrics_first, ordered_first = _chunk_snapshot(
-            first_chunks, documents, tender.id
-        )
-        if not valid_first:
-            raise RuntimeError("chunk_build_failed")
-        indexer.build_for_tender(tender.id, commit=False)
-        second_chunks = list(
-            session.execute(
-                select(ProcurementDocumentChunk).where(
-                    ProcurementDocumentChunk.tender_id == tender.id
-                )
-            ).scalars()
-        )
-        valid_second, metrics_second, ordered_second = _chunk_snapshot(
-            second_chunks, documents, tender.id
-        )
-        if (
-            not valid_second
-            or metrics_first != metrics_second
-            or ordered_first != ordered_second
-        ):
-            raise RuntimeError("chunk_idempotency_failed")
+        metrics_first = metrics_second = {
+            "chunk_count": len(chunks),
+            "nonempty_chunk_count": 0,
+            "token_estimate": 0,
+        }
+        if request.build_chunks:
+            repo = TenderRepository(session)
+            indexer = indexer_factory(repo, load_config())
+            indexer.build_for_tender(tender.id, commit=False)
+            first_chunks = list(
+                session.execute(
+                    select(ProcurementDocumentChunk).where(
+                        ProcurementDocumentChunk.tender_id == tender.id
+                    )
+                ).scalars()
+            )
+            valid_first, metrics_first, ordered_first = _chunk_snapshot(
+                first_chunks, documents, tender.id
+            )
+            if not valid_first:
+                raise RuntimeError("chunk_build_failed")
+            indexer.build_for_tender(tender.id, commit=False)
+            second_chunks = list(
+                session.execute(
+                    select(ProcurementDocumentChunk).where(
+                        ProcurementDocumentChunk.tender_id == tender.id
+                    )
+                ).scalars()
+            )
+            valid_second, metrics_second, ordered_second = _chunk_snapshot(
+                second_chunks, documents, tender.id
+            )
+            if (
+                not valid_second
+                or metrics_first != metrics_second
+                or ordered_first != ordered_second
+            ):
+                raise RuntimeError("chunk_idempotency_failed")
         session.commit()
         base.update(
             {
@@ -848,11 +899,12 @@ def _publish_and_commit(
                 "database_mutation_performed": True,
             }
         )
-        return _report(
-            **base,
-            classification="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
-            final_status="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+        status = (
+            "DOCUMENTS_RESTORED_AND_CHUNKS_BUILT"
+            if request.build_chunks
+            else "DOCUMENTS_RESTORED"
         )
+        return _report(**base, classification=status, final_status=status)
     except (
         OSError,
         RuntimeError,
@@ -871,6 +923,11 @@ def _publish_and_commit(
                     classification="DOCUMENT_RECOVERY_ROLLBACK_FAILED",
                     final_status="DOCUMENT_RECOVERY_ROLLBACK_FAILED",
                 )
+        for directory in created_parents:
+            try:
+                directory.rmdir()
+            except OSError:
+                break
         classification = (
             "DOCUMENT_RECOVERY_CHUNK_BUILD_FAILED"
             if "chunk" in str(exc)

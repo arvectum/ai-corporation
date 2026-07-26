@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.modules.production_llm_analysis.document_recovery import (
     DocumentRecoveryRequest,
+    _chunk_snapshot,
     _publish,
     _safe_entry,
     inspect_zip,
@@ -22,6 +23,7 @@ from src.tender_research.models import (
     ProcurementTender,
     ProcurementTenderDocument,
 )
+from src.tender_research.rag.chunker import chunk_text
 from src.tender_research.rag.indexer import DocumentChunkIndexer
 
 
@@ -338,6 +340,7 @@ def test_recovery_dry_run_executes_extraction_without_persistent_mutation(
         request,
         soap_client_factory=lambda _settings: client,
         extraction_helper=extractor,
+        root_validator=lambda data, _backup: data.resolve(),
     )
 
     assert report["final_status"] == "RECOVERY_PREFLIGHT_READY"
@@ -359,6 +362,7 @@ def test_recovery_dry_run_allows_char_count_drift(tmp_path: Path, monkeypatch) -
         request,
         soap_client_factory=lambda _settings: client,
         extraction_helper=extractor,
+        root_validator=lambda data, _backup: data.resolve(),
     )
 
     assert report["final_status"] == "RECOVERY_PREFLIGHT_READY"
@@ -382,6 +386,7 @@ def test_recovery_dry_run_fails_closed_on_extraction_failure(
         request,
         soap_client_factory=lambda _settings: client,
         extraction_helper=failing_extractor,
+        root_validator=lambda data, _backup: data.resolve(),
     )
 
     assert report["final_status"] == "RECOVERY_PREFLIGHT_EXTRACTION_REJECTED"
@@ -390,6 +395,39 @@ def test_recovery_dry_run_fails_closed_on_extraction_failure(
     assert report["extraction_failed_count"] == 1
     assert report["provider_called"] is False
     assert not (tmp_path / "data").exists()
+    engine.dispose()
+
+
+def test_apply_without_build_chunks_does_not_call_indexer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recovery, engine, client, extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch
+    )
+    request = DocumentRecoveryRequest(
+        request.registry_number,
+        request.env_file,
+        request.data_root,
+        request.backup_dir,
+        apply=True,
+        build_chunks=False,
+    )
+
+    def forbidden_indexer(*_args, **_kwargs):
+        raise AssertionError("chunk indexer must not run")
+
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings: client,
+        extraction_helper=extractor,
+        chunk_indexer_factory=forbidden_indexer,
+        root_validator=lambda data, _backup: data.resolve(),
+    )
+
+    assert report["final_status"] == "DOCUMENTS_RESTORED"
+    assert report["database_mutation_performed"] is True
+    assert report["chunk_count_after_first_build"] == 0
+    assert report["chunk_count_after_second_build"] == 0
     engine.dispose()
 
 
@@ -410,6 +448,7 @@ def test_recovery_rejects_null_or_nonhex_hash_before_soap(
         request,
         soap_client_factory=lambda _settings: client,
         extraction_helper=extractor,
+        root_validator=lambda data, _backup: data.resolve(),
     )
 
     assert report["final_status"] == "RECOVERY_PREFLIGHT_IDENTITY_MISMATCH"
@@ -433,6 +472,7 @@ def test_recovery_rejects_schema_revision_mismatch_before_soap(
         request,
         soap_client_factory=lambda _settings: client,
         extraction_helper=extractor,
+        root_validator=lambda data, _backup: data.resolve(),
     )
 
     assert report["final_status"] == "DOCUMENT_RECOVERY_SCHEMA_MISMATCH"
@@ -469,3 +509,98 @@ def test_legacy_chunk_indexer_commits_by_default() -> None:
     indexer.build_for_tender("tender", commit=False)
     assert repo._session.commits == 1
     assert repo._session.flushes == 1
+
+
+def _multi_chunk_fixture(tmp_path: Path):
+    tmp_path.mkdir(parents=True, exist_ok=True)
+
+    class FakeSession:
+        def __init__(self):
+            self.commits = 0
+            self.flushes = 0
+
+        def commit(self):
+            self.commits += 1
+
+        def flush(self):
+            self.flushes += 1
+
+    text_value = " ".join(f"word-{index}" for index in range(2_000))
+    text_path = tmp_path / "full.txt"
+    text_path.write_text(text_value, encoding="utf-8")
+    document = SimpleNamespace(
+        id="document-1",
+        tender_id="tender-1",
+        extracted_text_path=str(text_path),
+        file_name="document.xml",
+        sha256=hashlib.sha256(text_value.encode()).hexdigest(),
+    )
+
+    class FakeRepo:
+        def __init__(self):
+            self._session = FakeSession()
+            self.chunks = []
+
+        def list_extracted_documents_by_tender(self, _tender_id):
+            return [document]
+
+        def list_document_chunks(self, document_id):
+            return [chunk for chunk in self.chunks if chunk.document_id == document_id]
+
+        def upsert_document_chunk(self, data):
+            chunk = SimpleNamespace(**data, id=f"chunk-{len(self.chunks)}")
+            self.chunks.append(chunk)
+            return chunk
+
+    repo = FakeRepo()
+    indexer = DocumentChunkIndexer(
+        repo,
+        TenderResearchConfig(
+            rag_chunk_size_chars=1500,
+            rag_chunk_overlap_chars=200,
+            rag_min_chunk_chars=120,
+        ),
+    )
+    expected_drafts = chunk_text(text_value, indexer._chunking)
+    indexer.build_for_tender("tender-1", commit=False)
+    assert len(repo.chunks) == len(expected_drafts)
+    return document, repo.chunks, text_value
+
+
+def test_chunk_snapshot_accepts_real_multichunk_bounds(tmp_path: Path) -> None:
+    document, chunks, _text_value = _multi_chunk_fixture(tmp_path)
+
+    valid, _metrics, _ordered = _chunk_snapshot(chunks, [document], "tender-1")
+
+    assert valid is True
+    assert len(chunks) >= 5
+    assert any(chunk.char_start > 0 for chunk in chunks[1:])
+    assert any(chunk.char_end > len(chunk.text) for chunk in chunks)
+
+
+def test_chunk_snapshot_rejects_end_beyond_full_document(tmp_path: Path) -> None:
+    document, chunks, text_value = _multi_chunk_fixture(tmp_path)
+    chunks[-1].char_end = len(text_value) + 1
+
+    valid, _metrics, _ordered = _chunk_snapshot(chunks, [document], "tender-1")
+
+    assert valid is False
+
+
+def test_chunk_snapshot_rejects_wrong_hash_duplicate_and_missing_index(
+    tmp_path: Path,
+) -> None:
+    document, chunks, _text_value = _multi_chunk_fixture(tmp_path)
+    chunks[1].text_hash = "0" * 64
+    valid_hash, _, _ = _chunk_snapshot(chunks, [document], "tender-1")
+    assert valid_hash is False
+
+    document, chunks, _text_value = _multi_chunk_fixture(tmp_path / "duplicate")
+    chunks[1].chunk_index = chunks[0].chunk_index
+    valid_duplicate, _, _ = _chunk_snapshot(chunks, [document], "tender-1")
+    assert valid_duplicate is False
+
+    document, chunks, _text_value = _multi_chunk_fixture(tmp_path / "missing")
+    chunks[1].chunk_index = chunks[1].chunk_index + 1
+    valid_missing, _, _ = _chunk_snapshot(chunks, [document], "tender-1")
+    assert valid_missing is False
