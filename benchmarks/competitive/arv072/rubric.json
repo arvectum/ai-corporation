@@ -1,0 +1,103 @@
+{
+  "benchmark_id": "ARV-072",
+  "version": "1.0.0",
+  "title": "Регрессионный competitive benchmark на одинаковых реальных закупках",
+  "score_scale": {
+    "min": 0,
+    "max": 4,
+    "labels": {
+      "0": "отсутствует или фактически неверно",
+      "1": "частично, с существенными пропусками",
+      "2": "базово полезно, но требует значительной ручной доработки",
+      "3": "хорошо и в основном доказуемо",
+      "4": "полно, доказуемо и воспроизводимо"
+    }
+  },
+  "dimensions": [
+    {
+      "id": "extraction",
+      "title": "Извлечение",
+      "weight": 25,
+      "items": [
+        {"id": "identity", "title": "Идентичность закупки, закон, лот и предмет", "weight": 3},
+        {"id": "positions", "title": "Позиции, количества, единицы и характеристики", "weight": 8},
+        {"id": "requirements", "title": "Требования к участнику и заявке", "weight": 5},
+        {"id": "contract_terms", "title": "Сроки, оплата, обеспечение, штрафы, приёмка и гарантия", "weight": 6},
+        {"id": "unknowns", "title": "Явное обозначение отсутствующих или неоднозначных данных", "weight": 3}
+      ]
+    },
+    {
+      "id": "evidence",
+      "title": "Доказуемость",
+      "weight": 25,
+      "items": [
+        {"id": "claim_citations", "title": "Ссылки на источник для существенных выводов", "weight": 10},
+        {"id": "locators", "title": "Проверяемые цитаты, страницы, листы, таблицы или XPath", "weight": 6},
+        {"id": "coverage", "title": "Покрытие исходных документов и provenance", "weight": 5},
+        {"id": "fail_closed", "title": "Запрет неподтверждённых фактов и безопасная деградация", "weight": 4}
+      ]
+    },
+    {
+      "id": "decision",
+      "title": "Решение и полезность",
+      "weight": 20,
+      "items": [
+        {"id": "qualification", "title": "Квалификационная ось участия", "weight": 5},
+        {"id": "commercial", "title": "Коммерческая ось и входные допущения", "weight": 4},
+        {"id": "blockers", "title": "Стоп-факторы, риски и их приоритет", "weight": 4},
+        {"id": "confidence", "title": "Confidence/uncertainty и границы применимости", "weight": 4},
+        {"id": "next_action", "title": "Конкретное следующее действие без обещания победы", "weight": 3}
+      ]
+    },
+    {
+      "id": "time",
+      "title": "Время",
+      "weight": 10,
+      "items": [
+        {"id": "elapsed", "title": "Сквозное elapsed time", "weight": 4},
+        {"id": "operator_touch", "title": "Ручное время оператора", "weight": 4},
+        {"id": "repeatability", "title": "Повторяемость двух запусков", "weight": 2}
+      ]
+    },
+    {
+      "id": "cost",
+      "title": "Стоимость",
+      "weight": 10,
+      "items": [
+        {"id": "marginal", "title": "Маржинальная стоимость запуска", "weight": 4},
+        {"id": "plan", "title": "Стоимость тарифа и лимиты", "weight": 3},
+        {"id": "transparency", "title": "Прозрачность расчёта и отсутствие нулей вместо unknown", "weight": 3}
+      ]
+    },
+    {
+      "id": "documents",
+      "title": "Документы и воспроизводимость",
+      "weight": 10,
+      "items": [
+        {"id": "source_handling", "title": "Поддержка исходного комплекта и версий", "weight": 3},
+        {"id": "exports", "title": "Экспорт отчёта/таблиц/документов", "weight": 3},
+        {"id": "artifact_binding", "title": "Версия результата, hash и привязка к run", "weight": 2},
+        {"id": "auditability", "title": "Возможность независимой перепроверки", "weight": 2}
+      ]
+    }
+  ],
+  "automatic_fail_rules": [
+    {"id": "wrong_procurement_identity", "description": "Результат относится к другой закупке, лоту или версии документации."},
+    {"id": "unsupported_positive_decision", "description": "Положительное решение об участии сформировано без подтверждённых квалификационных или коммерческих входных данных."},
+    {"id": "material_fabrication", "description": "Существенный факт, требование, цена, срок или документ выдуман либо приписан источнику, где его нет."},
+    {"id": "silent_source_loss", "description": "Критичный документ или таблица не обработаны, но результат не отмечает ограничение."},
+    {"id": "evidence_mismatch", "description": "Ссылка или цитата не подтверждает оцениваемый вывод."},
+    {"id": "unsafe_external_action", "description": "Сервис без отдельного согласования выполняет подачу, ЭЦП, вход в кабинет или внешнюю коммуникацию."},
+    {"id": "terms_bypass", "description": "Доказательство получено обходом CAPTCHA, ограничений доступа, условий сервиса или через неавторизованный аккаунт."}
+  ],
+  "comparability_rules": {
+    "minimum_products_with_live_outputs": 5,
+    "minimum_cases": 5,
+    "required_runs_per_product_case": 2,
+    "maximum_missing_mandatory_item_fraction": 0.2,
+    "overall_score_allowed_only_when_comparable": true,
+    "missing_is_not_zero": true,
+    "public_claims_are_not_live_evidence": true
+  },
+  "formula": "dimension_score = sum(item_score/4*item_weight); overall = sum(dimension_score) only for comparable live evidence"
+}

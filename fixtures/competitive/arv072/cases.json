@@ -1,0 +1,80 @@
+{
+  "benchmark_id": "ARV-072",
+  "version": "1.0.0",
+  "identity_policy": "Реестровые номера публичны. Raw archives, customer context, credentials and retained evidence artifacts stay outside Git. Before live execution each case receives immutable source_bundle_sha256 and accepted truth_pack_sha256.",
+  "cases": [
+    {
+      "case_id": "arv072-case-01",
+      "procurement_number": "0352300080626000109",
+      "law": "44-ФЗ",
+      "category": "услуги по диагностике, ТО и ремонту автотранспорта",
+      "case_role": "services_unit_price_table",
+      "selection_source": "existing Arvectum golden truth baseline",
+      "truth_status": "candidate_human_review_required",
+      "source_bundle_sha256": null,
+      "truth_pack_sha256": null,
+      "live_ready": false,
+      "blocking_actions": [
+        "accept complete human-reviewed truth pack",
+        "bind immutable source bundle hash",
+        "confirm missing draft-contract handling"
+      ]
+    },
+    {
+      "case_id": "arv072-case-02",
+      "procurement_number": "0142300008526000054",
+      "law": "44-ФЗ",
+      "category": "электротехнические товары и кабельная продукция",
+      "case_role": "goods_multi_position_characteristics",
+      "selection_source": "existing Arvectum controlled recovery smoke",
+      "truth_status": "recovered_source_truth_review_pending",
+      "source_bundle_sha256": null,
+      "truth_pack_sha256": null,
+      "live_ready": false,
+      "blocking_actions": [
+        "freeze recovered source bundle",
+        "complete independent truth review",
+        "bind accepted ARV-003 output only after Gate 5"
+      ]
+    },
+    {
+      "case_id": "arv072-case-03",
+      "procurement_number": "0315100000526000339",
+      "law": "44-ФЗ",
+      "category": "медицинское аудиовизуальное оборудование",
+      "case_role": "complex_goods_system",
+      "selection_source": "public procurement catalog selection",
+      "truth_status": "source_acquisition_not_started",
+      "source_bundle_sha256": null,
+      "truth_pack_sha256": null,
+      "live_ready": false,
+      "blocking_actions": ["acquire authoritative EIS bundle", "build and review truth pack", "record immutable hashes"]
+    },
+    {
+      "case_id": "arv072-case-04",
+      "procurement_number": "0373100025726000196",
+      "law": "44-ФЗ",
+      "category": "разработка, модификация и сопровождение медицинской информационной системы",
+      "case_role": "long_horizon_it_services",
+      "selection_source": "public procurement catalog selection",
+      "truth_status": "source_acquisition_not_started",
+      "source_bundle_sha256": null,
+      "truth_pack_sha256": null,
+      "live_ready": false,
+      "blocking_actions": ["acquire authoritative EIS bundle", "build and review truth pack", "record immutable hashes"]
+    },
+    {
+      "case_id": "arv072-case-05",
+      "procurement_number": "0811500001126000032",
+      "law": "44-ФЗ",
+      "category": "модернизация государственной информационно-аналитической системы",
+      "case_role": "complex_software_modernization",
+      "selection_source": "public procurement catalog selection",
+      "truth_status": "source_acquisition_not_started",
+      "source_bundle_sha256": null,
+      "truth_pack_sha256": null,
+      "live_ready": false,
+      "blocking_actions": ["acquire authoritative EIS bundle", "build and review truth pack", "record immutable hashes"]
+    }
+  ]
+}

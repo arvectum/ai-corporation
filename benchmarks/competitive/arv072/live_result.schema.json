@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/arv-072-live-result.schema.json",
+  "title": "ARV-072 live benchmark result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "benchmark_id",
+    "rubric_version",
+    "product_id",
+    "case_id",
+    "run_number",
+    "status",
+    "input_fingerprint",
+    "access_context",
+    "timing",
+    "cost",
+    "dimensions",
+    "artifacts",
+    "review"
+  ],
+  "properties": {
+    "benchmark_id": {"const": "ARV-072"},
+    "rubric_version": {"type": "string"},
+    "product_id": {"type": "string", "minLength": 1},
+    "case_id": {"type": "string", "minLength": 1},
+    "run_number": {"type": "integer", "minimum": 1, "maximum": 2},
+    "status": {"enum": ["completed", "failed", "not_comparable", "access_blocked"]},
+    "input_fingerprint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["procurement_number", "source_bundle_sha256", "truth_pack_sha256", "supplier_context_sha256", "question_set_sha256"],
+      "properties": {
+        "procurement_number": {"type": "string", "pattern": "^[0-9]{19}$"},
+        "source_bundle_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "truth_pack_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "supplier_context_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "question_set_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      }
+    },
+    "access_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_at", "plan", "product_version_or_label", "execution_mode"],
+      "properties": {
+        "observed_at": {"type": "string", "format": "date-time"},
+        "plan": {"type": ["string", "null"]},
+        "product_version_or_label": {"type": ["string", "null"]},
+        "execution_mode": {"enum": ["manual_ui", "official_api", "internal_runner"]},
+        "notes": {"type": ["string", "null"]}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["elapsed_seconds", "operator_touch_seconds"],
+      "properties": {
+        "elapsed_seconds": {"type": ["number", "null"], "minimum": 0},
+        "operator_touch_seconds": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "marginal_cost", "allocation_method"],
+      "properties": {
+        "currency": {"enum": ["RUB", "USD", "unknown"]},
+        "marginal_cost": {"type": ["number", "null"], "minimum": 0},
+        "allocation_method": {"type": "string"},
+        "notes": {"type": ["string", "null"]}
+      }
+    },
+    "dimensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extraction", "evidence", "decision", "time", "cost", "documents"],
+      "properties": {
+        "extraction": {"$ref": "#/$defs/dimension"},
+        "evidence": {"$ref": "#/$defs/dimension"},
+        "decision": {"$ref": "#/$defs/dimension"},
+        "time": {"$ref": "#/$defs/dimension"},
+        "cost": {"$ref": "#/$defs/dimension"},
+        "documents": {"$ref": "#/$defs/dimension"}
+      }
+    },
+    "automatic_fail_rule_ids": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["artifact_id", "kind", "sha256", "retention_location"],
+        "properties": {
+          "artifact_id": {"type": "string"},
+          "kind": {"enum": ["screenshot", "export", "screen_recording", "timing_log", "cost_record", "redacted_notes"]},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "retention_location": {"type": "string"},
+          "contains_sensitive_data": {"type": "boolean"}
+        }
+      }
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reviewer_1", "reviewer_2", "adjudication_status"],
+      "properties": {
+        "reviewer_1": {"type": "string"},
+        "reviewer_2": {"type": "string"},
+        "adjudication_status": {"enum": ["pending", "agreed", "adjudicated"]},
+        "adjudication_note": {"type": ["string", "null"]}
+      }
+    }
+  },
+  "$defs": {
+    "dimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["comparable", "item_scores", "evidence_artifact_ids"],
+      "properties": {
+        "comparable": {"type": "boolean"},
+        "item_scores": {"type": "object", "additionalProperties": {"type": ["integer", "null"], "minimum": 0, "maximum": 4}},
+        "evidence_artifact_ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "reviewer_note": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

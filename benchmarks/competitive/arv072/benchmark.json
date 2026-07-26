@@ -1,0 +1,107 @@
+{
+  "benchmark_id": "ARV-072",
+  "version": "1.0.0",
+  "observed_at": "2026-07-26",
+  "public_surface_warning": "Published vendor claims are cohort-planning evidence only and must never be converted into live-output scores.",
+  "products": [
+    {
+      "id": "arvectum",
+      "name": "Arvectum",
+      "role": "subject",
+      "official_url": "https://github.com/arutyunoveth/ai-corporation",
+      "access": "internal controlled",
+      "live_gate": "accepted ARV-003 + ARV-001",
+      "published_capabilities": ["source graph/provenance", "evidence-grounded output", "HTML/MD/DOCX/PDF/PPTX", "human review"]
+    },
+    {
+      "id": "tenvizor",
+      "name": "ТЕНвизор",
+      "role": "direct",
+      "official_url": "https://www.tenvizor.ru/",
+      "access": "account; public 3-day/5-analysis invitation",
+      "live_gate": "authorized account",
+      "published_pricing_rub": {"start": 3700, "supplier": 7500, "team": 14900},
+      "published_capabilities": ["44-ФЗ/223-ФЗ", "document/risk analysis", "customer check", "economics", "PDF", "contract CRM", "assistant"]
+    },
+    {
+      "id": "tendro",
+      "name": "TendRO",
+      "role": "direct",
+      "official_url": "https://tendro.ru/",
+      "access": "closed free alpha by application",
+      "live_gate": "official invitation",
+      "published_capabilities": ["EIS 44-ФЗ/223-ФЗ", "positions", "participant requirements", "risks", "catalog/margin", "DOCX"],
+      "constraint": "arbitrary file upload outside EIS is roadmap, not current alpha"
+    },
+    {
+      "id": "tenderai_pro",
+      "name": "ТендерAI (tenderai.pro)",
+      "role": "direct",
+      "official_url": "https://www.tenderai.pro/",
+      "access": "authenticated free/paid",
+      "live_gate": "authorized account",
+      "published_pricing_rub": {"free": 0, "start": 1499, "pro": 2499, "business": 4999},
+      "published_capabilities": ["44-ФЗ/223-ФЗ/615-ПП", "PDF/Word analysis", "requirements/risks", "reports", "monitoring"]
+    },
+    {
+      "id": "tenderais_ru",
+      "name": "TenderAI (tenderais.ru)",
+      "role": "direct",
+      "official_url": "https://tenderais.ru/",
+      "access": "trial/subscription",
+      "live_gate": "authorized account",
+      "published_pricing_rub": {"starter_promo": 1700, "pro_promo": 10000},
+      "published_capabilities": ["40+ platforms", "Excel/PDF/Word", "risks/payment stages", "AI chat", "relevance scoring", "kanban"]
+    },
+    {
+      "id": "zakupki_assistant",
+      "name": "Zakupki Assistant",
+      "role": "adjacent",
+      "official_url": "https://zakupkiassistent.ru/",
+      "access": "public search + Telegram",
+      "live_gate": "same-input capability check",
+      "published_capabilities": ["44-ФЗ/223-ФЗ/requests for prices", "semantic search", "OKPD2", "notifications", "product/price matching"],
+      "constraint": "full document analysis is not confirmed on the public surface"
+    },
+    {
+      "id": "semantor",
+      "name": "Semantor",
+      "role": "direct",
+      "official_url": "https://semantor.ru/",
+      "access": "demo/contact",
+      "live_gate": "official demo access",
+      "published_capabilities": ["44-ФЗ/223-ФЗ", "summary", "risk analysis", "Q&A", "RAG/source links", "formal rules"]
+    },
+    {
+      "id": "tenderforum",
+      "name": "ТендерФорум",
+      "role": "direct",
+      "official_url": "https://www.tenderforum.ru/",
+      "access": "first 10 analyses free without card",
+      "live_gate": "authorized account",
+      "published_capabilities": ["44-ФЗ/223-ФЗ", "procurement/IKZ input", "AI summary/rating", "risks", "product prices/margin", "documents", "batch analysis"]
+    }
+  ],
+  "live_protocol": {
+    "minimum_comparable_products": 5,
+    "cases": 5,
+    "runs_per_product_case": 2,
+    "same_input_window_hours": 72,
+    "input_hashes": ["source_bundle_sha256", "truth_pack_sha256", "supplier_context_sha256", "question_set_sha256"],
+    "reviewers": 2,
+    "evidence_storage": "outside Git; hashes and redacted observations only",
+    "forbidden": ["CAPTCHA bypass", "shared/stolen accounts", "ToS bypass", "reverse engineering", "raw credentials/cookies in Git", "scores from public claims"]
+  },
+  "status": {
+    "preparation": "complete",
+    "public_surface_snapshot": "complete",
+    "live_execution": "blocked",
+    "blockers": [
+      "no accepted R10.1 Gate 5 live evidence marker found",
+      "ARV-001 quality gate is not frozen on accepted ARV-003 output",
+      "authorized competitor accounts/trials/demo invitations are missing",
+      "five truth packs are not all independently accepted and hashed"
+    ],
+    "completion_marker": "ARV_072_COMPETITIVE_BENCHMARK_COMPLETE"
+  }
+}
