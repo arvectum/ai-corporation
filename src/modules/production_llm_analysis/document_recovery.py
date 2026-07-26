@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlparse
 
 from alembic.config import Config as AlembicConfig
 from alembic.script import ScriptDirectory
@@ -31,6 +32,13 @@ from src.modules.tender_operator_agent_demo.settings import (
 )
 from src.modules.tender_operator_agent_demo.zakupki_soap_client import ZakupkiSoapClient
 from src.shared.config.settings import Settings, get_settings
+from src.shared.network.etp_trust import (
+    ETPTrustConfigurationError,
+    TrustPolicy,
+    build_ssl_context,
+    policy_from_settings,
+    resolve_host_policy,
+)
 from src.tender_research.config import load_config
 from src.tender_research.document_store import _try_extract
 from src.tender_research.models import (
@@ -326,10 +334,63 @@ def _report(**values: Any) -> dict[str, Any]:
         "persistent_filesystem_mutation_performed": False,
         "filesystem_rollback_performed": False,
         "provider_called": False,
+        "transport_policy_ready": False,
+        "transport_policy_injected": False,
+        "runtime_diagnostics_enabled": False,
+        "temporary_diagnostics_used": False,
         "classification": "DOCUMENT_RECOVERY_REJECTED",
         "final_status": "DOCUMENT_RECOVERY_REJECTED",
     }
     return {**defaults, **values}
+
+
+def _transport_policy_error_code(exc: Exception) -> str:
+    message = str(exc).lower()
+    if "required" in message:
+        return "tls_policy_missing"
+    if "enabled state" in message or "disabled" in message:
+        return "tls_policy_disabled"
+    return "tls_policy_file_invalid"
+
+
+def _validate_recovery_endpoint(
+    soap_settings: Any, policy: TrustPolicy, endpoint_url: str
+) -> str | None:
+    """Return a safe policy error code, without exposing endpoint details."""
+    if not hasattr(soap_settings, "allowed_hosts"):
+        return None
+    parsed = urlparse(endpoint_url)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme != "https":
+        return "soap_endpoint_not_https"
+    if not any(
+        hostname == allowed
+        or (allowed.startswith(".") and hostname.endswith(allowed))
+        or hostname.endswith(f".{allowed}")
+        for allowed in soap_settings.allowed_hosts
+        if allowed
+    ):
+        return "soap_host_not_allowed"
+    if not getattr(soap_settings, "require_direct_ru_route", False):
+        try:
+            build_ssl_context(hostname, policy)
+        except ETPTrustConfigurationError:
+            return "tls_policy_ca_invalid"
+        return None
+    host_policy = resolve_host_policy(hostname, policy)
+    if not policy.enabled:
+        return "tls_policy_disabled"
+    if (
+        not policy.proxy_bypass_enabled
+        or host_policy is None
+        or not host_policy.direct_connection
+    ):
+        return "tls_policy_direct_route_required"
+    try:
+        build_ssl_context(hostname, policy)
+    except ETPTrustConfigurationError:
+        return "tls_policy_ca_invalid"
+    return None
 
 
 def _schema_revision(engine) -> tuple[str | None, bool]:
@@ -586,9 +647,26 @@ def recover_procurement_documents(
         raise ValueError("env_file must be a regular non-symlink file")
     settings = _load_explicit_settings(request.env_file)
     recovery_config = load_config(settings)
+    try:
+        trust_policy = policy_from_settings(
+            settings,
+            base_dir=request.env_file.parent,
+        )
+    except ETPTrustConfigurationError as exc:
+        return _report(
+            mode="apply" if request.apply else "dry-run",
+            classification="RECOVERY_TRANSPORT_POLICY_INVALID",
+            final_status="RECOVERY_TRANSPORT_POLICY_INVALID",
+            error_code=_transport_policy_error_code(exc),
+        )
     engine = engine_factory(settings.database_url)
     session_factory = sessionmaker(bind=engine)
     soap_settings = _soap_settings_from_env_file(request.env_file)
+    transport_base = {
+        "transport_policy_ready": True,
+        "transport_policy_injected": True,
+        "runtime_diagnostics_enabled": False,
+    }
     staging = None
     try:
         with session_factory() as session:
@@ -604,6 +682,7 @@ def recover_procurement_documents(
                 "mode": "apply" if request.apply else "dry-run",
                 "database_ready": True,
                 "alembic_revision": revision,
+                **transport_base,
             }
             if not schema_ready:
                 return _report(
@@ -701,8 +780,46 @@ def recover_procurement_documents(
                     classification="SAME_FILESYSTEM_REQUIRED",
                     final_status="DOCUMENT_RECOVERY_STAGING_FAILED",
                 )
+            if hasattr(soap_settings, "configured") and not soap_settings.configured:
+                return _report(
+                    **base,
+                    classification="RECOVERY_TRANSPORT_CONFIGURATION_REJECTED",
+                    final_status="RECOVERY_TRANSPORT_CONFIGURATION_REJECTED",
+                    error_code="soap_not_configured",
+                )
+            if (
+                hasattr(soap_settings, "token_configured")
+                and not soap_settings.token_configured
+            ):
+                return _report(
+                    **base,
+                    classification="RECOVERY_TRANSPORT_CONFIGURATION_REJECTED",
+                    final_status="RECOVERY_TRANSPORT_CONFIGURATION_REJECTED",
+                    error_code="soap_token_missing",
+                )
+            endpoint_error = _validate_recovery_endpoint(
+                soap_settings,
+                trust_policy,
+                getattr(soap_settings, "active_docs_endpoint", "https://example.test"),
+            )
+            if endpoint_error:
+                return _report(
+                    **base,
+                    classification="RECOVERY_TRANSPORT_POLICY_INVALID",
+                    final_status="RECOVERY_TRANSPORT_POLICY_INVALID",
+                    error_code=endpoint_error,
+                )
+            diagnostics_dir = staging / "soap-diagnostics"
+            diagnostics_dir.mkdir(mode=0o700)
+            os.chmod(diagnostics_dir, 0o700)
+            base["temporary_diagnostics_used"] = True
             archive_stage = staging / "archive.zip"
-            client = soap_client_factory(soap_settings)
+            client = soap_client_factory(
+                soap_settings,
+                trust_policy=trust_policy,
+                diagnostics_dir=diagnostics_dir,
+                runtime_status_enabled=False,
+            )
             result = client.get_docs_by_reestr_number(request.registry_number)
             base["soap_status"] = result.status
             if result.status != "completed" or not result.archive_url:
@@ -710,6 +827,18 @@ def recover_procurement_documents(
                     **base,
                     classification="ARCHIVE_UNAVAILABLE",
                     final_status="RECOVERY_PREFLIGHT_ARCHIVE_REJECTED",
+                )
+            archive_error = _validate_recovery_endpoint(
+                soap_settings, trust_policy, result.archive_url
+            )
+            if archive_error:
+                return _report(
+                    **base,
+                    classification="RECOVERY_TRANSPORT_POLICY_INVALID",
+                    final_status="RECOVERY_TRANSPORT_POLICY_INVALID",
+                    error_code="archive_host_not_allowed"
+                    if archive_error == "soap_host_not_allowed"
+                    else archive_error,
                 )
             downloaded = client.download_archive(result.archive_url, staging)
             downloaded_path = staging / downloaded.stored_name

@@ -341,7 +341,7 @@ def test_recovery_dry_run_executes_extraction_without_persistent_mutation(
 
     report = recovery.recover_procurement_documents(
         request,
-        soap_client_factory=lambda _settings: client,
+        soap_client_factory=lambda _settings, **_kwargs: client,
         extraction_helper=extractor,
         root_validator=lambda data, _backup: data.resolve(),
     )
@@ -363,7 +363,7 @@ def test_recovery_dry_run_allows_char_count_drift(tmp_path: Path, monkeypatch) -
 
     report = recovery.recover_procurement_documents(
         request,
-        soap_client_factory=lambda _settings: client,
+        soap_client_factory=lambda _settings, **_kwargs: client,
         extraction_helper=extractor,
         root_validator=lambda data, _backup: data.resolve(),
     )
@@ -387,7 +387,7 @@ def test_recovery_dry_run_fails_closed_on_extraction_failure(
 
     report = recovery.recover_procurement_documents(
         request,
-        soap_client_factory=lambda _settings: client,
+        soap_client_factory=lambda _settings, **_kwargs: client,
         extraction_helper=failing_extractor,
         root_validator=lambda data, _backup: data.resolve(),
     )
@@ -421,7 +421,7 @@ def test_apply_without_build_chunks_does_not_call_indexer(
 
     report = recovery.recover_procurement_documents(
         request,
-        soap_client_factory=lambda _settings: client,
+        soap_client_factory=lambda _settings, **_kwargs: client,
         extraction_helper=extractor,
         chunk_indexer_factory=forbidden_indexer,
         root_validator=lambda data, _backup: data.resolve(),
@@ -449,7 +449,7 @@ def test_recovery_rejects_null_or_nonhex_hash_before_soap(
 
     report = recovery.recover_procurement_documents(
         request,
-        soap_client_factory=lambda _settings: client,
+        soap_client_factory=lambda _settings, **_kwargs: client,
         extraction_helper=extractor,
         root_validator=lambda data, _backup: data.resolve(),
     )
@@ -473,7 +473,7 @@ def test_recovery_rejects_schema_revision_mismatch_before_soap(
 
     report = recovery.recover_procurement_documents(
         request,
-        soap_client_factory=lambda _settings: client,
+        soap_client_factory=lambda _settings, **_kwargs: client,
         extraction_helper=extractor,
         root_validator=lambda data, _backup: data.resolve(),
     )
