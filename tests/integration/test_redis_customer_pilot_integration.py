@@ -12,11 +12,11 @@ pytestmark = pytest.mark.integration
 def client():
     from src.shared.api.dependencies import get_db_session
     from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session, sessionmaker
+    from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
     from src.shared.db.base import Base
     from src.shared.db import models  # noqa: F401
-    from src.shared.redis.client import close_client, reset_redis_runtime
+    from src.shared.redis.client import reset_redis_runtime
 
     reset_redis_runtime()
     import redis as redis_py
