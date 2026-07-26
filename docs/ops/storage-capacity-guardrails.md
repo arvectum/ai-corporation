@@ -38,6 +38,12 @@ the storage state is reported as `storage_unknown` and ingestion is blocked
 
 All threshold env vars accept integer values (0–100).
 
+Thresholds are validated at config load time:
+
+```
+0 <= warning < critical < ingestion_protected <= 100
+```
+
 ### Storage snapshot
 
 The `get_storage_snapshot()` function returns:
@@ -48,11 +54,26 @@ The `get_storage_snapshot()` function returns:
 - `filesystem_free_bytes`
 - `used_percent`
 - `state` — one of the states above
-- `checked_at` — ISO-8601 UTC timestamp
+- `checked_at` — ISO-8601 UTC timestamp (always filled)
 - `mount_verified` — whether `st_dev` differs from the system root
-- `reason` — human-readable explanation
+- `reason` — safe public reason code (no absolute paths)
 
-A public-facing variant (`PublicStorageSnapshot`) omits `storage_root`.
+A public-facing variant (`PublicStorageSnapshot`) omits `storage_root` and
+uses safe reason codes.
+
+### Public reason codes
+
+| Reason | Meaning |
+|--------|---------|
+| `storage_root_not_configured` | `ARVECTUM_STORAGE_ROOT` not set |
+| `storage_root_missing` | Path does not exist |
+| `storage_root_not_directory` | Path is not a directory |
+| `storage_mount_not_verified` | Path resolves to system disk |
+| `storage_usage_unavailable` | `disk_usage()` call failed |
+| `threshold_normal` | Used space < warning threshold |
+| `threshold_warning` | Used space >= warning threshold |
+| `threshold_critical` | Used space >= critical threshold |
+| `threshold_ingestion_protected` | Used space >= ingestion protected threshold |
 
 ### Blocked operations
 
@@ -64,10 +85,27 @@ mass operations are blocked (fail-closed):
 - Batch document ingestion (`DocumentSet` creation)
 - Any operation decorated with `@mass_ingestion`
 
-The gate returns machine-readable errors:
+The gate returns machine-readable errors with HTTP 503:
 
 - `STORAGE_CAPACITY_PROTECTION_ACTIVE` — capacity threshold exceeded
 - `STORAGE_STATE_UNKNOWN` — storage root cannot be resolved or verified
+
+### Implemented enforcement
+
+1. **Service-level gate** — `prepare_tender_for_analysis()` checks
+   `check_ingestion_allowed()` before any download or file creation.
+2. **Synchronous prepare API** — `POST /api/tender-research/prepare` returns
+   HTTP 503 with machine-readable error code.
+3. **Background prepare submission** — `POST /api/tender-research/jobs/prepare`
+   checks gate before creating the job record.
+4. **Background worker recheck** — `run_prepare_job()` rechecks storage
+   immediately before `mark_job_running()`, catching jobs queued when space
+   was adequate but filled before execution.
+
+### Not yet covered
+
+- Future national SOAP sweep runtime (not yet implemented)
+- Future bulk download endpoints (not yet implemented)
 
 ### Permitted operations
 
@@ -79,6 +117,13 @@ The following continue to function regardless of storage state:
 - Cleanup tasks
 - Backup / restore
 - Health diagnostics
+- Metadata-only operations (e.g., `create_document_ingestion_run()`)
+
+### Error semantics
+
+`IngestionBlockedError` uses HTTP 503 (Service Unavailable) because the
+request is valid but temporarily blocked by operational state. This
+distinguishes it from client errors (4xx) and server bugs (5xx).
 
 ### Fail-closed rationale
 
@@ -125,3 +170,5 @@ captures these fields.
 
 - ARV-010_STORAGE_GUARDRAILS_IMPLEMENTED
 - ARV-010_STORAGE_INGESTION_PROTECTION_VERIFIED
+- ARV-010_STORAGE_GATE_CONNECTED_TO_REAL_INGESTION
+- ARV-010_BACKGROUND_JOB_RECHECK_VERIFIED

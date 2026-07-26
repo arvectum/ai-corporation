@@ -104,10 +104,21 @@ class Settings(BaseSettings):
     hermes_enabled: bool = False
 
     # Storage capacity guardrails (ARV-010)
-    arvectum_storage_root: str | None = Field(default=None, validation_alias="ARVECTUM_STORAGE_ROOT")
-    arvectum_storage_warning_percent: int = Field(default=70, validation_alias="ARVECTUM_STORAGE_WARNING_PERCENT", ge=0, le=100)
-    arvectum_storage_critical_percent: int = Field(default=80, validation_alias="ARVECTUM_STORAGE_CRITICAL_PERCENT", ge=0, le=100)
-    arvectum_storage_ingestion_protected_percent: int = Field(default=90, validation_alias="ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", ge=0, le=100)
+    # NOTE: no validation_alias - pydantic-settings auto-resolves env vars from field name + env_prefix
+    arvectum_storage_root: str | None = Field(default=None)
+    arvectum_storage_warning_percent: int = Field(default=70, ge=0, le=100)
+    arvectum_storage_critical_percent: int = Field(default=80, ge=0, le=100)
+    arvectum_storage_ingestion_protected_percent: int = Field(default=90, ge=0, le=100)
+
+    def model_post_init(self, __context, /):
+        warning = self.arvectum_storage_warning_percent
+        critical = self.arvectum_storage_critical_percent
+        protected = self.arvectum_storage_ingestion_protected_percent
+        if not (0 <= warning < critical < protected <= 100):
+            raise ValueError(
+                f"Storage thresholds must satisfy 0 <= warning < critical < ingestion_protected <= 100, "
+                f"got warning={warning}, critical={critical}, ingestion_protected={protected}"
+            )
 
     model_config = SettingsConfigDict(
         env_prefix="AI_CORP_",

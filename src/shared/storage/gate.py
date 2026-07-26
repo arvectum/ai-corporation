@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import logging
 from enum import Enum
 from functools import wraps
@@ -16,12 +18,16 @@ class IngestionBlockedReason(str, Enum):
 
 
 class StorageGateError(AppError):
+    status_code = 503
+
     def __init__(self, message: str, code: str) -> None:
         super().__init__(message)
         self.code = code
 
 
 class IngestionBlockedError(StorageGateError):
+    status_code = 503
+
     def __init__(self, reason: IngestionBlockedReason) -> None:
         self.reason = reason
         super().__init__(
@@ -42,12 +48,20 @@ MASS_INGESTION_TAG = "_mass_ingestion"
 
 
 def mass_ingestion(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        check_ingestion_allowed()
-        return func(*args, **kwargs)
-    wrapper.__dict__[MASS_INGESTION_TAG] = True
-    return wrapper
+    if inspect.iscoroutinefunction(func):
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            check_ingestion_allowed()
+            return await func(*args, **kwargs)
+        async_wrapper.__dict__[MASS_INGESTION_TAG] = True
+        return async_wrapper
+    else:
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            check_ingestion_allowed()
+            return func(*args, **kwargs)
+        sync_wrapper.__dict__[MASS_INGESTION_TAG] = True
+        return sync_wrapper
 
 
 def is_mass_ingestion_operation(func) -> bool:

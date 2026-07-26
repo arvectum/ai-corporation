@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from pydantic import BaseModel
 
-from src.shared.storage.capacity import StorageSnapshot, get_storage_snapshot
+from src.shared.storage.capacity import get_storage_snapshot
 
 
 class PublicStorageSnapshot(BaseModel):
@@ -13,7 +11,7 @@ class PublicStorageSnapshot(BaseModel):
     filesystem_free_bytes: int | None = None
     used_percent: float | None = None
     state: str = "storage_unknown"
-    checked_at: str | None = None
+    checked_at: str = ""
     mount_verified: bool = False
     reason: str = ""
 

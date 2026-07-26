@@ -23,6 +23,25 @@ class StorageState(str, Enum):
     STORAGE_UNKNOWN = "storage_unknown"
 
 
+_PUBLIC_REASONS = {
+    "not_configured": "storage_root_not_configured",
+    "missing": "storage_root_missing",
+    "not_directory": "storage_root_not_directory",
+    "mount_not_verified": "storage_mount_not_verified",
+    "usage_unavailable": "storage_usage_unavailable",
+    "normal": "threshold_normal",
+    "warning": "threshold_warning",
+    "critical": "threshold_critical",
+    "ingestion_protected": "threshold_ingestion_protected",
+}
+
+
+def _public_reason(state: StorageState, detail_key: str) -> str:
+    if state == StorageState.STORAGE_UNKNOWN:
+        return _PUBLIC_REASONS.get(detail_key, "storage_root_not_configured")
+    return _PUBLIC_REASONS.get(state.value, state.value)
+
+
 @dataclass
 class StorageSnapshot:
     storage_root: str | None = None
@@ -31,7 +50,7 @@ class StorageSnapshot:
     filesystem_free_bytes: int | None = None
     used_percent: float | None = None
     state: StorageState = StorageState.STORAGE_UNKNOWN
-    checked_at: str | None = None
+    checked_at: str = ""
     mount_verified: bool = False
     reason: str = ""
 
@@ -72,48 +91,50 @@ def _classify_used_percent(pct: float, warning_pct: float, critical_pct: float, 
 def get_storage_snapshot() -> StorageSnapshot:
     settings = get_settings()
     storage_root = _resolve_storage_root()
+    now = _utcnow_iso()
 
     if storage_root is None:
         return StorageSnapshot(
-            storage_root=None,
             state=StorageState.STORAGE_UNKNOWN,
-            mount_verified=False,
-            reason="ARVECTUM_STORAGE_ROOT not configured",
+            checked_at=now,
+            reason=_public_reason(StorageState.STORAGE_UNKNOWN, "not_configured"),
         )
 
     if not storage_root.exists():
+        logger.warning("Storage root does not exist: %s", storage_root)
         return StorageSnapshot(
-            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
-            mount_verified=False,
-            reason=f"Storage root does not exist: {storage_root}",
+            checked_at=now,
+            reason=_public_reason(StorageState.STORAGE_UNKNOWN, "missing"),
         )
 
     if not storage_root.is_dir():
+        logger.warning("Storage root is not a directory: %s", storage_root)
         return StorageSnapshot(
-            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
-            mount_verified=False,
-            reason=f"Storage root is not a directory: {storage_root}",
+            checked_at=now,
+            reason=_public_reason(StorageState.STORAGE_UNKNOWN, "not_directory"),
         )
 
     mv = _mount_verified(storage_root)
     if not mv:
+        logger.warning("Storage root %s resolves to system disk; expected external mount", storage_root)
         return StorageSnapshot(
-            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
+            checked_at=now,
             mount_verified=False,
-            reason=f"Storage root {storage_root} resolves to system disk; expected external mount",
+            reason=_public_reason(StorageState.STORAGE_UNKNOWN, "mount_not_verified"),
         )
 
     try:
         usage = shutil.disk_usage(storage_root)
     except OSError as exc:
+        logger.error("disk_usage failed for %s: %s", storage_root, exc)
         return StorageSnapshot(
-            storage_root=str(storage_root),
             state=StorageState.STORAGE_UNKNOWN,
+            checked_at=now,
             mount_verified=True,
-            reason=f"disk_usage failed: {exc}",
+            reason=_public_reason(StorageState.STORAGE_UNKNOWN, "usage_unavailable"),
         )
 
     total = usage.total
@@ -128,18 +149,15 @@ def get_storage_snapshot() -> StorageSnapshot:
         ingestion_protected_pct=settings.arvectum_storage_ingestion_protected_percent,
     )
 
-    reason = state.value
-
     return StorageSnapshot(
-        storage_root=str(storage_root),
         filesystem_total_bytes=total,
         filesystem_used_bytes=used,
         filesystem_free_bytes=free,
         used_percent=round(used_percent, 2),
         state=state,
-        checked_at=_utcnow_iso(),
+        checked_at=now,
         mount_verified=mv,
-        reason=reason,
+        reason=_public_reason(state, state.value),
     )
 
 

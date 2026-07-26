@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from src.shared.config.settings import get_settings
 from src.shared.db.base import Base
+from src.shared.storage.gate import IngestionBlockedError, check_ingestion_allowed
 from src.tender_research.rag.analysis_service import analyze_tender
 from src.tender_research.rag.job_schemas import TenderJobStep
 from src.tender_research.rag.job_service import (
@@ -233,6 +234,8 @@ def _resolve_analyze_job_status(result) -> tuple[str, list[str]]:
 def run_prepare_job(job_id: str, request: dict) -> None:
     session = _get_session()
     try:
+        check_ingestion_allowed()
+
         mark_job_running(session, job_id)
 
         def on_progress(payload: dict) -> None:
@@ -274,6 +277,14 @@ def run_prepare_job(job_id: str, request: dict) -> None:
             warnings=result.warnings,
             status=result.status if result.status in {"completed", "completed_with_warnings"} else "completed",
             steps=steps_payload,
+        )
+    except IngestionBlockedError as exc:
+        logger.warning("Prepare background job %s blocked by storage gate: %s", job_id, exc)
+        fail_job(
+            session,
+            job_id,
+            errors=[exc.code],
+            current_step="gate_check",
         )
     except Exception as exc:
         logger.exception("Prepare background job %s failed", job_id)

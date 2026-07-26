@@ -13,6 +13,8 @@ from sqlalchemy.orm import Session
 
 from src.shared.config.settings import get_settings
 from src.shared.db.diagnostics import get_database_diagnostics, masked_database_url
+from src.shared.errors import AppError
+from src.shared.storage.gate import check_ingestion_allowed, IngestionBlockedError
 from src.shared.db.base import Base
 from src.tender_research.config import load_config
 from src.tender_research.rag.job_runner import submit_analyze_job, submit_prepare_job
@@ -319,6 +321,8 @@ def prepare_tender_endpoint(payload: PrepareRequest) -> PrepareResponse:
             rebuild_chunks=payload.rebuild_chunks,
             rebuild_embeddings=payload.rebuild_embeddings,
         )
+    except AppError:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -327,6 +331,7 @@ def prepare_tender_endpoint(payload: PrepareRequest) -> PrepareResponse:
 
 @router.post("/jobs/prepare", response_model=StartJobResponse)
 def start_prepare_job_endpoint(payload: PrepareRequest) -> StartJobResponse:
+    check_ingestion_allowed()
     request = payload.model_dump()
     session = _get_session()
     try:
