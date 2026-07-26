@@ -9,10 +9,10 @@ pytestmark = pytest.mark.integration
 
 
 def _cleanup():
-    close_client()
     import redis as redis_py
     r = redis_py.Redis.from_url(os.environ.get("AI_CORP_REDIS_URL", "redis://127.0.0.1:6379/1"))
     r.flushdb()
+    reset_redis_runtime()
 
 
 class TestCacheIntegration:
