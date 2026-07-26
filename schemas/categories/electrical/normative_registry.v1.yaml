@@ -1,0 +1,679 @@
+registry_id: ARV-067-ELECTRICAL-NORMATIVE-BASE
+version: 1.0.0
+status: research_asset
+runtime_import: false
+checked_at: '2026-07-27'
+purpose: Metadata-only normative registry for electrical procurement categories. It records applicability candidates and operator
+  requirements without storing copyrighted full texts or making automatic compliance decisions.
+authorities_required:
+- Росстандарт
+- ПАО «Россети»
+- Госкорпорация «Росатом»
+- ПАО «РусГидро»
+- Минэнерго России
+- ЕЭК
+documents:
+- id: PUE-7
+  title_ru: Правила устройства электроустановок. 7-е издание (применимые главы)
+  authority: Минэнерго России
+  document_type: rulebook
+  status: chapter_level_verification_required
+  source_url: https://minenergo.gov.ru/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - installation_requirements
+  - design_constraints
+- id: TR-CU-004-2011
+  title_ru: ТР ТС 004/2011 «О безопасности низковольтного оборудования»
+  authority: ЕЭК
+  document_type: technical_regulation
+  status: active
+  source_url: https://eec.eaeunion.org/comission/department/deptexreg/tr/
+  access: public_metadata
+  applies_to:
+  - other_primary
+  - auxiliary_power_supply
+  - other_secondary
+  use_for:
+  - mandatory_safety_requirements
+  - conformity_scope
+- id: TR-CU-020-2011
+  title_ru: ТР ТС 020/2011 «Электромагнитная совместимость технических средств»
+  authority: ЕЭК
+  document_type: technical_regulation
+  status: active
+  source_url: https://eec.eaeunion.org/comission/department/deptexreg/tr/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - mandatory_emc_requirements
+  - conformity_scope
+- id: TR-EAEU-037-2016
+  title_ru: ТР ЕАЭС 037/2016 об ограничении применения опасных веществ в изделиях электротехники и радиоэлектроники
+  authority: ЕЭК
+  document_type: technical_regulation
+  status: active
+  source_url: https://eec.eaeunion.org/comission/department/deptexreg/tr/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - material_restrictions
+  - conformity_scope
+- id: GOST-15150-69
+  title_ru: ГОСТ 15150-69. Машины, приборы и другие технические изделия. Исполнения для различных климатических районов
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - climate_version
+  - placement_category
+- id: GOST-14254-2015
+  title_ru: ГОСТ 14254-2015 (IEC 60529:2013). Степени защиты, обеспечиваемые оболочками (код IP)
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - enclosure_ip
+  - environmental_protection
+- id: GOST-1516-3-96
+  title_ru: ГОСТ 1516.3-96. Электрооборудование переменного тока на напряжения от 1 до 750 кВ. Требования к электрической
+    прочности изоляции
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - switches
+  - high_voltage_bushings
+  - insulators
+  - medium_voltage_switchgear
+  - gas_insulated_switchgear
+  - surge_protection_fuses
+  - disconnectors_earthing_switches
+  - reactors
+  - power_transformers
+  - combined_instrument_transformers
+  - voltage_transformers
+  - current_transformers
+  use_for:
+  - insulation_level
+  - test_requirements
+- id: GOST-721-77
+  title_ru: ГОСТ 721-77. Системы электроснабжения, сети, источники, преобразователи и приемники электрической энергии. Номинальные
+    напряжения свыше 1000 В
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - rated_voltage_vocabulary
+- id: GOST-8024-90
+  title_ru: ГОСТ 8024-90. Аппараты и электротехнические устройства переменного тока на напряжение свыше 1000 В. Нормы нагрева
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - switches
+  - medium_voltage_switchgear
+  - gas_insulated_switchgear
+  - rigid_busbars_busducts
+  - disconnectors_earthing_switches
+  - reactors
+  use_for:
+  - thermal_limits
+  - rated_current
+- id: GOST-9920-89
+  title_ru: ГОСТ 9920-89. Электроустановки переменного тока на напряжение от 3 до 750 кВ. Длина пути утечки внешней изоляции
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - high_voltage_bushings
+  - insulators
+  - switches
+  - power_transformers
+  - combined_instrument_transformers
+  - voltage_transformers
+  - current_transformers
+  use_for:
+  - creepage_distance
+  - pollution_level
+- id: GOST-31996-2012
+  title_ru: ГОСТ 31996-2012. Кабели силовые с пластмассовой изоляцией на номинальное напряжение 0,66; 1 и 3 кВ
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/gost/details/3fc51d04-aca0-4ad3-befe-695a344db5fd
+  access: public_metadata
+  applies_to:
+  - cables_fittings_pipes
+  use_for:
+  - scope_and_parameter_vocabulary
+  - product_requirements
+- id: GOST-31946-2012
+  title_ru: ГОСТ 31946-2012. Провода самонесущие изолированные и защищенные для воздушных линий электропередачи
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/gost/details/b7913807-aca3-4e25-9d0f-f5bc5785d484
+  access: public_metadata
+  applies_to:
+  - conductors_ground_wires_sip
+  use_for:
+  - scope_and_parameter_vocabulary
+  - product_requirements
+- id: GOST-31565-2012
+  title_ru: ГОСТ 31565-2012. Кабельные изделия. Требования пожарной безопасности
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - cables_fittings_pipes
+  use_for:
+  - fire_performance
+  - marking
+- id: GOST-839-2019
+  title_ru: ГОСТ 839-2019. Провода неизолированные для воздушных линий электропередачи
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - conductors_ground_wires_sip
+  use_for:
+  - product_requirements
+  - parameter_vocabulary
+  observed_in:
+  - rosseti_primary_2026_06_10
+- id: GOST-3062-80
+  title_ru: ГОСТ 3062-80. Канат одинарной свивки типа ЛК-О конструкции 1x7
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - conductors_ground_wires_sip
+  use_for:
+  - ground_wire_construction
+  observed_in:
+  - rosseti_primary_2026_06_10
+- id: GOST-3063-80
+  title_ru: ГОСТ 3063-80. Канат одинарной свивки типа ТК конструкции 1x19
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - conductors_ground_wires_sip
+  use_for:
+  - ground_wire_construction
+  observed_in:
+  - rosseti_primary_2026_06_10
+- id: GOST-3064-80
+  title_ru: ГОСТ 3064-80. Канат одинарной свивки типа ТК конструкции 1x37
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - conductors_ground_wires_sip
+  use_for:
+  - ground_wire_construction
+  observed_in:
+  - rosseti_primary_2026_06_10
+- id: GOST-IEC-60898-1-2020
+  title_ru: ГОСТ IEC 60898-1-2020. Выключатели автоматические для защиты от сверхтоков бытового и аналогичного назначения
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - other_primary
+  use_for:
+  - product_requirements
+  - breaking_capacity
+  - trip_curve
+- id: GOST-IEC-60947-4-1-2021
+  title_ru: ГОСТ IEC 60947-4-1-2021. Контакторы и пускатели электромеханические
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - other_primary
+  use_for:
+  - product_requirements
+  - utilization_category
+  - coil_parameters
+- id: GOST-11677-85
+  title_ru: ГОСТ 11677-85. Трансформаторы силовые. Общие технические условия
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - power_transformers
+  - package_transformer_substations
+  use_for:
+  - product_requirements
+  - test_requirements
+- id: GOST-7746-2015
+  title_ru: ГОСТ 7746-2015. Трансформаторы тока. Общие технические условия
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - current_transformers
+  - combined_instrument_transformers
+  use_for:
+  - product_requirements
+  - accuracy_classes
+- id: GOST-1983-2015
+  title_ru: ГОСТ 1983-2015. Трансформаторы напряжения. Общие технические условия
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - voltage_transformers
+  - combined_instrument_transformers
+  use_for:
+  - product_requirements
+  - accuracy_classes
+- id: GOST-R-IEC-61850-5-2011
+  title_ru: ГОСТ Р МЭК 61850-5-2011. Сети и системы связи на подстанциях. Требования к связи для функций и моделей устройств
+  authority: Росстандарт
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - automated_process_control_systems
+  - relay_protection_automation
+  - communications
+  use_for:
+  - communication_requirements
+  - function_models
+  observed_in:
+  - rosseti_secondary_2026_06_10
+- id: GOST-R-IEC-60870-5-101-2006
+  title_ru: ГОСТ Р МЭК 60870-5-101-2006. Устройства и системы телемеханики. Обобщающий стандарт по основным функциям телемеханики
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - automated_process_control_systems
+  - communications
+  use_for:
+  - telecontrol_protocol
+  observed_in:
+  - rosseti_secondary_2026_06_10
+- id: GOST-R-IEC-60870-5-104-2004
+  title_ru: ГОСТ Р МЭК 60870-5-104-2004. Доступ к сети для МЭК 60870-5-101 с использованием стандартных транспортных профилей
+  authority: Росстандарт
+  document_type: national_standard
+  status: needs_current_status_check
+  source_url: https://protect.gost.ru/
+  access: public_metadata
+  applies_to:
+  - automated_process_control_systems
+  - communications
+  use_for:
+  - telecontrol_protocol
+  observed_in:
+  - rosseti_secondary_2026_06_10
+- id: ROSSETI-TECHNICAL-POLICY
+  title_ru: Единая техническая политика ПАО «Россети» и документы технической политики
+  authority: ПАО «Россети»
+  document_type: corporate_policy_collection
+  status: current_collection
+  source_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - operator_requirements
+  - technology_policy
+- id: STO-34.01-22-001-2023
+  title_ru: СТО 34.01-22-001-2023. Критерии оценки вторичного оборудования, материалов и систем в процедуре проверки качества
+  authority: ПАО «Россети»
+  document_type: corporate_standard
+  status: observed_current
+  source_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  access: public_metadata
+  applies_to:
+  - automated_metering_systems
+  - automated_process_control_systems
+  - instrumentation
+  - relay_protection_automation
+  - communications
+  - auxiliary_power_supply
+  - other_secondary
+  use_for:
+  - operator_quality_assessment
+  - acceptance_score
+  observed_in:
+  - rosseti_primary_2026_06_10
+  - rosseti_secondary_2026_06_10
+- id: STO-34.01-22-002-2023
+  title_ru: СТО 34.01-22-002-2023. Критерии оценки первичного оборудования, материалов и систем в процедуре проверки качества
+  authority: ПАО «Россети»
+  document_type: corporate_standard
+  status: observed_current
+  source_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  access: public_metadata
+  applies_to:
+  - switches
+  - high_voltage_bushings
+  - insulators
+  - cables_fittings_pipes
+  - package_transformer_substations
+  - medium_voltage_switchgear
+  - gas_insulated_switchgear
+  - surge_protection_fuses
+  - overhead_line_towers
+  - tower_foundations
+  - conductors_ground_wires_sip
+  - line_hardware
+  - rigid_busbars_busducts
+  - disconnectors_earthing_switches
+  - reactors
+  - power_transformers
+  - combined_instrument_transformers
+  - voltage_transformers
+  - current_transformers
+  - stationary_batteries
+  - other_primary
+  use_for:
+  - operator_quality_assessment
+  - acceptance_score
+  observed_in:
+  - rosseti_primary_2026_06_10
+  - rosseti_secondary_2026_06_10
+- id: ROSSETI-REGISTRY-PRIMARY-2026-06-10
+  title_ru: Реестр оборудования, материалов и систем, допущенных к применению на объектах ПАО «Россети». Раздел I
+  authority: ПАО «Россети»
+  document_type: operator_approved_equipment_registry
+  status: snapshot
+  source_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  access: public_metadata
+  applies_to:
+  - switches
+  - high_voltage_bushings
+  - insulators
+  - cables_fittings_pipes
+  - package_transformer_substations
+  - medium_voltage_switchgear
+  - gas_insulated_switchgear
+  - surge_protection_fuses
+  - overhead_line_towers
+  - tower_foundations
+  - conductors_ground_wires_sip
+  - line_hardware
+  - rigid_busbars_busducts
+  - disconnectors_earthing_switches
+  - reactors
+  - power_transformers
+  - combined_instrument_transformers
+  - voltage_transformers
+  - current_transformers
+  - stationary_batteries
+  - other_primary
+  use_for:
+  - operator_acceptance
+  - manufacturer_model_scope
+- id: ROSSETI-REGISTRY-SECONDARY-2026-06-10
+  title_ru: Реестр оборудования, материалов и систем, допущенных к применению на объектах ПАО «Россети». Раздел II
+  authority: ПАО «Россети»
+  document_type: operator_approved_equipment_registry
+  status: snapshot
+  source_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  access: public_metadata
+  applies_to:
+  - automated_metering_systems
+  - automated_process_control_systems
+  - instrumentation
+  - relay_protection_automation
+  - communications
+  - auxiliary_power_supply
+  - other_secondary
+  use_for:
+  - operator_acceptance
+  - manufacturer_model_scope
+- id: GOST-R-58786-2019
+  title_ru: ГОСТ Р 58786-2019. Электрооборудование для атомных станций. Общие технические требования
+  authority: Росстандарт / атомная отрасль
+  document_type: national_standard
+  status: active
+  source_url: https://protect.gost.ru/gost/details/00004514-145d-40f9-8bcb-497397910cb0
+  access: public_metadata
+  applies_to:
+  - switches
+  - high_voltage_bushings
+  - insulators
+  - cables_fittings_pipes
+  - package_transformer_substations
+  - medium_voltage_switchgear
+  - gas_insulated_switchgear
+  - surge_protection_fuses
+  - overhead_line_towers
+  - tower_foundations
+  - conductors_ground_wires_sip
+  - line_hardware
+  - rigid_busbars_busducts
+  - disconnectors_earthing_switches
+  - reactors
+  - power_transformers
+  - combined_instrument_transformers
+  - voltage_transformers
+  - current_transformers
+  - stationary_batteries
+  - other_primary
+  - auxiliary_power_supply
+  use_for:
+  - nuclear_power_equipment_requirements
+  - classification
+  - quality_control
+- id: ROSATOM-ORDER-1-1134-P-2017
+  title_ru: Приказ Госкорпорации «Росатом» от 16.11.2017 № 1/1134-П о порядке согласования технических заданий и технических
+    условий на оборудование для энергоблоков АЭС
+  authority: Госкорпорация «Росатом»
+  document_type: corporate_order
+  status: current_status_check_required
+  source_url: https://www.consultant.ru/document/cons_doc_LAW_283849/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - technical_specification_governance
+  - equipment_documentation
+- id: ROSATOM-ORDER-1-1594-P-2020
+  title_ru: Приказ Госкорпорации «Росатом» от 23.12.2020 № 1/1594-П. Единые отраслевые методические указания по унификации
+    продукции в области ИТ, автоматизации и связи
+  authority: Госкорпорация «Росатом»
+  document_type: corporate_order
+  status: current_status_check_required
+  source_url: https://base.garant.ru/400444857/
+  access: public_metadata
+  applies_to:
+  - automated_process_control_systems
+  - instrumentation
+  - relay_protection_automation
+  - communications
+  - other_secondary
+  use_for:
+  - product_unification
+  - nomenclature_governance
+- id: ROSATOM-STANDARDS-COLLECTION
+  title_ru: Информационные справки и фонд утвержденных стандартов Госкорпорации «Росатом»
+  authority: ЧУ «Атомстандарт»
+  document_type: corporate_standard_collection
+  status: current_collection
+  source_url: https://www.atomstandart.ru/deyatelnost/tekhnicheskoe-regulirovanie-i-standartizatsiya/informatsionnye-spravki-ob-utverzhdennykh-standartakh-goskorporatsii-rosatom/index.php
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - corporate_standard_discovery
+  - applicability_review
+- id: STO-95-12033-2018
+  title_ru: СТО 95 12033-2018. План качества. Содержание и статус контрольных точек при изготовлении деталей и сборочных единиц
+    для вновь сооружаемых АЭС за рубежом
+  authority: Госкорпорация «Росатом»
+  document_type: corporate_standard
+  status: published_reference
+  source_url: https://www.atomstandart.ru/deyatelnost/tekhnicheskoe-regulirovanie-i-standartizatsiya/informatsionnye-spravki-ob-utverzhdennykh-standartakh-goskorporatsii-rosatom/index.php
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - quality_plan
+  - manufacturing_control
+- id: ROSATOM-STANDARDIZATION-LEGAL-BASE
+  title_ru: Нормативно-правовая база стандартизации в области использования атомной энергии
+  authority: ЧУ «Атомстандарт»
+  document_type: regulatory_collection
+  status: current_collection
+  source_url: https://www.atomstandart.ru/deyatelnost/tekhnicheskoe-regulirovanie-i-standartizatsiya/normativno-pravovaya-baza-reguliruyushchaya-deyatelnost/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - legal_precedence
+  - standardization_governance
+- id: RUSHYDRO-TECHNICAL-POLICY
+  title_ru: Техническая политика Группы РусГидро
+  authority: ПАО «РусГидро»
+  document_type: corporate_policy
+  status: current_policy
+  source_url: https://www.rushydro.ru/
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - operator_requirements
+  - reliability_and_safety
+- id: STO-RUSHYDRO-05.02.126-2020
+  title_ru: СТО РусГидро 05.02.126-2020. Правила организации безопасного обслуживания гидротехнических сооружений, гидросилового
+    и гидромеханического оборудования ГЭС
+  authority: ПАО «РусГидро»
+  document_type: corporate_standard
+  status: published_reference
+  source_url: https://ar2023.rushydro.ru/development/occupational-safety.html
+  access: public_metadata
+  applies_to:
+  - other_primary
+  - automated_process_control_systems
+  - instrumentation
+  - relay_protection_automation
+  - auxiliary_power_supply
+  use_for:
+  - safe_maintenance
+  - operational_context
+- id: STO-RUSHYDRO-01.02.132-2015
+  title_ru: СТО РусГидро 01.02.132-2015. Гидроэлектростанции. Контроль качества производства работ в процессе строительства
+  authority: ПАО «РусГидро»
+  document_type: corporate_standard
+  status: published_reference
+  source_url: https://ar2017.rushydro.ru/ru/results/production-results/construction
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - construction_quality_context
+- id: STO-RUSHYDRO-70238424.27.140.046-2009
+  title_ru: СТО РусГидро 70238424.27.140.046-2009. Гидроэлектростанции. Производство строительно-монтажных работ
+  authority: ПАО «РусГидро»
+  document_type: corporate_standard
+  status: published_reference
+  source_url: https://ar2017.rushydro.ru/ru/results/production-results/construction
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - installation_context
+  - construction_requirements
+- id: STO-RUSHYDRO-04.01.71-2011
+  title_ru: СТО РусГидро 04.01.71-2011. Гидроэнергетическое строительство. Порядок определения стоимости строительно-монтажных
+    работ
+  authority: ПАО «РусГидро»
+  document_type: corporate_standard
+  status: historical_context
+  source_url: https://ar2017.rushydro.ru/ru/results/production-results/construction
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - cost_context
+- id: STO-RUSHYDRO-01.02.85-2013
+  title_ru: СТО РусГидро 01.02.85-2013. Гидроэнергетическое строительство. Календарно-сетевое планирование проектов сооружения
+    объектов гидрогенерации
+  authority: ПАО «РусГидро»
+  document_type: corporate_standard
+  status: historical_context
+  source_url: https://ar2017.rushydro.ru/ru/results/production-results/construction
+  access: public_metadata
+  applies_to:
+  - '*'
+  use_for:
+  - project_context
+precedence_policy:
+- level: 1
+  kind: law_and_technical_regulation
+  rule: Mandatory law and technical-regulation requirements prevail.
+- level: 2
+  kind: procurement_and_design_requirements
+  rule: The tender, design documentation and contract define the applicable requirement set for the specific object.
+- level: 3
+  kind: national_and_interstate_standards
+  rule: Apply only after checking scope, edition, amendments and contractual references.
+- level: 4
+  kind: corporate_operator_standards
+  rule: Rosseti, Rosatom, RusHydro and other operator rules are additional acceptance constraints for their objects.
+- level: 5
+  kind: manufacturer_documents
+  rule: TU, manuals and certificates support a concrete product claim but do not override higher-level requirements.
+decision_policy:
+  automatic_compliance_decision: false
+  human_applicability_review_required: true
+  edition_and_amendment_check_required: true
+  source_quote_and_page_required_for_claims: true
+  operator_registry_entry_is_not_general_equivalence_proof: true
+  restricted_documents: Store metadata, identifiers, access status and hashes only; do not commit unlicensed full texts.
+coverage:
+  document_count: 42
+  category_catalog_ref: ARV-067-ELECTRICAL-NOMENCLATURE@1.0.0

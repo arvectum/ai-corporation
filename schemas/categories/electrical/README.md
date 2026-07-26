@@ -1,26 +1,41 @@
 # ARV-067 electrical ontology
 
-This directory contains the first versioned vertical ontology asset for Arvectum.
-It covers four electrical procurement categories:
+This directory contains versioned electrical procurement data assets for Arvectum.
+
+The detailed v1 ontology covers four deterministic matching profiles:
 
 1. low-voltage power cable;
 2. self-supporting insulated wire (SIP);
 3. miniature circuit breaker;
 4. electromechanical contactor.
 
-The package defines category aliases, canonical marks, attribute synonyms,
-required/optional fields, comparison semantics, match labels and stable mismatch
-reason codes. It is an offline research contract and is intentionally not
-imported by the production resolver.
+The expanded catalog adds section-level coverage of both PJSC Rosseti approved-equipment registries:
+
+- 21 primary-equipment sections;
+- 7 secondary-equipment sections;
+- 28 total families with aliases, subcategories and discriminator fields;
+- a 42-document metadata-only normative registry covering GOST/PUE, Rosseti, Rosatom and RusHydro sources.
+
+The package is an offline research contract and is intentionally not imported by the production resolver.
 
 ## Files
 
-- `electrical.v1.yaml` — ontology and matching policy;
-- `ontology.schema.json` — versioned JSON Schema contract for the YAML document;
+Detailed ontology:
+
+- `electrical.v1.yaml` — four detailed profiles and matching policy;
+- `ontology.schema.json` — JSON Schema contract for the detailed ontology;
 - `contract.py` — structural and cross-reference checks;
 - `resolver.py` — deterministic synonym fixture resolver;
 - `matcher.py` — explainable fixture matching policy;
-- `validate.py` — validation entrypoint and fixture gate.
+- `validate.py` — detailed-profile validation entrypoint.
+
+Expanded nomenclature and norms:
+
+- `nomenclature.v1.yaml` — 28 Rosseti-derived section families;
+- `nomenclature.schema.json` — closed catalog contract;
+- `normative_registry.v1.yaml` — metadata-only normative source registry;
+- `normative_registry.schema.json` — closed normative contract;
+- `validate_catalog.py` — cross-file catalog and normative validator.
 
 Fixtures live in `fixtures/ontology/electrical/`.
 
@@ -28,21 +43,25 @@ Fixtures live in `fixtures/ontology/electrical/`.
 
 ```bash
 python schemas/categories/electrical/validate.py
+python schemas/categories/electrical/validate_catalog.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
+python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 ```
 
-A successful validator run prints:
+Successful validator markers:
 
 ```text
 ARV-067 electrical ontology: OK (categories=4, synonyms=8, matches=13, runtime_import=false)
+ARV-067 expanded electrical catalog: OK (sections=28, normative_documents=42, runtime_import=false)
 ```
 
 ## Safety boundary
 
 - no database model, migration or production resolver is changed;
-- the ontology is not certification or legal-compliance evidence;
-- a higher numeric capability is accepted only for fields explicitly marked
-  `minimum`;
-- required unknowns produce `UNCERTAIN`, not a guessed match;
-- live accuracy claims remain blocked until controlled truth packs are accepted
-  under ARV-001/ARV-005.
+- taxonomy-only families are not treated as production matchers;
+- the ontology and normative registry are not certification or legal-compliance evidence;
+- operator registry inclusion is not universal product equivalence proof;
+- standards require scope, edition and amendment verification for each procurement;
+- unlicensed full texts are not committed;
+- required unknowns remain uncertain rather than guessed;
+- live accuracy and compliance claims remain blocked until controlled truth packs and human review are accepted.

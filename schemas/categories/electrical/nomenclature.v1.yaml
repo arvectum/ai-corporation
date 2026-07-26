@@ -1,0 +1,732 @@
+catalog_id: ARV-067-ELECTRICAL-NOMENCLATURE
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+purpose: Hierarchical electrical procurement nomenclature derived from the PJSC Rosseti approved-equipment registries and
+  linked to versioned detailed category profiles.
+source_snapshots:
+- id: rosseti_primary_2026_06_10
+  title: Раздел I. Первичное оборудование, материалы и системы, допущенные к применению на объектах ПАО «Россети» на 10.06.2026
+  official_page_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  snapshot_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+  pages: 325
+  registry: primary
+  source_kind: user_supplied_official_snapshot
+- id: rosseti_secondary_2026_06_10
+  title: Раздел II. Вторичное оборудование, материалы и системы, допущенные к применению на объектах ПАО «Россети» на 10.06.2026
+  official_page_url: https://www.rosseti.ru/suppliers/technical-policy/equipment-quality-control/
+  snapshot_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+  pages: 110
+  registry: secondary
+  source_kind: user_supplied_official_snapshot
+coverage:
+  primary_sections: 21
+  secondary_sections: 7
+  total_sections: 28
+  detailed_profile_refs:
+  - power_cable_low_voltage
+  - self_supporting_insulated_wire
+  - miniature_circuit_breaker
+  - electromechanical_contactor
+sections:
+- id: switches
+  title_ru: Выключатели
+  registry: primary
+  registry_row_start: 1
+  registry_page_start: 1
+  aliases:
+  - выключатель
+  - высоковольтный выключатель
+  - коммутационный аппарат
+  subcategories:
+  - элегазовый выключатель
+  - вакуумный выключатель
+  - реклоузер
+  - выключатель нагрузки
+  - предохранитель-выключатель-разъединитель
+  discriminator_attributes:
+  - rated_voltage_kv
+  - rated_current_a
+  - breaking_current_ka
+  - insulation_medium
+  - climate_version
+  - switching_duty
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: high_voltage_bushings
+  title_ru: Высоковольтные вводы
+  registry: primary
+  registry_row_start: 54
+  registry_page_start: 15
+  aliases:
+  - высоковольтный ввод
+  - ввод трансформаторный
+  - ввод линейный
+  subcategories:
+  - трансформаторный ввод
+  - линейный ввод
+  - ввод для выключателя
+  - RIP-ввод
+  - RIN-ввод
+  discriminator_attributes:
+  - highest_voltage_kv
+  - rated_current_a
+  - insulation_type
+  - external_insulation
+  - application
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: insulators
+  title_ru: Изоляторы
+  registry: primary
+  registry_row_start: 81
+  registry_page_start: 21
+  aliases:
+  - изолятор
+  - высоковольтный изолятор
+  - линейный изолятор
+  subcategories:
+  - подвесной изолятор
+  - опорный изолятор
+  - линейный штыревой изолятор
+  - полимерный изолятор
+  - фарфоровый изолятор
+  - стеклянный изолятор
+  discriminator_attributes:
+  - rated_voltage_kv
+  - insulator_type
+  - material
+  - mechanical_failing_load_kn
+  - creepage_distance_mm
+  - pollution_level
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: cables_fittings_pipes
+  title_ru: Кабель и арматура, кабельные трубы
+  registry: primary
+  registry_row_start: 131
+  registry_page_start: 31
+  aliases:
+  - кабель
+  - кабельная арматура
+  - кабельная труба
+  subcategories:
+  - силовой кабель
+  - контрольный кабель
+  - кабель связи
+  - кабельная муфта
+  - кабельный наконечник
+  - кабельная труба
+  discriminator_attributes:
+  - rated_voltage_kv
+  - conductor_material
+  - conductor_count
+  - cross_section_mm2
+  - insulation_material
+  - fire_performance
+  - armour_or_screen
+  detailed_profile_refs:
+  - power_cable_low_voltage
+  profile_status: detailed_and_taxonomy
+- id: package_transformer_substations
+  title_ru: Комплектные трансформаторные подстанции (КТП, БКТП, МТП, СТП, РП)
+  registry: primary
+  registry_row_start: 211
+  registry_page_start: 65
+  aliases:
+  - ктп
+  - комплектная трансформаторная подстанция
+  - распределительный пункт
+  subcategories:
+  - КТП
+  - БКТП
+  - МТП
+  - СТП
+  - распределительный пункт
+  discriminator_attributes:
+  - primary_voltage_kv
+  - secondary_voltage_kv
+  - rated_power_kva
+  - transformer_type
+  - enclosure_type
+  - short_circuit_withstand_ka
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: medium_voltage_switchgear
+  title_ru: КРУ, КСО
+  registry: primary
+  registry_row_start: 253
+  registry_page_start: 76
+  aliases:
+  - кру
+  - ксo
+  - комплектное распределительное устройство
+  subcategories:
+  - КРУ внутренней установки
+  - КРУ наружной установки
+  - КСО
+  - ячейка КРУ
+  - низковольтный комплектный шкаф
+  discriminator_attributes:
+  - rated_voltage_kv
+  - busbar_current_a
+  - short_circuit_withstand_ka
+  - compartmentalization
+  - arc_resistance
+  - enclosure_ip
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: gas_insulated_switchgear
+  title_ru: КРУЭ
+  registry: primary
+  registry_row_start: 300
+  registry_page_start: 93
+  aliases:
+  - круэ
+  - газоизолированное распределительное устройство
+  - комплектное распределительное устройство элегазовое
+  subcategories:
+  - ячейка КРУЭ
+  - модуль КРУЭ
+  - газоизолированная шина
+  - ввод КРУЭ
+  discriminator_attributes:
+  - rated_voltage_kv
+  - busbar_current_a
+  - short_circuit_withstand_ka
+  - insulation_gas
+  - bay_composition
+  - enclosure_ip
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: surge_protection_fuses
+  title_ru: ОПН, предохранители, разрядники
+  registry: primary
+  registry_row_start: 317
+  registry_page_start: 98
+  aliases:
+  - опн
+  - предохранитель
+  - разрядник
+  subcategories:
+  - ограничитель перенапряжений
+  - высоковольтный предохранитель
+  - вентильный разрядник
+  - искровой разрядник
+  discriminator_attributes:
+  - rated_voltage_kv
+  - continuous_operating_voltage_kv
+  - nominal_discharge_current_ka
+  - energy_class
+  - application
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: overhead_line_towers
+  title_ru: Опоры ВЛ
+  registry: primary
+  registry_row_start: 338
+  registry_page_start: 102
+  aliases:
+  - опора вл
+  - опора воздушной линии
+  - линейная опора
+  subcategories:
+  - металлическая опора
+  - железобетонная опора
+  - деревянная опора
+  - композитная опора
+  - анкерная опора
+  - промежуточная опора
+  discriminator_attributes:
+  - voltage_class_kv
+  - tower_function
+  - circuit_count
+  - height_m
+  - material
+  - climate_region
+  - corrosion_protection
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: tower_foundations
+  title_ru: Фундаменты под опоры ВЛ
+  registry: primary
+  registry_row_start: 461
+  registry_page_start: 140
+  aliases:
+  - фундамент опоры
+  - фундамент вл
+  - основание опоры
+  subcategories:
+  - железобетонный фундамент
+  - свайный фундамент
+  - анкерный фундамент
+  - винтовая свая
+  - подножник
+  discriminator_attributes:
+  - tower_compatibility
+  - foundation_type
+  - design_load_kn
+  - soil_conditions
+  - concrete_grade
+  - corrosion_protection
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: conductors_ground_wires_sip
+  title_ru: Провода, грозотросы, СИП
+  registry: primary
+  registry_row_start: 505
+  registry_page_start: 149
+  aliases:
+  - провод вл
+  - грозотрос
+  - сип
+  subcategories:
+  - неизолированный провод
+  - грозозащитный трос
+  - оптический грозотрос
+  - самонесущий изолированный провод
+  - защищенный провод
+  discriminator_attributes:
+  - conductor_material
+  - cross_section_mm2
+  - rated_tensile_strength_kn
+  - rated_voltage_kv
+  - construction
+  - optical_fibre_count
+  - climate_version
+  detailed_profile_refs:
+  - self_supporting_insulated_wire
+  profile_status: detailed_and_taxonomy
+- id: line_hardware
+  title_ru: Линейная арматура
+  registry: primary
+  registry_row_start: 571
+  registry_page_start: 177
+  aliases:
+  - линейная арматура
+  - арматура вл
+  - сцепная арматура
+  subcategories:
+  - поддерживающая арматура
+  - натяжная арматура
+  - соединительная арматура
+  - защитная арматура
+  - дистанционная арматура
+  - гаситель вибрации
+  discriminator_attributes:
+  - conductor_or_insulator_type
+  - diameter_range_mm
+  - mechanical_load_kn
+  - material
+  - coating
+  - application
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: rigid_busbars_busducts
+  title_ru: Ошиновка жесткая и токопроводы
+  registry: primary
+  registry_row_start: 708
+  registry_page_start: 242
+  aliases:
+  - жесткая ошиновка
+  - токопровод
+  - шинопровод
+  subcategories:
+  - жесткая шина
+  - экранированный токопровод
+  - комплектный шинопровод
+  - гибкая ошиновка
+  discriminator_attributes:
+  - rated_voltage_kv
+  - rated_current_a
+  - conductor_material
+  - cross_section_mm2
+  - short_circuit_withstand_ka
+  - enclosure_type
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: disconnectors_earthing_switches
+  title_ru: Разъединители, заземлители
+  registry: primary
+  registry_row_start: 719
+  registry_page_start: 245
+  aliases:
+  - разъединитель
+  - заземлитель
+  - заземляющий нож
+  subcategories:
+  - высоковольтный разъединитель
+  - заземляющий выключатель
+  - отделитель
+  - короткозамыкатель
+  discriminator_attributes:
+  - rated_voltage_kv
+  - rated_current_a
+  - short_circuit_withstand_ka
+  - pole_count
+  - drive_type
+  - earthing_switch_count
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: reactors
+  title_ru: Реакторы
+  registry: primary
+  registry_row_start: 748
+  registry_page_start: 254
+  aliases:
+  - реактор
+  - электрический реактор
+  - высоковольтный реактор
+  subcategories:
+  - шунтирующий реактор
+  - токоограничивающий реактор
+  - дугогасящий реактор
+  - сглаживающий реактор
+  - реактор заземления нейтрали
+  discriminator_attributes:
+  - rated_voltage_kv
+  - rated_reactive_power_mvar
+  - rated_current_a
+  - phase_count
+  - cooling_type
+  - insulation_type
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: power_transformers
+  title_ru: Силовые трансформаторы
+  registry: primary
+  registry_row_start: 773
+  registry_page_start: 260
+  aliases:
+  - силовой трансформатор
+  - автотрансформатор
+  - распределительный трансформатор
+  subcategories:
+  - масляный трансформатор
+  - сухой трансформатор
+  - автотрансформатор
+  - трансформатор собственных нужд
+  discriminator_attributes:
+  - primary_voltage_kv
+  - secondary_voltage_kv
+  - rated_power_mva
+  - vector_group
+  - cooling_type
+  - on_load_tap_changer
+  - loss_class
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: combined_instrument_transformers
+  title_ru: Трансформаторы измерительные комбинированные
+  registry: primary
+  registry_row_start: 892
+  registry_page_start: 292
+  aliases:
+  - комбинированный измерительный трансформатор
+  - комбинированный трансформатор тока и напряжения
+  - ктн
+  subcategories:
+  - комбинированный трансформатор
+  - цифровой комбинированный трансформатор
+  - элегазовый комбинированный трансформатор
+  discriminator_attributes:
+  - rated_voltage_kv
+  - primary_current_a
+  - current_ratio
+  - voltage_ratio
+  - accuracy_classes
+  - rated_burden_va
+  - insulation_type
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: voltage_transformers
+  title_ru: Трансформаторы напряжения
+  registry: primary
+  registry_row_start: 894
+  registry_page_start: 292
+  aliases:
+  - трансформатор напряжения
+  - тн
+  - измерительный трансформатор напряжения
+  subcategories:
+  - электромагнитный трансформатор напряжения
+  - емкостный трансформатор напряжения
+  - антиферрорезонансный трансформатор
+  discriminator_attributes:
+  - rated_voltage_kv
+  - voltage_ratio
+  - accuracy_classes
+  - rated_burden_va
+  - design_type
+  - insulation_type
+  - climate_version
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: current_transformers
+  title_ru: Трансформаторы тока
+  registry: primary
+  registry_row_start: 921
+  registry_page_start: 300
+  aliases:
+  - трансформатор тока
+  - тт
+  - измерительный трансформатор тока
+  subcategories:
+  - опорный трансформатор тока
+  - встроенный трансформатор тока
+  - шинный трансформатор тока
+  - цифровой трансформатор тока
+  discriminator_attributes:
+  - rated_voltage_kv
+  - current_ratio
+  - accuracy_classes
+  - rated_burden_va
+  - thermal_current_ka
+  - dynamic_current_ka
+  - design_type
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: stationary_batteries
+  title_ru: Аккумуляторные батареи
+  registry: primary
+  registry_row_start: 957
+  registry_page_start: 312
+  aliases:
+  - аккумуляторная батарея
+  - стационарная батарея
+  - батарея постоянного тока
+  subcategories:
+  - свинцово-кислотная батарея
+  - никель-кадмиевая батарея
+  - литий-ионная батарея
+  - аккумуляторный элемент
+  discriminator_attributes:
+  - nominal_voltage_v
+  - capacity_ah
+  - chemistry
+  - cell_count
+  - design_life_years
+  - temperature_range_c
+  - installation_type
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: other_primary
+  title_ru: Прочее (первичное оборудование)
+  registry: primary
+  registry_row_start: 970
+  registry_page_start: 314
+  aliases:
+  - прочее первичное оборудование
+  - низковольтный аппарат
+  - вспомогательное первичное оборудование
+  subcategories:
+  - модульный автоматический выключатель
+  - контактор
+  - шкаф управления приводом
+  - заземляющее устройство
+  - диагностическая система
+  discriminator_attributes:
+  - equipment_function
+  - rated_voltage_v
+  - rated_current_a
+  - enclosure_ip
+  - climate_version
+  - interface_or_drive
+  detailed_profile_refs:
+  - miniature_circuit_breaker
+  - electromechanical_contactor
+  profile_status: detailed_and_taxonomy
+- id: automated_metering_systems
+  title_ru: АИИС КУЭ
+  registry: secondary
+  registry_row_start: 1
+  registry_page_start: 1
+  aliases:
+  - аиис куэ
+  - автоматизированная система учета электроэнергии
+  - коммерческий учет электроэнергии
+  subcategories:
+  - однофазный счетчик
+  - трехфазный счетчик
+  - УСПД
+  - концентратор данных
+  - ПО АИИС КУЭ
+  discriminator_attributes:
+  - phase_count
+  - connection_type
+  - accuracy_class
+  - communication_interfaces
+  - software_version
+  - type_approval_registry_number
+  - installation_type
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: automated_process_control_systems
+  title_ru: АСТУ
+  registry: secondary
+  registry_row_start: 97
+  registry_page_start: 48
+  aliases:
+  - асту
+  - асу тп
+  - автоматизированная система технологического управления
+  subcategories:
+  - SCADA
+  - система телемеханики
+  - система автоматизации подстанции
+  - оперативно-информационный комплекс
+  - контроллер присоединения
+  discriminator_attributes:
+  - architecture
+  - iec_protocols
+  - redundancy_scheme
+  - cybersecurity_profile
+  - software_version
+  - time_synchronization
+  - environment_class
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: instrumentation
+  title_ru: КИП
+  registry: secondary
+  registry_row_start: 132
+  registry_page_start: 64
+  aliases:
+  - кип
+  - контрольно-измерительный прибор
+  - датчик технологического параметра
+  subcategories:
+  - датчик давления
+  - датчик температуры
+  - преобразователь
+  - анализатор
+  - система мониторинга
+  discriminator_attributes:
+  - measured_quantity
+  - measurement_range
+  - accuracy_class
+  - output_signal
+  - communication_interface
+  - environment_class
+  - type_approval_registry_number
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: relay_protection_automation
+  title_ru: РЗ и ПА
+  registry: secondary
+  registry_row_start: 142
+  registry_page_start: 67
+  aliases:
+  - рза
+  - релейная защита и автоматика
+  - противоаварийная автоматика
+  subcategories:
+  - терминал защиты
+  - устройство автоматики
+  - регистратор аварийных событий
+  - система мониторинга переходных режимов
+  - устройство синхронизированных векторных измерений
+  discriminator_attributes:
+  - protection_functions
+  - current_inputs
+  - voltage_inputs
+  - iec_protocols
+  - goose_support
+  - time_synchronization
+  - software_version
+  - cybersecurity_profile
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: communications
+  title_ru: Связь
+  registry: secondary
+  registry_row_start: 202
+  registry_page_start: 88
+  aliases:
+  - оборудование связи
+  - телекоммуникационное оборудование
+  - технологическая связь
+  subcategories:
+  - маршрутизатор
+  - коммутатор
+  - радиорелейная система
+  - оптическая система передачи
+  - телефонная станция
+  - модем
+  discriminator_attributes:
+  - transmission_medium
+  - supported_protocols
+  - bandwidth_mbps
+  - redundancy_scheme
+  - interface_types
+  - environment_class
+  - cybersecurity_profile
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: auxiliary_power_supply
+  title_ru: Электропитание
+  registry: secondary
+  registry_row_start: 247
+  registry_page_start: 102
+  aliases:
+  - электропитание
+  - система оперативного постоянного тока
+  - источник бесперебойного питания
+  subcategories:
+  - ИБП
+  - выпрямитель
+  - инвертор
+  - зарядное устройство
+  - щит постоянного тока
+  - агрегат бесперебойного питания
+  discriminator_attributes:
+  - input_voltage_v
+  - output_voltage_v
+  - rated_power_kw
+  - battery_interface
+  - redundancy_scheme
+  - efficiency_percent
+  - environment_class
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+- id: other_secondary
+  title_ru: Прочее (вторичное оборудование)
+  registry: secondary
+  registry_row_start: 271
+  registry_page_start: 107
+  aliases:
+  - прочее вторичное оборудование
+  - вспомогательная система
+  - сервисное оборудование автоматики
+  subcategories:
+  - система единого времени
+  - шкаф автоматики
+  - средство кибербезопасности
+  - инженерная станция
+  - испытательный комплект
+  discriminator_attributes:
+  - equipment_function
+  - interfaces
+  - software_version
+  - environment_class
+  - enclosure_ip
+  - certification_or_attestation
+  detailed_profile_refs: []
+  profile_status: taxonomy_only
+governance:
+  operator_register_is_not_equivalence_proof: true
+  normative_applicability_requires_human_review: true
+  manufacturer_models_are_not_canonical_categories: true
+  full_text_documents_are_not_stored: true
+  release_note: This taxonomy proves coverage of the Rosseti section nomenclature, not production extraction accuracy or legal
+    compliance.
