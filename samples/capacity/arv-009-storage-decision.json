@@ -1,0 +1,21 @@
+{
+  "decision": "4tb_approved_for_pilot",
+  "ssd_capacity_decimal_bytes": 4000000000000,
+  "measured_scope": {
+    "law": "44fz",
+    "days": 30,
+    "region_scope": "99_operational_codes_used_by_measurement"
+  },
+  "measured_document_bytes": 188675255282,
+  "commercial_reserve_ratio": 0.5,
+  "processing_reserve_bytes": 161061273600,
+  "persistent_reserve_bytes": 53687091200,
+  "base_required_30d_bytes": 497761247723,
+  "linear_estimate_90d_bytes": 1063787013569,
+  "linear_estimate_180d_bytes": 1912825662338,
+  "safe_capacity_at_20_percent_free_bytes": 3200000000000,
+  "warning_threshold_percent": 70,
+  "critical_threshold_percent": 80,
+  "ingestion_protection_threshold_percent": 90,
+  "further_measurement_required": false
+}
