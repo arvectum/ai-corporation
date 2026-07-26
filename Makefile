@@ -31,7 +31,7 @@ test-redis-unit:
 	python -m pytest -q tests/unit/redis/
 
 test-redis-integration:
-	python -m pytest -q tests/integration/test_redis_*_integration.py --run-integration -p no:cacheprovider
+	python -m pytest tests/integration/test_redis_*_integration.py --run-integration -p no:cacheprovider
 
 redis-start:
 	docker compose -f docker-compose.redis-test.yml up -d
