@@ -27,7 +27,7 @@ jobs:
           name: r9-operational-hardening-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           if-no-files-found: error
           path: |
-            output/pytest.log
+            output/*.log
             output/r9-db-filesystem-mismatch-*/
             output/r9-orphan-lifecycle-*/
             output/r9-backup-restore-*/
