@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from src.modules.tender_operator_agent_demo.procurement_schemas import ProcurementSearchRequest
+from src.modules.tender_operator_agent_demo.procurement_schemas import (
+    ProcurementSearchRequest,
+)
 from src.modules.tender_operator_agent_demo.settings import ZakupkiSoapSettings
 from src.modules.tender_operator_agent_demo.zakupki_soap_client import (
     ZakupkiSoapClient,
@@ -11,8 +13,10 @@ from src.modules.tender_operator_agent_demo.zakupki_soap_client import (
     parse_details_response,
     parse_search_response,
 )
-from src.modules.tender_operator_agent_demo.zakupki_soap_templates import build_search_envelope
-
+from src.modules.tender_operator_agent_demo.zakupki_soap_templates import (
+    build_search_envelope,
+)
+from src.shared.network.etp_trust import HostPolicy, TrustPolicy
 
 FIXTURES = Path(__file__).parent / "fixtures" / "zakupki_soap"
 
@@ -22,20 +26,48 @@ def _fixture(name: str) -> str:
 
 
 def _settings(token: str = "test-token-value-not-real") -> ZakupkiSoapSettings:
-    return ZakupkiSoapSettings(enabled=True, token=token, timeout_seconds=7, max_results=5)
+    return ZakupkiSoapSettings(
+        enabled=True, token=token, timeout_seconds=7, max_results=5
+    )
 
 
 def test_client_disabled_without_token():
-    client = ZakupkiSoapClient(ZakupkiSoapSettings(enabled=True, token="replace_me_do_not_commit_real_token"))
+    client = ZakupkiSoapClient(
+        ZakupkiSoapSettings(enabled=True, token="replace_me_do_not_commit_real_token")
+    )
 
     assert client.is_configured() is False
     assert client.search_procurements(ProcurementSearchRequest(query="кабель")) == []
 
 
+def test_injected_policy_and_diagnostics_are_instance_scoped(tmp_path: Path):
+    policy = TrustPolicy(
+        enabled=True,
+        proxy_bypass_enabled=True,
+        hosts=(HostPolicy("example.test", direct_connection=True),),
+    )
+    client = ZakupkiSoapClient(
+        _settings(),
+        trust_policy=policy,
+        diagnostics_dir=tmp_path / "diagnostics",
+        runtime_status_enabled=False,
+        transport=lambda *_args: "<Envelope />",
+    )
+    client._post_soap(
+        "<Envelope />",
+        soap_action=None,
+        endpoint_url="https://example.test/soap",
+        method_name="test",
+    )
+    assert not (tmp_path / "diagnostics").exists()
+
+
 def test_token_not_in_repr_status_or_errors():
     settings = _settings(token="secret-token-value")
 
-    def failing_transport(_envelope: str, _soap_action: str | None, _timeout: int) -> str:
+    def failing_transport(
+        _envelope: str, _soap_action: str | None, _timeout: int
+    ) -> str:
         raise RuntimeError("upstream rejected secret-token-value")
 
     client = ZakupkiSoapClient(settings, transport=failing_transport)
@@ -76,7 +108,10 @@ def test_mocked_details_xml_maps_to_details():
 
     assert details.procurement.procurement_id == "eis-001"
     assert details.procurement.customer_name == "Промышленный заказчик"
-    assert details.raw_source_summary == "Синтетическая карточка закупки для тестов SOAP parser."
+    assert (
+        details.raw_source_summary
+        == "Синтетическая карточка закупки для тестов SOAP parser."
+    )
 
 
 def test_real_shaped_search_xml_maps_dates_money_and_warnings():
@@ -103,11 +138,16 @@ def test_real_shaped_details_response_maps_partial_details():
     assert details.procurement.publication_date == "2026-06-23"
     assert details.procurement.deadline == "2026-06-27"
     assert details.procurement.initial_price == 4750000.00
-    assert details.raw_source_summary == "Детализированная карточка для real-shaped parser tests."
+    assert (
+        details.raw_source_summary
+        == "Детализированная карточка для real-shaped parser tests."
+    )
 
 
 def test_empty_search_response_does_not_crash():
-    assert parse_search_response('<?xml version="1.0"?><Envelope><Body/></Envelope>') == []
+    assert (
+        parse_search_response('<?xml version="1.0"?><Envelope><Body/></Envelope>') == []
+    )
 
 
 def test_mocked_attachments_xml_maps_to_attachments():
@@ -120,7 +160,9 @@ def test_mocked_attachments_xml_maps_to_attachments():
 
 
 def test_real_shaped_attachments_response_maps_url_and_manual_fallback():
-    attachments = parse_attachments_response(_fixture("real_shaped_attachments_response.xml"))
+    attachments = parse_attachments_response(
+        _fixture("real_shaped_attachments_response.xml")
+    )
 
     assert len(attachments) == 2
     assert attachments[0].attachment_id == "doc-001"
@@ -193,14 +235,20 @@ def test_xml_with_dtd_is_rejected():
         parse_search_response(payload)
 
 
-@pytest.mark.skipif(not os.getenv("ZAKUPKI_GOV_RU_SOAP_LIVE_TEST"), reason="live SOAP smoke is opt-in")
+@pytest.mark.skipif(
+    not os.getenv("ZAKUPKI_GOV_RU_SOAP_LIVE_TEST"), reason="live SOAP smoke is opt-in"
+)
 def test_live_zakupki_soap_search_smoke():
     settings = ZakupkiSoapSettings.from_env()
     client = ZakupkiSoapClient(settings)
 
     try:
         results = client.search_procurements(
-            ProcurementSearchRequest(source="zakupki_gov_ru_soap_legacy", query="электротехническое оборудование", max_results=1)
+            ProcurementSearchRequest(
+                source="zakupki_gov_ru_soap_legacy",
+                query="электротехническое оборудование",
+                max_results=1,
+            )
         )
     except RuntimeError as exc:
         message = str(exc)

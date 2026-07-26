@@ -85,7 +85,7 @@ class DocumentChunkIndexer:
         self._repo._session.commit()
         return summary
 
-    def build_for_tender(self, tender_id: str) -> dict:
+    def build_for_tender(self, tender_id: str, *, commit: bool = True) -> dict:
         summary = {
             "documents_seen": 0,
             "documents_chunked": 0,
@@ -142,7 +142,10 @@ class DocumentChunkIndexer:
                 created_for_document += 1
             if created_for_document:
                 summary["documents_chunked"] += 1
-        self._repo._session.commit()
+        if commit:
+            self._repo._session.commit()
+        else:
+            self._repo._session.flush()
         return summary
 
 
@@ -180,7 +183,9 @@ class DocumentEmbeddingIndexer:
                 select(ProcurementDocumentChunk)
                 .order_by(ProcurementDocumentChunk.created_at.asc())
                 .limit(limit)
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         )
         if not chunks:
             return summary
@@ -190,13 +195,19 @@ class DocumentEmbeddingIndexer:
             model=self._provider.model_name,
             chunk_ids=[chunk.id for chunk in chunks],
         )
-        existing_by_chunk_id = {embedding.chunk_id: embedding for embedding in embeddings}
+        existing_by_chunk_id = {
+            embedding.chunk_id: embedding for embedding in embeddings
+        }
         pending_chunks: list[ProcurementDocumentChunk] = []
 
         for chunk in chunks:
             summary["chunks_seen"] += 1
             existing = existing_by_chunk_id.get(chunk.id)
-            if existing and existing.vector_id and self._vector_store.has_vector(existing.vector_id):
+            if (
+                existing
+                and existing.vector_id
+                and self._vector_store.has_vector(existing.vector_id)
+            ):
                 summary["embeddings_skipped_existing"] += 1
                 continue
             pending_chunks.append(chunk)
@@ -205,7 +216,7 @@ class DocumentEmbeddingIndexer:
             batch = pending_chunks[start : start + batch_size]
             try:
                 vectors = self._provider.embed_texts([chunk.text for chunk in batch])
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - provider failures are summarized per batch
                 summary["embeddings_failed"] += len(batch)
                 summary["last_error"] = str(exc)
                 continue
@@ -220,7 +231,9 @@ class DocumentEmbeddingIndexer:
             for chunk, vector in zip(batch, vectors):
                 vector_id = chunk.id
                 vector_hash = hashlib.sha256(
-                    json.dumps(vector, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                    json.dumps(
+                        vector, ensure_ascii=False, separators=(",", ":")
+                    ).encode("utf-8")
                 ).hexdigest()
                 self._vector_store.upsert(
                     vector_id,
@@ -249,7 +262,9 @@ class DocumentEmbeddingIndexer:
         summary["dimension"] = self._provider.dimension
         elapsed = time.perf_counter() - started
         summary["elapsed_seconds"] = round(elapsed, 3)
-        summary["avg_chunks_per_second"] = round(summary["chunks_seen"] / elapsed, 3) if elapsed > 0 else 0.0
+        summary["avg_chunks_per_second"] = (
+            round(summary["chunks_seen"] / elapsed, 3) if elapsed > 0 else 0.0
+        )
         self._vector_store.persist()
         self._repo._session.commit()
         return summary
@@ -279,13 +294,19 @@ class DocumentEmbeddingIndexer:
             model=self._provider.model_name,
             chunk_ids=[chunk.id for chunk in chunks],
         )
-        existing_by_chunk_id = {embedding.chunk_id: embedding for embedding in embeddings}
+        existing_by_chunk_id = {
+            embedding.chunk_id: embedding for embedding in embeddings
+        }
         pending_chunks: list[ProcurementDocumentChunk] = []
 
         for chunk in chunks:
             summary["chunks_seen"] += 1
             existing = existing_by_chunk_id.get(chunk.id)
-            if existing and existing.vector_id and self._vector_store.has_vector(existing.vector_id):
+            if (
+                existing
+                and existing.vector_id
+                and self._vector_store.has_vector(existing.vector_id)
+            ):
                 summary["embeddings_skipped_existing"] += 1
                 continue
             pending_chunks.append(chunk)
@@ -294,7 +315,7 @@ class DocumentEmbeddingIndexer:
             batch = pending_chunks[start : start + batch_size]
             try:
                 vectors = self._provider.embed_texts([chunk.text for chunk in batch])
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - provider failures are summarized per batch
                 summary["embeddings_failed"] += len(batch)
                 summary["last_error"] = str(exc)
                 continue
@@ -309,7 +330,9 @@ class DocumentEmbeddingIndexer:
             for chunk, vector in zip(batch, vectors):
                 vector_id = chunk.id
                 vector_hash = hashlib.sha256(
-                    json.dumps(vector, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                    json.dumps(
+                        vector, ensure_ascii=False, separators=(",", ":")
+                    ).encode("utf-8")
                 ).hexdigest()
                 self._vector_store.upsert(
                     vector_id,
@@ -338,7 +361,9 @@ class DocumentEmbeddingIndexer:
         summary["dimension"] = self._provider.dimension
         elapsed = time.perf_counter() - started
         summary["elapsed_seconds"] = round(elapsed, 3)
-        summary["avg_chunks_per_second"] = round(summary["chunks_seen"] / elapsed, 3) if elapsed > 0 else 0.0
+        summary["avg_chunks_per_second"] = (
+            round(summary["chunks_seen"] / elapsed, 3) if elapsed > 0 else 0.0
+        )
         self._vector_store.persist()
         self._repo._session.commit()
         return summary

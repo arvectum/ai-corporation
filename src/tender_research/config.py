@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from src.shared.config.settings import get_settings
+from src.shared.config.settings import Settings, get_settings
 
 
 @dataclass
@@ -22,7 +22,9 @@ class TenderResearchConfig:
     public_search_timeout_seconds: int = 30
     public_search_bypass_proxy: bool = False
     public_search_page_size: int = 30
-    public_search_no_proxy_domains: str = "zakupki.gov.ru,.zakupki.gov.ru,int.zakupki.gov.ru,int44.zakupki.gov.ru"
+    public_search_no_proxy_domains: str = (
+        "zakupki.gov.ru,.zakupki.gov.ru,int.zakupki.gov.ru,int44.zakupki.gov.ru"
+    )
     allow_demo_discovery: bool = True
 
     web_search_enabled: bool = False
@@ -63,21 +65,43 @@ class TenderResearchConfig:
 
     data_dir: str = "./data"
 
-    deny_domain_list: tuple[str, ...] = field(default_factory=lambda: (
-        "localhost", "127.0.0.1", "0.0.0.0", "::1",
-        "10.", "172.16.", "172.17.", "172.18.", "172.19.",
-        "172.20.", "172.21.", "172.22.", "172.23.",
-        "172.24.", "172.25.", "172.26.", "172.27.",
-        "172.28.", "172.29.", "172.30.", "172.31.",
-        "192.168.",
-    ))
+    deny_domain_list: tuple[str, ...] = field(
+        default_factory=lambda: (
+            "localhost",
+            "127.0.0.1",
+            "0.0.0.0",
+            "::1",
+            "10.",
+            "172.16.",
+            "172.17.",
+            "172.18.",
+            "172.19.",
+            "172.20.",
+            "172.21.",
+            "172.22.",
+            "172.23.",
+            "172.24.",
+            "172.25.",
+            "172.26.",
+            "172.27.",
+            "172.28.",
+            "172.29.",
+            "172.30.",
+            "172.31.",
+            "192.168.",
+        )
+    )
 
 
-def load_config() -> TenderResearchConfig:
-    s = get_settings()
+def load_config(settings: Settings | None = None) -> TenderResearchConfig:
+    s = settings if settings is not None else get_settings()
     provider_name = (s.rag_embeddings_provider or "hashing").strip().lower()
     rag_embedding_dimension = s.rag_embeddings_dimension
-    if rag_embedding_dimension is None and provider_name in {"hash", "hashing", "local_hash"}:
+    if rag_embedding_dimension is None and provider_name in {
+        "hash",
+        "hashing",
+        "local_hash",
+    }:
         rag_embedding_dimension = s.rag_embedding_dimension
     return TenderResearchConfig(
         enabled=s.tender_research_enabled,
