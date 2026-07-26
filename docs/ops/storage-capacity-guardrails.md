@@ -10,7 +10,15 @@ ARV-010 implements runtime enforcement of those thresholds.
 
 ### Storage root resolution
 
-The storage root is configured via the environment variable:
+The storage root is configured via environment variables:
+
+**Canonical name** (highest priority):
+- `ARVECTUM_STORAGE_ROOT`
+
+**Compatibility name** (lower priority, backward compatibility):
+- `AI_CORP_ARVECTUM_STORAGE_ROOT`
+
+When both are set, the canonical name takes priority (determined by `AliasChoices` order).
 
 ```
 ARVECTUM_STORAGE_ROOT
@@ -28,13 +36,13 @@ the storage state is reported as `storage_unknown` and ingestion is blocked
 
 ### Thresholds
 
-| Used % | State | Default env override |
-|--------|-------|---------------------|
-| < 70 % | `normal` | `ARVECTUM_STORAGE_WARNING_PERCENT` |
-| 70–79 % | `warning` | `ARVECTUM_STORAGE_CRITICAL_PERCENT` |
-| 80–89 % | `critical` | `ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` |
-| ≥ 90 % | `ingestion_protected` | — |
-| N/A | `storage_unknown` | — |
+| Used % | State | Canonical env | Compatibility env |
+|--------|-------|---------------|-------------------|
+| < 70 % | `normal` | `ARVECTUM_STORAGE_WARNING_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_WARNING_PERCENT` |
+| 70–79 % | `warning` | `ARVECTUM_STORAGE_CRITICAL_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_CRITICAL_PERCENT` |
+| 80–89 % | `critical` | `ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` | `AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` |
+| ≥ 90 % | `ingestion_protected` | — | — |
+| N/A | `storage_unknown` | — | — |
 
 All threshold env vars accept integer values (0–100).
 
@@ -82,8 +90,9 @@ mass operations are blocked (fail-closed):
 
 - Full SOAP sweeps (EIS national sweeps)
 - Mass download of procurement documents
-- Batch document ingestion (`DocumentSet` creation)
+- Tender-research prepare/download flow is protected
 - Any operation decorated with `@mass_ingestion`
+- Future batch file-ingestion flows must connect the gate at implementation time
 
 The gate returns machine-readable errors with HTTP 503:
 
@@ -141,7 +150,7 @@ unexpectedly full or misconfigured storage device.
 
 No manual override flag is provided. If the operator needs to force ingestion
 in a degraded state, the threshold env vars can be temporarily adjusted (e.g.,
-raising `ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` to 99).
+raising `ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` (canonical) or `AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT` (compatibility) to 99).
 
 ### Health endpoint
 
@@ -155,7 +164,7 @@ The existing `/health/ready` endpoint includes a `storage` section with:
 
 ### Metrics
 
-Structured logs (via `storage_metrics_dict()`) emit these fields:
+The `storage_metrics_dict()` function returns a dictionary for the `/health/ready` endpoint with these fields:
 
 - `storage_total_bytes`
 - `storage_free_bytes`
