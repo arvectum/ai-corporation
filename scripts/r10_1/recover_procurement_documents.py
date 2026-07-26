@@ -40,7 +40,9 @@ def main() -> int:
             if report.get("final_status")
             in {
                 "RECOVERY_PREFLIGHT_READY",
+                "DOCUMENTS_RESTORED",
                 "DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+                "DOCUMENTS_ALREADY_RESTORED_CHUNKS_NOT_REQUESTED",
                 "ALREADY_RECOVERED_AND_CHUNKED",
             }
             else 2

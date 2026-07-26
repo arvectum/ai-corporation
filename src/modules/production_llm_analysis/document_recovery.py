@@ -211,10 +211,17 @@ def validate_data_root(data_root: Path, backup_dir: Path) -> Path:
         raise ValueError("data_root must be an absolute non-symlink path")
     if not backup_dir.is_absolute() or backup_dir.is_symlink():
         raise ValueError("backup_dir must be an absolute non-symlink path")
+    _reject_lexical_symlink_parents(data_root)
+    _reject_lexical_symlink_parents(backup_dir)
     resolved = data_root.resolve(strict=False)
     backup = backup_dir.resolve(strict=False)
     tmp_root = Path("/tmp").resolve()
-    if resolved == tmp_root or tmp_root in resolved.parents:
+    if (
+        resolved == tmp_root
+        or tmp_root in resolved.parents
+        or backup == tmp_root
+        or tmp_root in backup.parents
+    ):
         raise ValueError("data_root cannot be inside /tmp")
     if _inside(resolved, checkout) or _inside(backup, checkout):
         raise ValueError("recovery paths cannot be inside checkout")
@@ -227,6 +234,29 @@ def validate_data_root(data_root: Path, backup_dir: Path) -> Path:
                 raise ValueError("recovery path has symlink parent")
             current = current.parent
     return resolved
+
+
+def _reject_lexical_symlink_parents(path: Path) -> None:
+    current = Path(path.anchor)
+    for component in path.parts[1:]:
+        current /= component
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(mode):
+            raise ValueError("recovery path has symlink parent")
+
+
+def _nearest_existing_ancestor(path: Path) -> Path:
+    current = path
+    while not current.exists():
+        if current == current.parent:
+            raise ValueError("recovery target has no existing ancestor")
+        current = current.parent
+    if current.is_symlink():
+        raise ValueError("recovery target ancestor is symlink")
+    return current
 
 
 def _safe_backup_dir(path: Path, data_root: Path, *, create: bool) -> Path:
@@ -488,10 +518,27 @@ def _same_filesystem(staging: Path, final_parent: Path) -> bool:
         return False
 
 
+def _load_explicit_settings(env_file: Path) -> Settings:
+    original_environment = os.environ.copy()
+    try:
+        for key in list(os.environ):
+            if key.startswith(("AI_CORP_", "ARVECTUM_ETP_")):
+                del os.environ[key]
+        get_settings.cache_clear()
+        return Settings(_env_file=env_file, _env_file_encoding="utf-8")
+    finally:
+        os.environ.clear()
+        os.environ.update(original_environment)
+        get_settings.cache_clear()
+
+
 def _soap_settings_from_env_file(env_file: Path):
     """Read SOAP settings without leaving the explicit env file in process env."""
     original_environment = os.environ.copy()
     try:
+        for key in list(os.environ):
+            if key.startswith(("AI_CORP_", "ARVECTUM_ETP_", "ZAKUPKI_GOV_RU_SOAP_")):
+                del os.environ[key]
         load_dotenv(env_file, override=True)
         clear_zakupki_soap_settings_cache()
         return get_zakupki_soap_settings()
@@ -534,11 +581,11 @@ def recover_procurement_documents(
     if request.build_chunks and not request.apply:
         raise ValueError("--build-chunks requires --apply")
     data_root = root_validator(request.data_root, request.backup_dir)
-    backup_dir = _safe_backup_dir(request.backup_dir, data_root, create=request.apply)
+    backup_dir = _safe_backup_dir(request.backup_dir, data_root, create=False)
     if request.env_file.is_symlink() or not request.env_file.is_file():
         raise ValueError("env_file must be a regular non-symlink file")
-    settings = Settings(_env_file=request.env_file, _env_file_encoding="utf-8")
-    get_settings.cache_clear()
+    settings = _load_explicit_settings(request.env_file)
+    recovery_config = load_config(settings)
     engine = engine_factory(settings.database_url)
     session_factory = sessionmaker(bind=engine)
     soap_settings = _soap_settings_from_env_file(request.env_file)
@@ -621,9 +668,11 @@ def recover_procurement_documents(
                         documents,
                         chunks,
                         backup_dir,
+                        data_root,
                         settings,
                         revision,
                         chunk_indexer_factory,
+                        recovery_config,
                     )
                 if existing_metrics["files_valid"]:
                     return _report(
@@ -638,9 +687,7 @@ def recover_procurement_documents(
                     final_status="DOCUMENT_RECOVERY_REJECTED",
                 )
             final_parent = final_dir.parent
-            staging_parent = final_parent
-            if not final_parent.exists():
-                staging_parent = data_root.parent
+            staging_parent = _nearest_existing_ancestor(final_parent)
             staging = Path(
                 tempfile.mkdtemp(
                     prefix=f".r10-1-recovery-staging-{uuid.uuid4().hex}-",
@@ -720,7 +767,6 @@ def recover_procurement_documents(
             source_dir.mkdir(mode=0o700, parents=True)
             text_dir.mkdir(mode=0o700)
             extract_dir.mkdir(mode=0o700)
-            config = load_config()
             old_chars = sum(int(d.extracted_text_chars or 0) for d in documents)
             new_chars = 0
             changed = 0
@@ -747,7 +793,7 @@ def recover_procurement_documents(
                         source,
                         extracted,
                         extraction_helper,
-                        config,
+                        recovery_config,
                         extract_dir,
                     )
                 except (OSError, RuntimeError, ValueError, UnicodeError) as exc:
@@ -804,6 +850,7 @@ def recover_procurement_documents(
                 settings,
                 revision,
                 chunk_indexer_factory,
+                recovery_config,
                 base,
             )
     except (OSError, RuntimeError, ValueError, SQLAlchemyError) as exc:
@@ -832,8 +879,10 @@ def _publish_and_commit(
     settings,
     revision,
     indexer_factory,
+    recovery_config,
     base,
 ):
+    _safe_backup_dir(backup_dir, data_root, create=True)
     backup = _backup_documents(backup_dir, request.registry_number, documents, chunks)
     published = False
     created_parents: list[Path] = []
@@ -844,6 +893,8 @@ def _publish_and_commit(
             parent = parent.parent
         for directory in reversed(created_parents):
             directory.mkdir(mode=0o700)
+        if not _same_filesystem(stage_procurement, final_dir.parent):
+            raise RuntimeError("staging_filesystem_mismatch")
         os.replace(stage_procurement, final_dir)
         published = True
         base["persistent_filesystem_mutation_performed"] = True
@@ -864,7 +915,7 @@ def _publish_and_commit(
         }
         if request.build_chunks:
             repo = TenderRepository(session)
-            indexer = indexer_factory(repo, load_config())
+            indexer = indexer_factory(repo, recovery_config)
             indexer.build_for_tender(tender.id, commit=False)
             first_chunks = list(
                 session.execute(
@@ -899,14 +950,14 @@ def _publish_and_commit(
         base.update(
             {
                 "backup_created": backup.exists(),
-                "files_published": len(documents) * 2,
+                "files_published_count": len(documents) * 2,
                 "documents_updated_count": len(documents),
                 "chunk_count_before": len(chunks),
                 "chunk_count_after_first_build": metrics_first["chunk_count"],
                 "chunk_count_after_second_build": metrics_second["chunk_count"],
                 "nonempty_chunk_count": metrics_second["nonempty_chunk_count"],
                 "token_estimate": metrics_second["token_estimate"],
-                "chunk_hashes_stable": True,
+                "chunk_hashes_stable": request.build_chunks,
                 "database_mutation_performed": True,
             }
         )
@@ -939,11 +990,14 @@ def _publish_and_commit(
                 directory.rmdir()
             except OSError:
                 break
-        classification = (
-            "DOCUMENT_RECOVERY_CHUNK_BUILD_FAILED"
-            if "chunk" in str(exc)
-            else "DOCUMENT_RECOVERY_DATABASE_COMMIT_FAILED"
-        )
+        if "staging" in str(exc):
+            classification = "DOCUMENT_RECOVERY_STAGING_FAILED"
+        else:
+            classification = (
+                "DOCUMENT_RECOVERY_CHUNK_BUILD_FAILED"
+                if "chunk" in str(exc)
+                else "DOCUMENT_RECOVERY_DATABASE_COMMIT_FAILED"
+            )
         return _report(
             **base, classification=classification, final_status=classification
         )
@@ -956,9 +1010,11 @@ def _run_chunks_only(
     documents,
     chunks,
     backup_dir,
+    data_root,
     settings,
     revision,
     indexer_factory,
+    recovery_config,
 ):
     base = _report(
         mode="apply",
@@ -968,10 +1024,11 @@ def _run_chunks_only(
         persistent_filesystem_mutation_performed=False,
     )
     try:
+        _safe_backup_dir(backup_dir, data_root, create=True)
         backup = _backup_documents(
             backup_dir, request.registry_number, documents, chunks
         )
-        indexer = indexer_factory(TenderRepository(session), load_config())
+        indexer = indexer_factory(TenderRepository(session), recovery_config)
         indexer.build_for_tender(tender.id, commit=False)
         current = list(
             session.execute(

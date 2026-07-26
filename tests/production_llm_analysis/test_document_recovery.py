@@ -11,13 +11,16 @@ from sqlalchemy.orm import Session
 from src.modules.production_llm_analysis.document_recovery import (
     DocumentRecoveryRequest,
     _chunk_snapshot,
+    _load_explicit_settings,
     _publish,
     _safe_entry,
+    _same_filesystem,
     inspect_zip,
     validate_data_root,
 )
+from src.shared.config.settings import Settings as SharedSettings
 from src.shared.db.base import Base
-from src.tender_research.config import TenderResearchConfig
+from src.tender_research.config import TenderResearchConfig, load_config
 from src.tender_research.models import (
     ProcurementDocumentChunk,
     ProcurementTender,
@@ -111,7 +114,7 @@ def _recovery_fixture(
     monkeypatch.setattr(
         recovery,
         "Settings",
-        lambda **_kwargs: SimpleNamespace(database_url=f"sqlite:///{database}"),
+        lambda **_kwargs: SharedSettings(database_url=f"sqlite:///{database}"),
     )
     monkeypatch.setattr(recovery, "get_zakupki_soap_settings", lambda: object())
     monkeypatch.setattr(
@@ -604,3 +607,121 @@ def test_chunk_snapshot_rejects_wrong_hash_duplicate_and_missing_index(
     chunks[1].chunk_index = chunks[1].chunk_index + 1
     valid_missing, _, _ = _chunk_snapshot(chunks, [document], "tender-1")
     assert valid_missing is False
+
+
+def test_explicit_settings_win_over_process_environment_and_config_is_shared(
+    tmp_path: Path, monkeypatch
+) -> None:
+    env_file = tmp_path / "explicit.env"
+    env_file.write_text(
+        "AI_CORP_DATABASE_URL=sqlite:///explicit.db\n"
+        "AI_CORP_DOCUMENT_EXTRACT_MAX_CHARS=321\n"
+        "AI_CORP_RAG_CHUNK_SIZE_CHARS=777\n"
+        "AI_CORP_RAG_CHUNK_OVERLAP_CHARS=33\n"
+        "AI_CORP_RAG_MIN_CHUNK_CHARS=44\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AI_CORP_DATABASE_URL", "sqlite:///wrong.db")
+    monkeypatch.setenv("AI_CORP_DOCUMENT_EXTRACT_MAX_CHARS", "999999")
+    monkeypatch.setenv("AI_CORP_RAG_CHUNK_SIZE_CHARS", "9999")
+    before = dict(__import__("os").environ)
+
+    settings = _load_explicit_settings(env_file)
+    config = load_config(settings)
+
+    assert settings.database_url == "sqlite:///explicit.db"
+    assert config.document_extract_max_chars == 321
+    assert config.rag_chunk_size_chars == 777
+    assert config.rag_chunk_overlap_chars == 33
+    assert config.rag_min_chunk_chars == 44
+    assert dict(__import__("os").environ) == before
+
+
+def test_explicit_settings_restore_environment_after_exception(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from src.modules.production_llm_analysis import document_recovery as recovery
+
+    env_file = tmp_path / "explicit.env"
+    env_file.write_text(
+        "AI_CORP_DATABASE_URL=sqlite:///explicit.db\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("AI_CORP_DATABASE_URL", "sqlite:///wrong.db")
+    before = dict(__import__("os").environ)
+    original = recovery.Settings
+
+    def fail(**_kwargs):
+        raise RuntimeError("settings failure")
+
+    monkeypatch.setattr(recovery, "Settings", fail)
+    with pytest.raises(RuntimeError, match="settings failure"):
+        recovery._load_explicit_settings(env_file)
+    assert dict(__import__("os").environ) == before
+    monkeypatch.setattr(recovery, "Settings", original)
+
+
+def test_lexical_symlink_parent_is_rejected(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(target, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="symlink"):
+        validate_data_root(link / "data", tmp_path / "backup")
+
+
+def test_same_filesystem_compares_target_device(monkeypatch, tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    target = tmp_path / "target"
+    staging.mkdir()
+    target.mkdir()
+    real_stat = Path.stat
+
+    def fake_stat(path, *args, **kwargs):
+        result = real_stat(path, *args, **kwargs)
+        if path == target:
+            return SimpleNamespace(st_dev=result.st_dev + 1)
+        return result
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    assert _same_filesystem(staging, target) is False
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        ("RECOVERY_PREFLIGHT_READY", 0),
+        ("DOCUMENTS_RESTORED", 0),
+        ("DOCUMENTS_RESTORED_AND_CHUNKS_BUILT", 0),
+        ("DOCUMENTS_ALREADY_RESTORED_CHUNKS_NOT_REQUESTED", 0),
+        ("ALREADY_RECOVERED_AND_CHUNKED", 0),
+        ("DOCUMENT_RECOVERY_REJECTED", 2),
+    ],
+)
+def test_cli_exit_code_matches_final_status(
+    monkeypatch, status: str, expected: int
+) -> None:
+    from scripts.r10_1 import recover_procurement_documents as cli
+
+    monkeypatch.setattr(
+        cli,
+        "recover_procurement_documents",
+        lambda _request: {"final_status": status},
+    )
+    monkeypatch.setattr(
+        __import__("sys"),
+        "argv",
+        [
+            "recover_procurement_documents.py",
+            "--env-file",
+            "/explicit.env",
+            "--registry-number",
+            "registry",
+            "--data-root",
+            "/data",
+            "--backup-dir",
+            "/backup",
+        ],
+    )
+
+    assert cli.main() == expected
