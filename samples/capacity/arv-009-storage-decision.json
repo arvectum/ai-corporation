@@ -4,7 +4,7 @@
   "measured_scope": {
     "law": "44fz",
     "days": 30,
-    "region_scope": "operational_99_codes"
+    "region_scope": "99_operational_codes_used_by_measurement"
   },
   "measured_document_bytes": 188675255282,
   "commercial_reserve_ratio": 0.5,

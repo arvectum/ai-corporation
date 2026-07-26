@@ -5,7 +5,7 @@
 Determine whether a consumer-grade 4 TB external SSD provides adequate storage
 headroom for the Mac mini pilot serving the first 5–10 clients, given the
 expected volume of active procurement documents from ЕИС (44‑FZ, 223‑FZ,
-capital repair) across all 99 Russian regions.
+capital repair) across 99 operational region codes used by the measurement.
 
 ## Measurement approach
 
@@ -13,7 +13,7 @@ A rolling-window EIS storage measurement was implemented in three iterations
 (ARV-009C1.3A → ARV-009C1.3B). The final measurement swept:
 
 - **Law:** 44‑FZ (`epNotificationEF2020`)
-- **Regions:** all 99 KLADR/EIS codes
+- **Regions:** 99 operational region codes used by the measurement
 - **Window:** 30 consecutive days
 - **Method:** per-region, per-date SOAP archive download, deduplicated by
   latest version, conservative union across procurements.
@@ -23,13 +23,13 @@ A rolling-window EIS storage measurement was implemented in three iterations
 
 | Component | Bytes | GiB |
 |-----------|-------|-----|
-| Conservative union (deduplicated, latest version) | 188,675,255,282 | 175.7 |
+| Conservative union of unique documents | 188,675,255,282 | 175.7 |
 | Commercial reserve (+50 %) | 94,337,627,641 | 87.9 |
 | Processing reserve (150 GiB) | 161,061,273,600 | 150.0 |
 | Persistent results and logs (50 GiB) | 53,687,091,200 | 50.0 |
 | **Total base required (30 days)** | **497,761,247,723** | **463.6** |
 
-**44‑FZ, 99 codes, 30 days → 12.4 % of 4 TB SSD.**
+**44‑FZ, 99 operational codes, 30 days → 12.4 % of 4 TB SSD.**
 
 ## Linear extrapolation (90 / 180 days)
 
@@ -64,7 +64,7 @@ are fixed overhead.
 | Hardware | Mac mini, external 4 TB SSD |
 | Client count | First 5–10 pilot clients |
 | Laws | 44‑FZ measured; 223‑FZ and capital repair not yet measured |
-| Regions | All 99 operational EIS codes |
+| Regions | 99 operational codes used by the measurement |
 | Window | 30 days measured; 90/180 estimated linearly |
 
 ## Limitations
