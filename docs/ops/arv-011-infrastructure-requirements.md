@@ -49,38 +49,70 @@ Every substantive finding includes an evidence reference (file path and line ran
 
 ## 5. Current runtime summary
 
-The current runtime topology is a **single-node Mac Mini** running:
+The repository contains **multiple configuration variants** for different contours. The actual deployed runtime combination on the Mac Mini is **unknown** — it cannot be fully reconstructed from the repository alone. Runtime process state is not verifiable from committed files.
 
-1. **FastAPI application** (Uvicorn, 1 worker) serving the business API on port 8000
-2. **PostgreSQL 16** (Docker container, pgvector/pgvector:pg16 image) on port 5432
-3. **LLM inference** (llama.cpp via Ollama, OpenAI-compatible endpoint) on port 11434
-4. **Embedding service** on port 8090 (separate process)
-5. **Hermes agent** (optional, disabled by default) on port 8099
-6. **Persistent document storage** on an external 4 TB SSD
+### A. Main container definitions (Dockerfile + docker-compose.yml)
 
-No reverse proxy, no TLS termination, no background worker process, no message queue, no monitoring.
+- **Dockerfile**: FastAPI/Uvicorn, `CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]`
+- **docker-compose.yml**: only PostgreSQL `postgres:16-alpine`, host bind `5432:5432`, named volume `postgres_data`
+- **pgvector** is NOT available in this compose image — it is `postgres:16-alpine` without pgvector
+
+### B. Dedicated PostgreSQL compose (docker-compose.postgres.yml)
+
+- **Image**: `pgvector/pgvector:pg17`
+- **Port**: `127.0.0.1:55432:5432`
+- **Volume**: separate named volume `arvectum_postgres_data`
+- **Healthcheck**: `pg_isready` with configured credentials
+- **Status**: observed configuration — not a proven running service in any specific contour
+
+### C. R8 acceptance compose (docker-compose.r8-acceptance.yml)
+
+- **Image**: `pgvector/pgvector:pg16`
+- **Port**: `127.0.0.1:15432:5432`
+- **Status**: test/acceptance contour — not pilot production runtime
+
+### D. Mac Mini env examples
+
+- **`.env.macmini.example`**: PostgreSQL `127.0.0.1:5432`, local OpenAI-compatible LLM at `localhost:8088`, SOAP disabled
+- **`.env.runtime.example`**: PostgreSQL `127.0.0.1:55432`, backend port `8001`, Ollama-compatible endpoint at `127.0.0.1:11434`, embeddings endpoint at `127.0.0.1:8090`, Hermes disabled
+- **Status**: documented configuration examples — not proof of actual running processes
+
+### Summary
+
+| Aspect | Status |
+|--------|--------|
+| Deployed runtime combination | unknown — cannot be reconstructed from repo alone |
+| Runtime process state | not verifiable from repository |
+| Available configuration variants | main Docker + Compose, dedicated pgvector Compose, r8-acceptance Compose, macmini env example, runtime env example |
+| No reverse proxy (main deployment) | observed — nginx exists only in site-pilot compose |
+| No TLS termination | observed — none configured in any deployment variant |
+| No background worker process | observed — ThreadPoolExecutor is in-process |
+| No message queue | observed — in-process `_FUTURES` dict |
+| No monitoring stack | observed — no Prometheus/Grafana/Sentry config in repo |
 
 ## 6. Current service map
 
 | Component | Status | Purpose | Stateful |
 |-----------|--------|---------|----------|
-| FastAPI application | observed | Business API server | No |
-| PostgreSQL (pgvector/pgvector:pg16) | observed | Primary database with vector extension | Yes |
-| pgvector | observed (via PostgreSQL image) | Vector similarity search for RAG | Yes |
-| Alembic | observed | Schema migration management | No |
-| Background job executor | observed | In-process ThreadPoolExecutor for RAG prepare/analyze | No (ephemeral) |
-| Document storage | observed | Filesystem storage for tender documents, reports | Yes |
-| Report/export storage | observed | Generated DOCX/PDF reports on filesystem | Yes |
-| Hermes agent connector | observed | HTTP client to optional Hermes sidecar | No |
-| Cloud LLM provider client | observed | OpenAI-compatible, Cloud.ru, Yandex, GigaChat | No |
-| Local LLM (llama.cpp/Ollama) | observed | Local inference via OpenAI-compatible API | No (process) |
-| Embedding service | observed | Local embedding server on port 8090 | No (process) |
-| EIS/SOAP integration | observed | Zakupki.gov.ru SOAP client | No |
+| FastAPI application code | observed | Business API server | No |
+| Uvicorn Docker CMD | observed | Container entrypoint on 0.0.0.0:8000 | No |
+| SQLAlchemy / Alembic | observed | ORM and schema migration management | No |
+| Background ThreadPoolExecutor | observed | In-process executor for RAG prepare/analyze | No (ephemeral) |
+| PostgreSQL Compose definitions | observed | postgres:16-alpine and pgvector/pgvector variants | Yes |
+| pgvector extension | observed (migrations, diagnostics, dedicated/test Compose) | Vector similarity search for RAG | Yes |
+| pgvector in main Compose | gap — NOT available in postgres:16-alpine | N/A | N/A |
+| LLM/embedding/Hermes HTTP clients | observed | Configurable provider abstractions in code | No |
+| EIS/SOAP client | observed | Zakupki.gov.ru SOAP client | No |
+| Document storage code | observed | Filesystem download/extract/store logic | No (code) |
 | Storage capacity guardrails | observed | ARV-010: warning 70%, critical 80%, ingestion protection 90% | No |
-| Reverse proxy | observed (site-pilot compose only) | nginx for site-pilot demo deployment | No |
 | Health/readiness endpoints | observed | `/health`, `/health/ready` | No |
-| Backup storage | unknown | No backup scripts found in repository | N/A |
-| Monitoring | unknown | No Prometheus/Grafana/Sentry configuration | N/A |
+| Reverse proxy (site-pilot demo) | observed | nginx for site-pilot demo Compose | No |
+| Local LLM process | documented/configurable — runtime status unknown | Inference via local endpoint | No (process) |
+| Embedding server process | documented/configurable — runtime status unknown | Embedding generation | No (process) |
+| Hermes agent process | documented/configurable, default disabled — runtime status unknown | Optional analysis sidecar | No (process) |
+| External 4 TB SSD | documented/approved (ARV-009) — actual mounted state unknown | Document storage | Yes |
+| Backup storage | unknown — no backup scripts or infra found | Database and document backups | N/A |
+| Monitoring | unknown — no Prometheus/Grafana/Sentry config | Observability | N/A |
 
 ### Evidence references
 
@@ -184,7 +216,8 @@ Evidence: `src/shared/storage/capacity.py:62-77,81-88,122-125`, `src/shared/stor
 - **No restore procedure** documented
 - **No off-device copy mechanism** configured
 - **No backup schedule** defined
-- **No retention policy** documented
+- **Backup retention policy**: not documented
+- **Data/raw retention policy**: exists per ARV-009 (raw packages of active procurements preserved, completed/inactive removed; metadata/results/reports preserved)
 - **No verified restore** ever performed (no evidence in repo)
 
 ### Gap analysis
@@ -208,7 +241,7 @@ Evidence: searched `scripts/`, `docs/ops/`, `Makefile` — no backup or restore 
 - No EIS/SOAP endpoint health check
 - No Hermes connectivity check
 - No Prometheus metrics endpoint
-- No structured logging integration
+- Standard Python logging is present; centralized structured log collection is not evidenced
 - No audit log for health state transitions
 - Readiness endpoint is behind pilot auth in production config (`.env.runtime.example:16` — `/health/ready` in protected prefixes)
 
@@ -218,19 +251,19 @@ Evidence: `src/main.py:206-222`, `src/tender_research/api.py:286-309`
 
 ### Current exposure
 - **FastAPI on 0.0.0.0:8000** — listens on all interfaces (`Dockerfile:22`)
-- **PostgreSQL on 0.0.0.0:5432** — publicly bound in main docker-compose (`docker-compose.yml:9`)
+- **PostgreSQL is bound to all host interfaces by the main Compose mapping `5432:5432`** and may be externally reachable depending on host firewall, NAT and network configuration. Actual public-internet reachability is unknown.
 - **No TLS termination** at the application or infrastructure level
 - **No reverse proxy** in the main deployment (only in `site-pilot` compose with nginx)
-- **TrustedHostMiddleware** configured via `AI_CORP_ALLOWED_HOSTS` — empty by default (no filtering)
-- **CORS** configured via `AI_CORP_CORS_ALLOW_ORIGINS` — empty by default (no CORS filtering)
+- **TrustedHostMiddleware**: configured via `AI_CORP_ALLOWED_HOSTS`; if the list is empty, the middleware is NOT installed and Host header filtering is absent.
+- **CORSMiddleware**: configured via `AI_CORP_CORS_ALLOW_ORIGINS`; if the list is empty, the middleware is NOT installed and the application does not issue CORS permissions for cross-origin browser requests. Production origins must be set explicitly if browser access is required.
 - **Basic auth** for pilot API paths — configurable via `AI_CORP_TENDER_PILOT_BASIC_AUTH_ENABLED` / `AI_CORP_PILOT_AUTH_ENABLED`
 - **Proxy headers** enabled via `--proxy-headers` Uvicorn flag
 - **No rate limiting**
 
 ### Risks
-- PostgreSQL exposed to host network (5432:5432) with default credentials (`ai_corporation:ai_corporation`)
+- PostgreSQL bound to all interfaces in main Compose (`5432:5432`) with default credentials (`ai_corporation:ai_corporation`); reachability depends on firewall and NAT
 - No TLS means traffic is in plaintext, including basic auth credentials
-- TrustedHostMiddleware is opt-in — if `AI_CORP_ALLOWED_HOSTS` is empty, all hosts are accepted
+- TrustedHostMiddleware is opt-in — if `AI_CORP_ALLOWED_HOSTS` is empty, no Host header filtering
 - No reverse proxy means no request filtering, no WAF, no DDoS protection
 
 Evidence: `Dockerfile:22`, `docker-compose.yml:9`, `src/shared/api/middleware.py:53-83`, `src/shared/config/settings.py:13-14`
@@ -294,7 +327,7 @@ Evidence: `src/shared/config/settings.py:23-42,70-82`, `src/tender_research/rag/
 | LLM | `AI_CORP_LLM_*`, `AI_CORP_OPENAI_*`, `AI_CORP_CLOUDRU_*`, `AI_CORP_YANDEX_*`, `AI_CORP_GIGACHAT_*` | Conditional | Stub / empty | API keys in env files |
 | SOAP | `ZAKUPKI_GOV_RU_SOAP_*` | Conditional | Disabled | Token in env file |
 | Storage | `ARVECTUM_STORAGE_*` (canonical), `AI_CORP_ARVECTUM_STORAGE_*` (compat) | Yes | 70/80/90 | Storage root path |
-| Network | `AI_CORP_ALLOWED_HOSTS`, `AI_CORP_CORS_ALLOW_ORIGINS` | No | Empty | Empty = no filtering |
+| Network | `AI_CORP_ALLOWED_HOSTS`, `AI_CORP_CORS_ALLOW_ORIGINS` | No | Empty | Empty = middleware not installed; no Host filtering; no CORS headers |
 | Hermes | `AI_CORP_HERMES_ENABLED` | No | False | Internal sidecar |
 
 ### Risks
@@ -319,34 +352,34 @@ Evidence: `.env.example`, `.env.macmini.example`, `.env.runtime.example`, `src/s
 | 7 | Off-device backup with verified restore | required_before_production | No backup infrastructure exists |
 | 8 | Audit logs | required_before_production | No audit trail for operations |
 | 9 | Rate limiting | required_before_production | API is unprotected against abuse |
-| 10 | Allowed hosts validation | required_for_pilot | TrustedHostMiddleware is configured but empty by default |
-| 11 | CORS restriction | required_before_production | CORS middleware is configured but empty by default |
+| 10 | Allowed hosts validation | required_for_pilot | TrustedHostMiddleware not installed when ALLOWED_HOSTS is empty |
+| 11 | CORS restriction | required_before_production | CORSMiddleware not installed when CORS_ALLOW_ORIGINS is empty |
 | 12 | Safe proxy headers handling | required_for_pilot | `--proxy-headers` is set but no reverse proxy validates forwarded headers |
 | 13 | Minimized public port exposure | required_before_production | Only port 8000 (with TLS) should be public |
 | 14 | Controlled egress to EIS and LLM providers | required_before_production | No controlled egress point for Russian endpoints |
-| 15 | Raw procurement/customer document protection | required_for_pilot | Documents stored on SSD without encryption at rest |
+| 15 | Raw procurement/customer document protection | required_for_pilot | Encryption-at-rest configuration is not evidenced in the repository; status: unknown/gap |
 | 16 | Customer data isolation (tenant) | required_for_pilot | Database has tenant isolation via registry_number/customer_inn but no hard tenant boundary |
-| 17 | Data localization in Russia (where applicable) | requires_legal_validation | EIS data may require Russian hosting; legal classification needed |
-| 18 | Documented retention and deletion policy | required_before_production | ARV-009 defines raw package retention but full policy is not documented |
+| 17 | Data localization where applicable law requires it | requires_legal_validation | Personal/customer data classes require legal classification |
+| 18 | Documented retention and deletion policy | required_before_production | ARV-009 defines data/raw retention; backup retention not documented |
 
 ### Data localization note
 The following data classes require separate legal classification before an infrastructure decision can be made:
-- **EIS/SOAP-sourced procurement data** — may require Russian hosting per 44-FZ and 223-FZ
-- **Customer-supplied documents** — may fall under 152-FZ (personal data) depending on content
+- **Procurement data sourced from EIS/SOAP** — legal status of intermediate cached data
+- **Customer-supplied documents** — may contain personal or commercially sensitive data
 - **LLM prompts/responses** — legal status depends on whether they contain personal or commercially sensitive data
 
-Infrastructure requirement: "Hosting in the Russian Federation if the data is subject to applicable data localization requirements."
+Infrastructure requirement: "Hosting in the Russian Federation where applicable law and contractual obligations require it." This is not a legal conclusion; legal validation is required for each data class.
 
 ## 18. Future infrastructure node requirements
 
 ### 18.1 Application node
 
 - **Purpose**: Run the FastAPI application, serve API requests, handle background job submission
-- **Pilot requirement**: Single node, 2–4 vCPU, 8–16 GB RAM, 50 GB system disk
-- **Production requirement**: 2+ nodes behind load balancer, 4–8 vCPU, 16–32 GB RAM each
+- **Pilot requirement** (proposed_initial_envelope, requires validation): Single node, 2–4 vCPU, 8–16 GB RAM, 50 GB system disk
+- **Production requirement** (proposed_initial_envelope, requires validation): 2+ nodes behind load balancer, 4–8 vCPU, 16–32 GB RAM each
 - **Functional requirements**:
   - Python 3.11+ runtime
-  - Uvicorn with multiple workers (or Gunicorn + Uvicorn workers)
+  - Uvicorn with multiple workers
   - Proxy headers trust (already configured)
   - HEALTHCHECK for orchestrator
   - Graceful shutdown handling
@@ -362,11 +395,11 @@ Infrastructure requirement: "Hosting in the Russian Federation if the data is su
 ### 18.2 PostgreSQL/pgvector node
 
 - **Purpose**: Primary database with pgvector extension for vector similarity search
-- **Pilot requirement**: 2 vCPU, 4 GB RAM, 50 GB SSD, pgvector/pgvector:pg16+
-- **Production requirement**: 4+ vCPU, 8–16 GB RAM, 100–200 GB SSD, dedicated node
+- **Pilot requirement** (proposed_initial_envelope, requires validation): 2 vCPU, 4 GB RAM, 50 GB SSD, pgvector/pgvector:pg16+
+- **Production requirement** (proposed_initial_envelope, requires validation): 4+ vCPU, 8–16 GB RAM, 100–200 GB SSD, dedicated node
 - **Functional requirements**:
   - pgvector extension enabled
-  - Connection pooling (PgBouncer or application-side)
+  - Database connection pooler
   - Automated daily `pg_dump` to backup storage
   - Point-in-time recovery not required initially
   - Replication not required for pilot
@@ -383,15 +416,15 @@ Infrastructure requirement: "Hosting in the Russian Federation if the data is su
 
 - **Purpose**: Store raw tender documents, extracted text, chunks, reports, exports
 - **Pilot requirement**: External SSD (4 TB, accepted per ARV-009) or equivalent network storage
-- **Production requirement**: Object storage (S3-compatible) or dedicated NAS with >4 TB capacity
+- **Production requirement**: Object-compatible document storage or dedicated NAS with >4 TB capacity
 - **Functional requirements**:
-  - POSIX-compatible filesystem or S3 API
+  - POSIX-compatible filesystem or object storage API
   - Storage capacity guardrails (ARV-010) deployed on application side
   - Mount must be on a separate filesystem from system disk (enforced by `_mount_verified()`)
   - Warning at 70%, critical at 80%, ingestion protection at 90%
 - **Persistence**: Full (customer documents and reports)
 - **Network access**: Application node(s) only; for object storage, HTTPS with restricted IAM
-- **Security boundary**: Encryption at rest for customer-sensitive documents
+- **Security boundary**: Encryption at rest is a proposed requirement for customer-sensitive documents
 - **Backup**: Critical documents should be backed up; raw packages of completed procurements can be deleted per ARV-009
 - **Observability**: Disk usage metrics, ingestion gate status
 - **Scaling direction**: Vertical (larger disk) or migration to object storage
@@ -420,8 +453,8 @@ Infrastructure requirement: "Hosting in the Russian Federation if the data is su
 ### 18.5 Reverse proxy / public ingress
 
 - **Purpose**: TLS termination, request routing, rate limiting, WAF, request filtering
-- **Pilot requirement**: nginx or Caddy on the same or a small VPS; Let's Encrypt TLS
-- **Production requirement**: Managed LB (Cloud LB, NLB/ALB) or dedicated reverse proxy with HA
+- **Pilot requirement**: Reverse proxy / TLS termination service on the same or a small VPS; automated certificate management
+- **Production requirement**: Managed or self-hosted load balancer / reverse proxy with HA
 - **Functional requirements**:
   - TLS 1.2+ termination
   - Rate limiting per client IP (100 req/min suggested initial)
@@ -462,10 +495,10 @@ Infrastructure requirement: "Hosting in the Russian Federation if the data is su
 
 - **Purpose**: Run local LLM inference for analysis without sending data to external providers
 - **Pilot requirement**: Not required (stub or cloud providers suffice for demo)
-- **Production requirement**: GPU-accelerated node or llama.cpp on CPU (slower)
+- **Production requirement**: GPU-accelerated node or CPU-based inference (slower)
 - **Functional requirements**:
   - OpenAI-compatible API endpoint (already supported)
-  - Configurable model (default `qwen2.5-14b`)
+  - Configurable model
   - Configurable timeout (default 120s)
   - GPU recommended for acceptable latency
 - **Persistence**: Model files (downloadable); no customer data persisted
@@ -530,9 +563,9 @@ Internet → VPS (nginx, TLS, rate limit) → Mac Mini (FastAPI, PostgreSQL, sto
 - No failover capability
 
 ### Security considerations
-- VPS must be hardened (SSH key only, firewall, fail2ban)
+- VPS must be hardened (SSH key only, firewall, automated brute-force protection)
 - TLS termination on VPS exposes only HTTPS to the internet
-- VPS-to-Mac Mini connection must be secured (SSH tunnel or WireGuard)
+- VPS-to-Mac Mini connection must be secured (authenticated encrypted private tunnel)
 - PostgreSQL port must be firewalled from the internet
 
 ### Operational complexity
@@ -597,8 +630,8 @@ Internet → Single server (reverse proxy + FastAPI + PostgreSQL + storage)
 ### Security considerations
 - Firewall: only ports 443 (HTTPS) and 22 (SSH) open
 - PostgreSQL on Unix socket or 127.0.0.1
-- TLS with Let's Encrypt (auto-renew)
-- Fail2ban on SSH
+- TLS with automated certificate management
+- Automated brute-force protection on SSH
 - Regular OS patching
 
 ### Operational complexity
@@ -660,7 +693,7 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 ### Limitations
 - Highest operational complexity
 - Highest cost (multiple nodes/services)
-- Requires orchestration (Docker Swarm, Kubernetes, or manual)
+- Requires container orchestration platform or manual coordination
 - Over-engineered for pilot phase
 
 ### Security considerations
@@ -689,8 +722,8 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 - Start with PostgreSQL separation, then document storage, then app scaling
 
 ### Unresolved questions
-- What orchestration platform to use?
-- What object storage backend (MinIO, Ceph, cloud S3)?
+- What container orchestration platform to use?
+- What object-compatible document storage backend to use?
 - Is multi-region required for compliance?
 
 ## 23. Recommended sequencing

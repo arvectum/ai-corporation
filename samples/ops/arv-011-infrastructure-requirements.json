@@ -35,35 +35,35 @@
     ]
   },
   "current_runtime": {
-    "topology": "single-node",
-    "host": "Mac Mini",
-    "services": [
-      "FastAPI (Uvicorn, 1 worker, port 8000)",
-      "PostgreSQL 16 (Docker, pgvector/pgvector:pg16, port 5432)",
-      "Local LLM (llama.cpp/Ollama, port 11434)",
-      "Embedding service (port 8090)",
-      "Hermes agent (optional, disabled by default, port 8099)",
-      "Document storage (external 4 TB SSD)"
+    "deployed_combination": "unknown — cannot be reconstructed from repo alone",
+    "runtime_process_state": "not verifiable from repository",
+    "configuration_variants": [
+      "main Docker + Compose (FastAPI/Uvicorn, postgres:16-alpine, 0.0.0.0:8000, 5432:5432)",
+      "dedicated pgvector Compose (pgvector/pgvector:pg17, 127.0.0.1:55432)",
+      "r8-acceptance Compose (pgvector/pgvector:pg16, 127.0.0.1:15432, test contour)",
+      "macmini env example (PostgreSQL 127.0.0.1:5432, local LLM 8088)",
+      "runtime env example (PostgreSQL 127.0.0.1:55432, backend port 8001, Ollama 11434, embeddings 8090)"
     ],
-    "reverse_proxy": false,
-    "tls_termination": false,
-    "background_worker_process": false,
-    "message_queue": false,
-    "monitoring": false,
-    "backup_infrastructure": false
+    "observed_absences": [
+      "reverse proxy in main deployment (nginx exists in site-pilot demo only)",
+      "TLS termination",
+      "background worker process (ThreadPoolExecutor is in-process)",
+      "message queue (in-process _FUTURES dict only)",
+      "monitoring stack (no Prometheus/Grafana/Sentry)"
+    ]
   },
   "services": [
     {
-      "id": "fastapi-app",
-      "name": "FastAPI Application",
+      "id": "fastapi-app-code",
+      "name": "FastAPI application code",
       "status": "observed",
       "purpose": "Business API server for tender research, procurement management, and operator interface",
-      "implementation": "Uvicorn serving src.main:app on 0.0.0.0:8000 with --proxy-headers",
+      "implementation": "FastAPI app in src/main.py with Uvicorn CMD in Dockerfile",
       "required_for_pilot": true,
       "required_for_production": true,
       "stateful": false,
       "persistent_paths": [],
-      "network_exposure": "0.0.0.0:8000",
+      "network_exposure": "0.0.0.0:8000 per Dockerfile CMD",
       "inbound_dependencies": [],
       "outbound_dependencies": ["postgresql", "llm-provider", "embedding-service", "eis-soap"],
       "cpu_characteristics": "unknown, not measured",
@@ -80,38 +80,38 @@
       "risks": ["single process", "no graceful shutdown handling", "in-process background jobs block API"]
     },
     {
-      "id": "postgresql",
-      "name": "PostgreSQL with pgvector",
+      "id": "postgresql-compose-definitions",
+      "name": "PostgreSQL Compose definitions",
       "status": "observed",
-      "purpose": "Primary database with vector similarity search for RAG embeddings",
-      "implementation": "pgvector/pgvector:pg16 Docker container (r8-acceptance) or postgres:16-alpine (main compose)",
+      "purpose": "Database service definitions for different contours",
+      "implementation": "Multiple docker-compose files with different images and port mappings",
       "required_for_pilot": true,
       "required_for_production": true,
       "stateful": true,
-      "persistent_paths": ["/var/lib/postgresql/data (Docker volume postgres_data)"],
-      "network_exposure": "5432:5432 publicly in main compose; 127.0.0.1:15432/55432 in other compose files",
+      "persistent_paths": ["/var/lib/postgresql/data (Docker volume postgres_data or arvectum_postgres_data)"],
+      "network_exposure": "varies: 5432:5432 (main, all interfaces), 127.0.0.1:15432 (r8-acceptance), 127.0.0.1:55432 (dedicated pgvector)",
       "inbound_dependencies": [],
       "outbound_dependencies": [],
       "cpu_characteristics": "unknown, not measured",
       "ram_characteristics": "unknown, not measured",
-      "disk_characteristics": "depends on data volume; named volume postgres_data",
+      "disk_characteristics": "depends on data volume; named volumes defined",
       "availability_characteristics": "single instance, no replication",
       "backup_requirements": "requires automated pg_dump; no backup configured",
       "security_requirements": "must not be publicly accessible; strong password; TLS for connections",
       "evidence": [
-        {"file": "docker-compose.yml", "line": 3, "description": "postgres:16-alpine image with 5432:5432"},
+        {"file": "docker-compose.yml", "line": 3, "description": "postgres:16-alpine with 5432:5432"},
         {"file": "docker-compose.r8-acceptance.yml", "line": 3, "description": "pgvector/pgvector:pg16 with 127.0.0.1:15432"},
         {"file": "docker-compose.postgres.yml", "line": 4, "description": "pgvector/pgvector:pg17 with 127.0.0.1:55432"}
       ],
-      "unknowns": ["actual database size", "vector index size"],
-      "risks": ["main compose uses postgres:16-alpine without pgvector", "publicly bound in main compose", "default credentials"]
+      "unknowns": ["actual database size", "vector index size", "which compose variant is actually deployed"],
+      "risks": ["main compose uses postgres:16-alpine WITHOUT pgvector", "5432:5432 bound to all interfaces in main compose", "default credentials"]
     },
     {
       "id": "pgvector",
       "name": "pgvector extension",
       "status": "observed",
       "purpose": "Vector similarity search for document chunk embeddings in RAG pipeline",
-      "implementation": "Provided by pgvector/pgvector Docker image; checked at runtime via pg_extension query",
+      "implementation": "Provided by pgvector/pgvector Docker images; checked at runtime via pg_extension query; migration 090 enables it",
       "required_for_pilot": true,
       "required_for_production": true,
       "stateful": true,
@@ -130,7 +130,32 @@
         {"file": "migrations/versions/090_enable_pgvector_and_add_rag_tables.py", "description": "Migration enabling pgvector extension"}
       ],
       "unknowns": ["vector index memory requirements at scale"],
-      "risks": ["not available in postgres:16-alpine (main compose)", "index build time for large document sets"]
+      "risks": ["NOT available in postgres:16-alpine (main compose)", "index build time for large document sets"]
+    },
+    {
+      "id": "pgvector-in-main-compose",
+      "name": "pgvector in main Compose",
+      "status": "gap",
+      "purpose": "pgvector is not available in the postgres:16-alpine image used by docker-compose.yml",
+      "implementation": "absent — main compose uses postgres:16-alpine without pgvector",
+      "required_for_pilot": true,
+      "required_for_production": true,
+      "stateful": false,
+      "persistent_paths": [],
+      "network_exposure": "N/A",
+      "inbound_dependencies": [],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "N/A",
+      "ram_characteristics": "N/A",
+      "disk_characteristics": "N/A",
+      "availability_characteristics": "N/A",
+      "backup_requirements": "N/A",
+      "security_requirements": "N/A",
+      "evidence": [
+        {"file": "docker-compose.yml", "line": 3, "description": "image: postgres:16-alpine — no pgvector"}
+      ],
+      "unknowns": [],
+      "risks": ["main compose is not usable for RAG workflows without pgvector"]
     },
     {
       "id": "alembic",
@@ -161,9 +186,9 @@
     },
     {
       "id": "background-processing",
-      "name": "Background Job Executor",
+      "name": "Background ThreadPoolExecutor",
       "status": "observed",
-      "purpose": "Execute RAG prepare and analyze jobs asynchronously",
+      "purpose": "Execute RAG prepare and analyze jobs asynchronously within the API process",
       "implementation": "ThreadPoolExecutor with max_workers=2 inside FastAPI process; in-memory future tracking; DB-persisted job state",
       "required_for_pilot": true,
       "required_for_production": true,
@@ -187,139 +212,166 @@
       "risks": ["queue lost on restart", "in-process blocks API under load", "no retry mechanism", "no deduplication"]
     },
     {
-      "id": "document-storage",
-      "name": "Document Storage",
+      "id": "document-storage-code",
+      "name": "Document storage code",
       "status": "observed",
-      "purpose": "Store raw tender documents, extracted text, chunks, embeddings, reports, and exports",
-      "implementation": "Filesystem storage under configurable data_dir (default ./data/); external 4 TB SSD per ARV-009",
+      "purpose": "Download, extract and store tender documents on filesystem",
+      "implementation": "Python code in document_store.py under configurable data_dir",
+      "required_for_pilot": true,
+      "required_for_production": true,
+      "stateful": false,
+      "persistent_paths": [],
+      "network_exposure": "none (code only)",
+      "inbound_dependencies": ["fastapi-app"],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "low (mostly sequential I/O)",
+      "ram_characteristics": "low",
+      "disk_characteristics": "N/A (code, not storage layer)",
+      "availability_characteristics": "N/A",
+      "backup_requirements": "N/A",
+      "security_requirements": "N/A",
+      "evidence": [
+        {"file": "src/shared/config/settings.py", "line": 44, "description": "arvectum_data_dir default ./data"},
+        {"file": "src/tender_research/document_store.py", "description": "Document download and storage logic"}
+      ],
+      "unknowns": [],
+      "risks": []
+    },
+    {
+      "id": "external-ssd",
+      "name": "External 4 TB SSD",
+      "status": "documented",
+      "purpose": "Persistent document storage for pilot phase",
+      "implementation": "External SSD, accepted per ARV-009; actual mounted runtime state is unknown from repository",
       "required_for_pilot": true,
       "required_for_production": true,
       "stateful": true,
-      "persistent_paths": [
-        "./data/tenders/",
-        "./data/eis_seed/registry_numbers.txt",
-        "./data/ (reports, exports)"
-      ],
+      "persistent_paths": ["<data_dir>/ (default ./data/)"],
       "network_exposure": "none (local filesystem)",
-      "inbound_dependencies": ["fastapi-app"],
+      "inbound_dependencies": ["document-storage-code", "fastapi-app"],
       "outbound_dependencies": [],
       "cpu_characteristics": "low (mostly sequential I/O)",
       "ram_characteristics": "low",
       "disk_characteristics": "4 TB external SSD; separate filesystem required (enforced by _mount_verified)",
       "availability_characteristics": "single disk, no redundancy",
       "backup_requirements": "critical documents require backup; raw packages of completed procurements deletable per ARV-009",
-      "security_requirements": "encryption at rest for customer documents; access limited to application process",
+      "security_requirements": "encryption-at-rest configuration is not evidenced in the repository (gap)",
       "evidence": [
-        {"file": "src/shared/config/settings.py", "line": 44, "description": "arvectum_data_dir default ./data"},
-        {"file": "src/tender_research/document_store.py", "description": "Document download and storage logic"},
-        {"file": "src/shared/storage/capacity.py", "line": 72, "description": "_mount_verified separate filesystem check"}
+        {"file": "src/shared/storage/capacity.py", "line": 72, "description": "_mount_verified separate filesystem check"},
+        {"file": "docs/ops/arv-009-storage-decision.md", "description": "ARV-009 SSD acceptance"}
       ],
-      "unknowns": ["actual growth rate", "backup strategy"],
-      "risks": ["no backup configured", "single disk failure", "no encryption at rest"]
+      "unknowns": ["actual growth rate", "backup strategy", "encryption at rest status"],
+      "risks": ["no backup configured", "single disk failure", "encryption at rest not evidenced"]
     },
     {
-      "id": "report-export-storage",
-      "name": "Report/Export Storage",
-      "status": "observed",
-      "purpose": "Generated DOCX and PDF analysis reports",
-      "implementation": "Same filesystem as document storage under data_dir",
+      "id": "local-llm-process",
+      "name": "Local LLM process",
+      "status": "documented",
+      "purpose": "Local LLM inference for tender analysis without external data exposure",
+      "implementation": "Configurable via AI_CORP_LOCAL_LLM_BASE_URL (default http://127.0.0.1:8088/v1); referenced in .env.macmini.example and .env.runtime.example",
+      "required_for_pilot": false,
+      "required_for_production": false,
+      "stateful": false,
+      "persistent_paths": [],
+      "network_exposure": "localhost by default — runtime status unknown",
+      "inbound_dependencies": [],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "high (CPU inference) or GPU-accelerated",
+      "ram_characteristics": "high (8-32 GB for larger models)",
+      "disk_characteristics": "model files (4-16 GB)",
+      "availability_characteristics": "runtime status unknown",
+      "backup_requirements": "not applicable (model files downloadable)",
+      "security_requirements": "no data leaves the node if local endpoint is used",
+      "evidence": [
+        {"file": "src/shared/config/settings.py", "line": 80, "description": "local_llm_base_url"},
+        {"file": ".env.macmini.example", "line": 13, "description": "Local LLM endpoint config"},
+        {"file": ".env.runtime.example", "line": 9, "description": "Ollama-compatible endpoint config"}
+      ],
+      "unknowns": ["whether local LLM is actually running", "GPU vs CPU adequacy"],
+      "risks": ["high resource usage if enabled", "runtime status unverifiable from repo"]
+    },
+    {
+      "id": "embedding-server-process",
+      "name": "Embedding server process",
+      "status": "documented",
+      "purpose": "Generate document chunk embeddings for vector search",
+      "implementation": "Configurable via AI_CORP_RAG_EMBEDDINGS_BASE_URL (default http://127.0.0.1:8090/v1); hashing provider is local-only and needs no server",
       "required_for_pilot": true,
       "required_for_production": true,
-      "stateful": true,
-      "persistent_paths": ["<data_dir>/ (reports are in data_dir)"],
-      "network_exposure": "none (local filesystem)",
-      "inbound_dependencies": ["fastapi-app", "document-storage"],
+      "stateful": false,
+      "persistent_paths": [],
+      "network_exposure": "localhost by default — runtime status unknown",
+      "inbound_dependencies": [],
       "outbound_dependencies": [],
-      "cpu_characteristics": "low",
-      "ram_characteristics": "low",
-      "disk_characteristics": "same as document storage",
-      "availability_characteristics": "same as document storage",
-      "backup_requirements": "regenerable from analysis data; lower priority than raw documents",
-      "security_requirements": "may contain customer analysis results",
+      "cpu_characteristics": "low for hashing; moderate for remote API",
+      "ram_characteristics": "low for hashing",
+      "disk_characteristics": "low",
+      "availability_characteristics": "runtime status unknown",
+      "backup_requirements": "not applicable",
+      "security_requirements": "local by default",
       "evidence": [
-        {"file": "src/tender_research/rag/export_service.py", "description": "DOCX/PDF export to filesystem"}
+        {"file": "src/shared/config/settings.py", "line": 70, "description": "RAG embedding config"},
+        {"file": "src/tender_research/rag/embeddings.py", "description": "Embedding provider implementations"},
+        {"file": ".env.runtime.example", "line": 10, "description": "Embeddings endpoint config"}
       ],
-      "unknowns": [],
-      "risks": ["same as document storage"]
+      "unknowns": ["whether a remote embedding server is actually running"],
+      "risks": ["remote embedding server availability if configured"]
     },
     {
-      "id": "backup-storage",
-      "name": "Backup Storage",
-      "status": "unknown",
-      "purpose": "Store database dumps and critical document backups",
-      "implementation": "not implemented",
+      "id": "hermes-agent-process",
+      "name": "Hermes agent process",
+      "status": "documented",
+      "purpose": "Optional LLM-based analysis sidecar for supplier readiness and risk classification",
+      "implementation": "HTTP client to configurable base URL (default http://127.0.0.1:8099); disabled by default (AI_CORP_HERMES_ENABLED=false)",
       "required_for_pilot": false,
-      "required_for_production": true,
-      "stateful": true,
+      "required_for_production": false,
+      "stateful": false,
       "persistent_paths": [],
-      "network_exposure": "unknown",
-      "inbound_dependencies": ["postgresql", "document-storage"],
+      "network_exposure": "localhost by default — runtime status unknown",
+      "inbound_dependencies": [],
       "outbound_dependencies": [],
       "cpu_characteristics": "unknown",
       "ram_characteristics": "unknown",
-      "disk_characteristics": "minimum 2x database + critical document size",
-      "availability_characteristics": "should be off-device",
-      "backup_requirements": "self-referential",
-      "security_requirements": "encrypted at rest and in transit",
-      "evidence": [],
-      "unknowns": ["backup tooling", "schedule", "retention", "restore procedure"],
-      "risks": ["no backup infrastructure exists", "data loss on hardware failure"]
+      "disk_characteristics": "unknown",
+      "availability_characteristics": "optional; disabled by default",
+      "backup_requirements": "not applicable",
+      "security_requirements": "internal sidecar",
+      "evidence": [
+        {"file": "src/shared/config/settings.py", "line": 102, "description": "hermes_base_url and hermes_enabled"},
+        {"file": "src/modules/hermes_agent/client.py", "description": "Hermes HTTP client"}
+      ],
+      "unknowns": ["whether Hermes is actually deployed and running"],
+      "risks": ["default-disabled; no operational impact if not running"]
     },
     {
-      "id": "reverse-proxy",
-      "name": "Reverse Proxy",
+      "id": "cloud-llm-provider-clients",
+      "name": "Cloud LLM provider clients",
       "status": "observed",
-      "purpose": "TLS termination, request routing, static file serving",
-      "implementation": "nginx 1.27-alpine in docker-compose.site-pilot.yml only; not part of main deployment",
+      "purpose": "LLM inference via external providers for tender analysis",
+      "implementation": "OpenAI-compatible, Cloud.ru, Yandex, GigaChat client code; configurable via env variables",
       "required_for_pilot": false,
       "required_for_production": true,
       "stateful": false,
       "persistent_paths": [],
-      "network_exposure": "port 8081 in site-pilot compose",
+      "network_exposure": "outbound to provider API endpoints",
       "inbound_dependencies": [],
-      "outbound_dependencies": ["fastapi-app"],
-      "cpu_characteristics": "low",
+      "outbound_dependencies": ["openai-compatible API", "cloudru API", "yandex API", "gigachat API"],
+      "cpu_characteristics": "low (HTTP requests only)",
       "ram_characteristics": "low",
-      "disk_characteristics": "minimal",
-      "availability_characteristics": "single instance",
-      "backup_requirements": "configuration only (version-controlled)",
-      "security_requirements": "TLS termination, rate limiting, WAF, forwarded headers validation",
-      "evidence": [
-        {"file": "docker-compose.site-pilot.yml", "line": 18, "description": "nginx:1.27-alpine for site pilot demo"},
-        {"file": "ops/nginx/arvectum-site-pilot.local.conf", "description": "nginx config for site-pilot"}
-      ],
-      "unknowns": [],
-      "risks": ["not part of main deployment", "no TLS in main deployment"]
-    },
-    {
-      "id": "health-readiness",
-      "name": "Health and Readiness Endpoints",
-      "status": "observed",
-      "purpose": "Liveness and readiness probes for orchestration and monitoring",
-      "implementation": "/health (simple 200 OK for liveness), /health/ready (checks data_dir and storage gate)",
-      "required_for_pilot": true,
-      "required_for_production": true,
-      "stateful": false,
-      "persistent_paths": [],
-      "network_exposure": "same as FastAPI app",
-      "inbound_dependencies": [],
-      "outbound_dependencies": ["postgresql (indirect via storage checks)"],
-      "cpu_characteristics": "minimal",
-      "ram_characteristics": "minimal",
-      "disk_characteristics": "minimal",
-      "availability_characteristics": "always available if app is running",
+      "disk_characteristics": "low",
+      "availability_characteristics": "dependent on provider availability",
       "backup_requirements": "not applicable",
-      "security_requirements": "readiness endpoint protected in production config",
+      "security_requirements": "API keys in env files; raw partner data flag must be false for external providers",
       "evidence": [
-        {"file": "src/main.py", "line": 206, "description": "/health liveness endpoint"},
-        {"file": "src/main.py", "line": 211, "description": "/health/ready readiness endpoint"}
+        {"file": "src/shared/config/settings.py", "line": 23, "description": "LLM provider config"},
+        {"file": ".env.example", "line": 16, "description": "LLM environment variables"}
       ],
-      "unknowns": [],
-      "risks": ["no database check in /health/ready", "no LLM/SOAP/Hermes health checks"]
+      "unknowns": ["actual latency", "cost per analysis"],
+      "risks": ["API key leakage", "data sent to external providers (controlled by allow_raw_partner_data flag)"]
     },
     {
-      "id": "eis-soap-integration",
-      "name": "EIS/SOAP Integration",
+      "id": "eis-soap-client",
+      "name": "EIS/SOAP client",
       "status": "observed",
       "purpose": "Fetch procurement data from zakupki.gov.ru via SOAP API",
       "implementation": "ZakupkiSoapClient with individual (getDocsIP) and legacy (searchProcurements) endpoints",
@@ -335,91 +387,138 @@
       "disk_characteristics": "low",
       "availability_characteristics": "dependent on upstream availability",
       "backup_requirements": "not applicable",
-      "security_requirements": "individual token via SOAP header; TLS trust policy; direct RU route required",
+      "security_requirements": "individual token via SOAP header; TLS trust policy; direct RU route configurable",
       "evidence": [
         {"file": "src/tender_research/eis_real_loader.py", "description": "SOAP client wrapper"},
         {"file": ".env.example", "line": 42, "description": "SOAP environment variables"}
       ],
       "unknowns": ["zakupki.gov.ru reachability from non-Russian IP"],
-      "risks": ["Russian egress may be required", "token-based auth (credential leakage)", "SOAP reliability"]
+      "risks": ["token-based auth (credential leakage)", "SOAP reliability"]
     },
     {
-      "id": "cloud-llm-providers",
-      "name": "Cloud LLM Providers",
+      "id": "storage-capacity-guardrails",
+      "name": "Storage capacity guardrails",
       "status": "observed",
-      "purpose": "LLM inference for tender analysis using external providers",
-      "implementation": "OpenAI-compatible, Cloud.ru, Yandex, GigaChat clients; configurable via env variables",
-      "required_for_pilot": false,
-      "required_for_production": true,
-      "stateful": false,
-      "persistent_paths": [],
-      "network_exposure": "outbound to provider API endpoints",
-      "inbound_dependencies": [],
-      "outbound_dependencies": ["openai API", "cloudru API", "yandex API", "gigachat API"],
-      "cpu_characteristics": "low (HTTP requests only)",
-      "ram_characteristics": "low",
-      "disk_characteristics": "low",
-      "availability_characteristics": "dependent on provider availability",
-      "backup_requirements": "not applicable",
-      "security_requirements": "API keys in env files; raw partner data flag must be false for external providers",
-      "evidence": [
-        {"file": "src/shared/config/settings.py", "line": 23, "description": "LLM provider config"},
-        {"file": ".env.example", "line": 16, "description": "LLM environment variables"}
-      ],
-      "unknowns": ["actual latency", "cost per analysis"],
-      "risks": ["API key leakage", "data sent to external providers (controlled by allow_raw_partner_data flag)"]
-    },
-    {
-      "id": "embedding-service",
-      "name": "Embedding Service",
-      "status": "observed",
-      "purpose": "Generate document chunk embeddings for vector search",
-      "implementation": "Default hashing provider (local, no external call); configurable to sentence-transformers or remote OpenAI-compatible endpoint",
+      "purpose": "Prevent storage overfill by blocking ingestion at configured thresholds",
+      "implementation": "ARV-010: warning 70%, critical 80%, ingestion protection 90%; fail-closed on storage_unknown",
       "required_for_pilot": true,
       "required_for_production": true,
       "stateful": false,
       "persistent_paths": [],
-      "network_exposure": "local if hashing; configurable remote endpoint (default http://127.0.0.1:8090/v1)",
-      "inbound_dependencies": [],
-      "outbound_dependencies": ["optional: remote embedding API"],
-      "cpu_characteristics": "low for hashing; moderate for sentence-transformers",
-      "ram_characteristics": "low for hashing; high for sentence-transformers model",
-      "disk_characteristics": "low",
-      "availability_characteristics": "local; depends on embedding server",
+      "network_exposure": "none",
+      "inbound_dependencies": ["external-ssd"],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "minimal",
+      "ram_characteristics": "minimal",
+      "disk_characteristics": "none",
+      "availability_characteristics": "always available if app is running",
       "backup_requirements": "not applicable",
-      "security_requirements": "local by default; remote requires API key if authenticated",
+      "security_requirements": "mount must be on separate filesystem",
       "evidence": [
-        {"file": "src/shared/config/settings.py", "line": 70, "description": "RAG embedding config"},
-        {"file": "src/tender_research/rag/embeddings.py", "description": "Embedding provider implementations"}
+        {"file": "src/shared/config/settings.py", "line": 114, "description": "warning=70, critical=80, ingestion_protected=90"},
+        {"file": "src/shared/storage/gate.py", "line": 39, "description": "check_ingestion_allowed fail-closed"},
+        {"file": "src/shared/storage/capacity.py", "line": 72, "description": "_mount_verified check"}
       ],
-      "unknowns": [],
-      "risks": ["remote embedding server availability", "embedding quality with hashing provider"]
+      "unknowns": ["guardrail frequency (how often ingestion is blocked)"],
+      "risks": ["storage_unknown state can block all ingestion"]
     },
     {
-      "id": "optional-local-llm",
-      "name": "Optional Local LLM",
+      "id": "reverse-proxy-site-pilot",
+      "name": "Reverse proxy (site-pilot demo only)",
       "status": "observed",
-      "purpose": "Local LLM inference without sending data to external providers",
-      "implementation": "OpenAI-compatible client to local endpoint (llama.cpp/Ollama); default http://127.0.0.1:8088/v1",
+      "purpose": "TLS termination, request routing, static file serving for site-pilot demo",
+      "implementation": "nginx 1.27-alpine in docker-compose.site-pilot.yml only; not part of main deployment",
       "required_for_pilot": false,
-      "required_for_production": false,
+      "required_for_production": true,
       "stateful": false,
       "persistent_paths": [],
-      "network_exposure": "localhost by default",
+      "network_exposure": "port 8081 in site-pilot compose",
       "inbound_dependencies": [],
-      "outbound_dependencies": ["local LLM process (Ollama/llama.cpp)"],
-      "cpu_characteristics": "high (CPU inference) or GPU-accelerated",
-      "ram_characteristics": "high (8-32 GB for 7B-14B models)",
-      "disk_characteristics": "model files (4-16 GB)",
-      "availability_characteristics": "depends on local process",
-      "backup_requirements": "not applicable (model files downloadable)",
-      "security_requirements": "no data leaves the node; suitable for sensitive data",
+      "outbound_dependencies": ["fastapi-app"],
+      "cpu_characteristics": "low",
+      "ram_characteristics": "low",
+      "disk_characteristics": "minimal",
+      "availability_characteristics": "single instance",
+      "backup_requirements": "configuration only (version-controlled)",
+      "security_requirements": "TLS termination, rate limiting, forwarded headers validation",
       "evidence": [
-        {"file": "src/shared/config/settings.py", "line": 80, "description": "local_llm_base_url"},
-        {"file": "src/tender_research/rag/llm.py", "description": "Local LLM client implementation"}
+        {"file": "docker-compose.site-pilot.yml", "line": 18, "description": "nginx:1.27-alpine for site pilot demo"},
+        {"file": "ops/nginx/arvectum-site-pilot.local.conf", "description": "nginx config for site-pilot"}
       ],
-      "unknowns": ["whether local LLM is needed vs. cloud", "GPU vs CPU adequacy"],
-      "risks": ["high resource usage", "inference latency on CPU"]
+      "unknowns": [],
+      "risks": ["not part of main deployment", "no TLS in main deployment"]
+    },
+    {
+      "id": "health-readiness",
+      "name": "Health and readiness endpoints",
+      "status": "observed",
+      "purpose": "Liveness and readiness probes for orchestration and monitoring",
+      "implementation": "/health (simple 200 OK for liveness), /health/ready (checks data_dir and storage gate)",
+      "required_for_pilot": true,
+      "required_for_production": true,
+      "stateful": false,
+      "persistent_paths": [],
+      "network_exposure": "same as FastAPI app",
+      "inbound_dependencies": [],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "minimal",
+      "ram_characteristics": "minimal",
+      "disk_characteristics": "minimal",
+      "availability_characteristics": "always available if app is running",
+      "backup_requirements": "not applicable",
+      "security_requirements": "readiness endpoint protected in production config",
+      "evidence": [
+        {"file": "src/main.py", "line": 206, "description": "/health liveness endpoint"},
+        {"file": "src/main.py", "line": 211, "description": "/health/ready readiness endpoint"}
+      ],
+      "unknowns": [],
+      "risks": ["no database check in /health/ready", "no LLM/SOAP/Hermes health checks"]
+    },
+    {
+      "id": "backup-storage",
+      "name": "Backup storage",
+      "status": "unknown",
+      "purpose": "Store database dumps and critical document backups",
+      "implementation": "not implemented — no backup scripts, schedule, or procedures found",
+      "required_for_pilot": false,
+      "required_for_production": true,
+      "stateful": true,
+      "persistent_paths": [],
+      "network_exposure": "unknown",
+      "inbound_dependencies": ["postgresql-compose-definitions", "external-ssd"],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "unknown",
+      "ram_characteristics": "unknown",
+      "disk_characteristics": "minimum 2x database + critical document size",
+      "availability_characteristics": "should be off-device",
+      "backup_requirements": "backup retention policy not documented; data/raw retention policy exists per ARV-009",
+      "security_requirements": "encrypted at rest and in transit (proposed)",
+      "evidence": [],
+      "unknowns": ["backup tooling", "schedule", "retention", "restore procedure"],
+      "risks": ["no backup infrastructure exists", "data loss on hardware failure"]
+    },
+    {
+      "id": "monitoring",
+      "name": "Monitoring",
+      "status": "unknown",
+      "purpose": "Observability of application and infrastructure health",
+      "implementation": "not configured — no Prometheus/Grafana/Sentry configuration in repository",
+      "required_for_pilot": false,
+      "required_for_production": true,
+      "stateful": false,
+      "persistent_paths": [],
+      "network_exposure": "N/A",
+      "inbound_dependencies": [],
+      "outbound_dependencies": [],
+      "cpu_characteristics": "unknown",
+      "ram_characteristics": "unknown",
+      "disk_characteristics": "unknown",
+      "availability_characteristics": "N/A",
+      "backup_requirements": "N/A",
+      "security_requirements": "N/A",
+      "evidence": [],
+      "unknowns": ["monitoring tooling to be selected"],
+      "risks": ["no insight into production health"]
     }
   ],
   "persistent_paths": [
@@ -497,7 +596,7 @@
       "protocol": "HTTP",
       "bind": "0.0.0.0",
       "tls": false,
-      "public": false,
+      "public_reachability": "depends on firewall and NAT",
       "access_control": "basic auth (configurable)"
     },
     {
@@ -506,7 +605,7 @@
       "protocol": "PostgreSQL",
       "bind": "0.0.0.0",
       "tls": false,
-      "public": true,
+      "public_reachability": "bound to all host interfaces; external reachability depends on host firewall, NAT and network configuration; actual public-internet reachability is unknown",
       "access_control": "password"
     },
     {
@@ -515,7 +614,7 @@
       "protocol": "PostgreSQL",
       "bind": "127.0.0.1",
       "tls": false,
-      "public": false,
+      "public_reachability": "local only",
       "access_control": "password"
     },
     {
@@ -524,7 +623,7 @@
       "protocol": "PostgreSQL",
       "bind": "127.0.0.1",
       "tls": false,
-      "public": false,
+      "public_reachability": "local only",
       "access_control": "password"
     },
     {
@@ -533,7 +632,7 @@
       "protocol": "HTTP",
       "bind": "0.0.0.0",
       "tls": false,
-      "public": true,
+      "public_reachability": "depends on deployment",
       "access_control": "none"
     }
   ],
@@ -545,7 +644,7 @@
       "endpoints": ["https://int.zakupki.gov.ru/eis-integration/services/getDocsIP", "https://int44.zakupki.gov.ru/eis-integration/services-vbs"],
       "auth": "individual person token in SOAP header",
       "proxy_bypass": true,
-      "requires_ru_egress": true,
+      "requires_ru_egress": false,
       "timeout_seconds": 30,
       "evidence": [{"file": "src/tender_research/eis_real_loader.py"}, {"file": ".env.example", "line": 42}]
     },
@@ -567,7 +666,7 @@
       "endpoints": ["https://foundation-models.api.cloud.ru/v1"],
       "auth": "API key",
       "proxy_bypass": false,
-      "requires_ru_egress": true,
+      "requires_ru_egress": false,
       "timeout_seconds": 30,
       "evidence": [{"file": ".env.example", "line": 28}]
     },
@@ -578,7 +677,7 @@
       "endpoints": ["https://ai.api.cloud.yandex.net/v1"],
       "auth": "API key or IAM token",
       "proxy_bypass": false,
-      "requires_ru_egress": true,
+      "requires_ru_egress": false,
       "timeout_seconds": 30,
       "evidence": [{"file": ".env.example", "line": 32}]
     },
@@ -589,7 +688,7 @@
       "endpoints": ["https://gigachat.devices.sberbank.ru/api/v1", "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"],
       "auth": "OAuth 2.0",
       "proxy_bypass": false,
-      "requires_ru_egress": true,
+      "requires_ru_egress": false,
       "timeout_seconds": 30,
       "evidence": [{"file": ".env.example", "line": 37}]
     },
@@ -616,7 +715,7 @@
       "id": "SEC-02",
       "requirement": "PostgreSQL not publicly accessible",
       "classification": "required_before_production",
-      "rationale": "Currently published on 5432:5432 with default credentials"
+      "rationale": "Bound to all interfaces in main Compose (5432:5432) with default credentials; reachability depends on firewall and NAT"
     },
     {
       "id": "SEC-03",
@@ -664,13 +763,13 @@
       "id": "SEC-10",
       "requirement": "Allowed hosts validation",
       "classification": "required_for_pilot",
-      "rationale": "TrustedHostMiddleware is configured but empty by default"
+      "rationale": "TrustedHostMiddleware not installed when ALLOWED_HOSTS is empty"
     },
     {
       "id": "SEC-11",
       "requirement": "CORS restriction",
       "classification": "required_before_production",
-      "rationale": "CORS middleware is configured but empty by default"
+      "rationale": "CORSMiddleware not installed when CORS_ALLOW_ORIGINS is empty"
     },
     {
       "id": "SEC-12",
@@ -688,13 +787,13 @@
       "id": "SEC-14",
       "requirement": "Controlled egress to EIS and LLM providers",
       "classification": "required_before_production",
-      "rationale": "No controlled egress point for Russian endpoints"
+      "rationale": "No controlled egress point for external endpoints"
     },
     {
       "id": "SEC-15",
       "requirement": "Raw procurement/customer document protection",
       "classification": "required_for_pilot",
-      "rationale": "Documents stored on SSD without encryption at rest"
+      "rationale": "Encryption-at-rest configuration is not evidenced in the repository; status unknown/gap"
     },
     {
       "id": "SEC-16",
@@ -704,15 +803,15 @@
     },
     {
       "id": "SEC-17",
-      "requirement": "Data localization in Russia (where applicable)",
+      "requirement": "Data localization where applicable law requires it",
       "classification": "requires_legal_validation",
-      "rationale": "EIS data may require Russian hosting; legal classification needed"
+      "rationale": "Personal/customer data classes require separate legal classification"
     },
     {
       "id": "SEC-18",
       "requirement": "Documented retention and deletion policy",
       "classification": "required_before_production",
-      "rationale": "ARV-009 defines raw package retention but full policy is not documented"
+      "rationale": "ARV-009 defines data/raw retention; backup retention not documented"
     }
   ],
   "future_nodes": [
@@ -720,8 +819,8 @@
       "id": "application-node",
       "name": "Application Node",
       "purpose": "Run FastAPI application and serve API requests",
-      "pilot_requirement": "2-4 vCPU, 8-16 GB RAM, 50 GB system disk",
-      "production_requirement": "2+ nodes, 4-8 vCPU, 16-32 GB RAM each",
+      "pilot_requirement": "proposed_initial_envelope, requires validation: 2-4 vCPU, 8-16 GB RAM, 50 GB system disk",
+      "production_requirement": "proposed_initial_envelope, requires validation: 2+ nodes, 4-8 vCPU, 16-32 GB RAM each",
       "functional_requirements": ["Python 3.11+", "Uvicorn with multiple workers", "proxy headers trust", "HEALTHCHECK", "graceful shutdown"],
       "persistence": false,
       "network_access": "inbound port 8000 (via reverse proxy), outbound to PostgreSQL, LLM, EIS, Hermes",
@@ -736,9 +835,9 @@
       "id": "postgresql-node",
       "name": "PostgreSQL/pgvector Node",
       "purpose": "Primary database with vector similarity search",
-      "pilot_requirement": "2 vCPU, 4 GB RAM, 50 GB SSD",
-      "production_requirement": "4+ vCPU, 8-16 GB RAM, 100-200 GB SSD, dedicated node",
-      "functional_requirements": ["pgvector extension", "connection pooling", "automated daily pg_dump", "PITR not required initially"],
+      "pilot_requirement": "proposed_initial_envelope, requires validation: 2 vCPU, 4 GB RAM, 50 GB SSD",
+      "production_requirement": "proposed_initial_envelope, requires validation: 4+ vCPU, 8-16 GB RAM, 100-200 GB SSD, dedicated node",
+      "functional_requirements": ["pgvector extension", "database connection pooler", "automated daily pg_dump", "PITR not required initially"],
       "persistence": true,
       "network_access": "application node(s) only",
       "security_boundary": "127.0.0.1 or internal network, strong password, TLS",
@@ -753,11 +852,11 @@
       "name": "Document Storage Node",
       "purpose": "Store raw tender documents, extracted text, reports, exports",
       "pilot_requirement": "4 TB external SSD (accepted per ARV-009)",
-      "production_requirement": "object storage (S3-compatible) or dedicated NAS",
-      "functional_requirements": ["POSIX or S3 API", "separate filesystem", "ARV-010 guardrails deployed"],
+      "production_requirement": "object-compatible document storage or dedicated NAS with >4 TB capacity",
+      "functional_requirements": ["POSIX or object storage API", "separate filesystem", "ARV-010 guardrails deployed"],
       "persistence": true,
       "network_access": "application node(s) only",
-      "security_boundary": "internal network; encryption at rest for customer data",
+      "security_boundary": "internal network; encryption at rest is a proposed requirement",
       "backup": "critical documents backed up; raw packages of completed procurements deletable",
       "observability": "disk usage metrics, ingestion gate status",
       "scaling_direction": "vertical or migration to object storage",
@@ -783,9 +882,9 @@
     {
       "id": "reverse-proxy-node",
       "name": "Reverse Proxy / Public Ingress",
-      "purpose": "TLS termination, request routing, rate limiting, WAF",
-      "pilot_requirement": "nginx or Caddy on small VPS; Let's Encrypt TLS",
-      "production_requirement": "managed LB or dedicated HA reverse proxy",
+      "purpose": "TLS termination, request routing, rate limiting",
+      "pilot_requirement": "reverse proxy / TLS termination service on small VPS; automated certificate management",
+      "production_requirement": "managed or self-hosted load balancer / reverse proxy with HA",
       "functional_requirements": ["TLS 1.2+", "rate limiting 100 req/min", "request size limits 10 MB", "forwarded headers validation", "health check routing"],
       "persistence": false,
       "network_access": "public inbound port 443; forward to app node port 8000",
@@ -817,7 +916,7 @@
       "name": "Optional Local LLM Node",
       "purpose": "Local LLM inference without sending data to external providers",
       "pilot_requirement": "not required (stub or cloud suffices)",
-      "production_requirement": "GPU-accelerated or CPU with llama.cpp",
+      "production_requirement": "GPU-accelerated or CPU-based inference (slower)",
       "functional_requirements": ["OpenAI-compatible API", "configurable model", "GPU recommended"],
       "persistence": false,
       "network_access": "localhost or internal network",
@@ -1011,9 +1110,9 @@
     {
       "id": "option-a",
       "name": "Mac Mini + small public ingress VPS",
-      "topology": "Internet -> VPS (nginx, TLS, rate limit) -> Mac Mini (FastAPI, PostgreSQL, storage)",
+      "topology": "Internet -> VPS (reverse proxy, TLS, rate limit) -> Mac Mini (FastAPI, PostgreSQL, storage)",
       "stateful_components": ["PostgreSQL data on Mac Mini", "Document storage on Mac Mini external SSD"],
-      "network_flow": "Public traffic -> VPS port 443 (TLS) -> port forward -> Mac Mini port 8000",
+      "network_flow": "Public traffic -> VPS port 443 (TLS) -> authenticated encrypted private tunnel -> Mac Mini port 8000",
       "advantages": [
         "preserves existing Mac Mini and 4 TB SSD investment",
         "minimal operational change",
@@ -1028,8 +1127,9 @@
         "no failover"
       ],
       "security_considerations": [
-        "VPS must be hardened (SSH key, firewall, fail2ban)",
-        "VPS-to-Mac Mini connection via SSH tunnel or WireGuard",
+        "VPS must be hardened (SSH key, firewall, automated brute-force protection)",
+        "TLS termination on VPS exposes only HTTPS to the internet",
+        "VPS-to-Mac Mini connection via authenticated encrypted private tunnel",
         "PostgreSQL port firewalled from internet"
       ],
       "operational_complexity": "low",
@@ -1037,11 +1137,7 @@
       "when_it_fits": "pilot phase (5-10 clients), no contractual SLA, development/demo",
       "when_it_stops_fitting": "contractual SLA, client requires 24/7, formalized backup RPO/RTO, >10 active clients",
       "migration_path": "to Option B: decommission Mac Mini; to Option C: incremental migration",
-      "unresolved_questions": [
-        "Mac Mini home internet reliability",
-        "physical security responsibility",
-        "actual upstream bandwidth"
-      ]
+      "unresolved_questions": ["Mac Mini home internet reliability", "physical security responsibility", "actual upstream bandwidth"]
     },
     {
       "id": "option-b",
@@ -1049,67 +1145,31 @@
       "topology": "Internet -> Single server (reverse proxy + FastAPI + PostgreSQL + storage)",
       "stateful_components": ["PostgreSQL data on server disk", "Document storage on attached volume"],
       "network_flow": "Public -> server port 443 (TLS) -> reverse proxy -> local port 8000",
-      "advantages": [
-        "simple architecture",
-        "no inter-service latency",
-        "full hardware control",
-        "single security perimeter"
-      ],
-      "limitations": [
-        "no HA (single machine failure = everything down)",
-        "resource contention app + database",
-        "vertical scaling only"
-      ],
-      "security_considerations": [
-        "firewall: only ports 443 and 22 open",
-        "PostgreSQL on Unix socket or 127.0.0.1",
-        "TLS with Let's Encrypt",
-        "fail2ban on SSH"
-      ],
+      "advantages": ["simple architecture", "no inter-service latency", "full hardware control", "single security perimeter"],
+      "limitations": ["no HA (single machine failure = everything down)", "resource contention app + database", "vertical scaling only"],
+      "security_considerations": ["firewall: only ports 443 and 22 open", "PostgreSQL on Unix socket or 127.0.0.1", "TLS with automated certificate management", "automated brute-force protection on SSH", "regular OS patching"],
       "operational_complexity": "medium",
       "single_points_of_failure": ["single server hardware", "single VPS provider"],
       "when_it_fits": "post-pilot scale-out before HA required, 10-20 active clients",
       "when_it_stops_fitting": "HA requirement, separate DB scaling needed, regulatory data isolation",
       "migration_path": "from Option A: migrate data; to Option C: split services",
-      "unresolved_questions": [
-        "acceptable downtime for maintenance",
-        "app+DB co-existence under load",
-        "actual CPU/RAM requirement"
-      ]
+      "unresolved_questions": ["acceptable downtime for maintenance", "app+DB co-existence under load", "actual CPU/RAM requirement"]
     },
     {
       "id": "option-c",
       "name": "Split contour",
       "topology": "Internet -> Reverse proxy -> App node(s) -> PostgreSQL node -> Document storage -> Backup storage",
-      "stateful_components": ["PostgreSQL node (block storage)", "Document storage (object storage or NAS)", "Backup storage (separate device)"],
+      "stateful_components": ["PostgreSQL node (block storage)", "Document storage (object-compatible or NAS)", "Backup storage (separate device)"],
       "network_flow": "Public -> reverse proxy (TLS) -> app (internal) -> PostgreSQL (internal); app -> document storage; app -> EIS/LLM (outbound)",
-      "advantages": [
-        "independent scaling per component",
-        "no single point of failure",
-        "regulatory compliance ready",
-        "production-grade"
-      ],
-      "limitations": [
-        "highest operational complexity",
-        "highest cost",
-        "over-engineered for pilot"
-      ],
-      "security_considerations": [
-        "defense in depth per node",
-        "TLS for inter-node communication",
-        "IAM for object storage",
-        "VPN between nodes"
-      ],
+      "advantages": ["independent scaling per component", "no single point of failure", "regulatory compliance ready", "production-grade"],
+      "limitations": ["highest operational complexity", "highest cost", "over-engineered for pilot"],
+      "security_considerations": ["defense in depth per node", "TLS for inter-node communication", "IAM for object storage", "VPN between nodes"],
       "operational_complexity": "high",
       "single_points_of_failure": "mitigated with redundancy",
       "when_it_fits": "production with SLA, regulatory compliance, 20+ active clients",
       "when_it_stops_fitting": "cost-sensitive early stage, small team",
       "migration_path": "from Option A or B: incremental per component",
-      "unresolved_questions": [
-        "orchestration platform",
-        "object storage backend",
-        "multi-region requirements"
-      ]
+      "unresolved_questions": ["container orchestration platform", "object-compatible document storage backend", "multi-region requirements"]
     }
   ],
   "unknowns": [
