@@ -9,6 +9,7 @@ from pathlib import Path
 
 from src.modules.production_llm_analysis.document_recovery import (
     DocumentRecoveryRequest,
+    _report,
     recover_procurement_documents,
 )
 
@@ -47,10 +48,11 @@ def main() -> int:
     except (OSError, RuntimeError, ValueError) as exc:
         print(
             json.dumps(
-                {
-                    "final_status": "DOCUMENT_RECOVERY_REJECTED",
-                    "error_code": type(exc).__name__,
-                },
+                _report(
+                    classification="DOCUMENT_RECOVERY_REJECTED",
+                    final_status="DOCUMENT_RECOVERY_REJECTED",
+                    error_code=type(exc).__name__,
+                ),
                 ensure_ascii=False,
             )
         )

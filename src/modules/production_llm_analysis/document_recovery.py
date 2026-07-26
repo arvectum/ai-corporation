@@ -1,12 +1,15 @@
-"""Controlled, provider-neutral recovery of one procurement's documents."""
+"""Fail-closed, provider-neutral recovery of one procurement's documents."""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import re
+import shutil
 import stat
 import tempfile
+import uuid
 import zipfile
 import zlib
 from collections.abc import Callable
@@ -15,8 +18,11 @@ from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import Any
 
+from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from src.modules.tender_operator_agent_demo.settings import (
@@ -39,6 +45,8 @@ MAX_ENTRIES = 5_000
 MAX_TOTAL_UNCOMPRESSED = 1 << 30
 MAX_ENTRY_UNCOMPRESSED = 200 << 20
 MAX_RATIO = 200
+HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+REQUIRED_ALEMBIC_HEAD = "096_add_r8_canonical_snapshot_binding"
 
 
 @dataclass(frozen=True)
@@ -66,7 +74,7 @@ class ZipInventory:
     symlink_entries: int = 0
     traversal_entries: int = 0
     duplicate_paths: int = 0
-    entries: list[tuple[str, str, int]] | None = None
+    entries: list[tuple[Path, str, int]] | None = None
 
 
 def _sha256(path: Path) -> str:
@@ -92,19 +100,22 @@ def _is_symlink(info: zipfile.ZipInfo) -> bool:
     return stat.S_ISLNK((info.external_attr >> 16) & 0xFFFF)
 
 
-def inspect_zip(path: Path) -> tuple[ZipInventory, dict[str, list[tuple[str, str]]]]:
-    """Inspect an archive and return hash -> (entry name, level) matches."""
+def inspect_zip(
+    path: Path,
+) -> tuple[ZipInventory, dict[str, list[tuple[Path, str, int]]]]:
+    """Inspect outer and one nested archive, retaining enough identity for apply."""
     inventory = ZipInventory(entries=[])
-    matches: dict[str, list[tuple[str, str]]] = {}
+    matches: dict[str, list[tuple[Path, str, int]]] = {}
     seen: set[str] = set()
 
     def scan(zip_path: Path, level: int) -> None:
         with zipfile.ZipFile(zip_path) as archive:
-            inventory.entry_count += len(archive.infolist())
+            infos = archive.infolist()
+            inventory.entry_count += len(infos)
             if inventory.entry_count > MAX_ENTRIES:
                 inventory.unsafe_entries += 1
                 return
-            for info in archive.infolist():
+            for info in infos:
                 if info.is_dir():
                     inventory.directory_count += 1
                     continue
@@ -113,8 +124,8 @@ def inspect_zip(path: Path) -> tuple[ZipInventory, dict[str, list[tuple[str, str
                     inventory.nested_regular_file_count += 1
                 inventory.compressed_bytes += info.compress_size
                 inventory.uncompressed_bytes += info.file_size
-                unsafe = not _safe_entry(info.filename)
                 normalized = str(PurePosixPath(info.filename.replace("\\", "/")))
+                unsafe = not _safe_entry(info.filename)
                 if normalized in seen:
                     inventory.duplicate_paths += 1
                     unsafe = True
@@ -137,10 +148,10 @@ def inspect_zip(path: Path) -> tuple[ZipInventory, dict[str, list[tuple[str, str
                 if unsafe:
                     inventory.unsafe_entries += 1
                     continue
-                if level >= 1 and info.filename.lower().endswith(".zip"):
-                    inventory.unsafe_entries += 1
-                    continue
-                if level == 0 and info.filename.lower().endswith(".zip"):
+                if info.filename.lower().endswith(".zip"):
+                    if level >= 1:
+                        inventory.unsafe_entries += 1
+                        continue
                     fd, nested_name = tempfile.mkstemp(
                         prefix="r10-1-nested-", suffix=".zip"
                     )
@@ -157,16 +168,20 @@ def inspect_zip(path: Path) -> tuple[ZipInventory, dict[str, list[tuple[str, str
                         nested.unlink(missing_ok=True)
                     continue
                 digest = hashlib.sha256()
-                with archive.open(info) as source:
-                    for block in iter(lambda: source.read(1 << 20), b""):
-                        digest.update(block)
+                try:
+                    with archive.open(info) as source:
+                        for block in iter(lambda: source.read(1 << 20), b""):
+                            digest.update(block)
+                except (OSError, RuntimeError, zlib.error, zipfile.BadZipFile):
+                    inventory.crc_valid = False
+                    continue
                 matches.setdefault(digest.hexdigest(), []).append(
-                    (info.filename, str(level))
+                    (zip_path, info.filename, level)
                 )
-                inventory.entries.append((str(zip_path), info.filename, level))
+                inventory.entries.append((zip_path, info.filename, level))
             try:
                 inventory.crc_valid = inventory.crc_valid and archive.testzip() is None
-            except (OSError, zipfile.BadZipFile, RuntimeError):
+            except (OSError, RuntimeError, zlib.error, zipfile.BadZipFile):
                 inventory.crc_valid = False
 
     try:
@@ -181,25 +196,45 @@ def inspect_zip(path: Path) -> tuple[ZipInventory, dict[str, list[tuple[str, str
     return inventory, matches
 
 
+def _inside(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
 def validate_data_root(data_root: Path, backup_dir: Path) -> Path:
+    checkout = Path(__file__).resolve().parents[3]
     if not data_root.is_absolute() or data_root.is_symlink():
         raise ValueError("data_root must be an absolute non-symlink path")
+    if not backup_dir.is_absolute() or backup_dir.is_symlink():
+        raise ValueError("backup_dir must be an absolute non-symlink path")
     resolved = data_root.resolve(strict=False)
+    backup = backup_dir.resolve(strict=False)
     tmp_root = Path("/tmp").resolve()
     if resolved == tmp_root or tmp_root in resolved.parents:
         raise ValueError("data_root cannot be inside /tmp")
-    if (resolved / ".git").exists() or resolved == backup_dir.resolve(strict=False):
-        raise ValueError("data_root is not an approved root")
+    if _inside(resolved, checkout) or _inside(backup, checkout):
+        raise ValueError("recovery paths cannot be inside checkout")
+    if resolved == backup or _inside(backup, resolved) or _inside(resolved, backup):
+        raise ValueError("recovery paths overlap")
+    for candidate in (resolved, backup):
+        current = candidate
+        while current != current.parent:
+            if current.is_symlink():
+                raise ValueError("recovery path has symlink parent")
+            current = current.parent
     return resolved
 
 
 def _safe_backup_dir(path: Path, data_root: Path, *, create: bool) -> Path:
     if (
-        path.is_symlink()
-        or path.resolve(strict=False) == data_root
-        or data_root in path.resolve(strict=False).parents
+        not path.is_absolute()
+        or path.is_symlink()
+        or _inside(path.resolve(strict=False), data_root)
     ):
-        raise ValueError("backup_dir must be outside data_root")
+        raise ValueError("backup_dir must be an absolute path outside data_root")
     if create:
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(path, 0o700)
@@ -210,14 +245,16 @@ def _document_layout(
     data_root: Path, registry: str, digest: str, extension: str
 ) -> tuple[Path, Path]:
     root = data_root / "tender_research" / "procurements" / registry
-    source = root / "source" / f"{digest}{extension.lower()}"
-    extracted = root / "extracted" / f"{digest}.txt"
-    return source, extracted
+    return (
+        root / "source" / f"{digest}{extension.lower()}",
+        root / "extracted" / f"{digest}.txt",
+    )
 
 
 def _publish(
     source_stage: Path, text_stage: Path, source_final: Path, text_final: Path
 ) -> None:
+    """Compatibility helper for atomic replacement of two prepared files."""
     source_final.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     text_final.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(source_stage, 0o600)
@@ -226,12 +263,163 @@ def _publish(
     os.replace(text_stage, text_final)
 
 
-def _backup_documents(
-    path: Path,
-    registry: str,
-    documents: list[ProcurementTenderDocument],
-    chunks: list[ProcurementDocumentChunk],
-) -> Path:
+def _report(**values: Any) -> dict[str, Any]:
+    defaults = {
+        "mode": "dry-run",
+        "database_ready": False,
+        "alembic_revision": None,
+        "soap_status": None,
+        "zip_safety_passed": False,
+        "expected_document_count": 0,
+        "unique_exact_match_count": 0,
+        "missing_expected_hash_count": 0,
+        "ambiguous_expected_hash_count": 0,
+        "extra_archive_regular_file_count": 0,
+        "extraction_attempted_count": 0,
+        "extraction_success_count": 0,
+        "extraction_failed_count": 0,
+        "old_extracted_chars_sum": 0,
+        "new_extracted_chars_sum": 0,
+        "char_count_changed_document_count": 0,
+        "files_staged_count": 0,
+        "files_published_count": 0,
+        "documents_updated_count": 0,
+        "chunk_count_before": 0,
+        "chunk_count_after_first_build": 0,
+        "chunk_count_after_second_build": 0,
+        "nonempty_chunk_count": 0,
+        "token_estimate": 0,
+        "chunk_hashes_stable": False,
+        "backup_created": False,
+        "database_mutation_performed": False,
+        "persistent_filesystem_mutation_performed": False,
+        "filesystem_rollback_performed": False,
+        "provider_called": False,
+        "classification": "DOCUMENT_RECOVERY_REJECTED",
+        "final_status": "DOCUMENT_RECOVERY_REJECTED",
+    }
+    return {**defaults, **values}
+
+
+def _schema_revision(engine) -> tuple[str | None, bool]:
+    config = AlembicConfig(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
+    heads = tuple(ScriptDirectory.from_config(config).get_heads())
+    with engine.connect() as connection:
+        revisions = tuple(
+            str(value)
+            for value in connection.execute(
+                text("SELECT version_num FROM alembic_version")
+            ).scalars()
+        )
+    return (revisions[0] if len(revisions) == 1 else None), revisions == heads == (
+        REQUIRED_ALEMBIC_HEAD,
+    )
+
+
+def _valid_hashes(documents: list[ProcurementTenderDocument]) -> list[str] | None:
+    values = []
+    for document in documents:
+        value = document.sha256
+        if not isinstance(value, str) or HASH_RE.fullmatch(value) is None:
+            return None
+        values.append(value.lower())
+    return values if len(values) == len(set(values)) else None
+
+
+def _expected_paths(
+    data_root: Path, registry: str, document: ProcurementTenderDocument
+) -> tuple[Path, Path]:
+    extension = Path(document.file_name or "").suffix.lower() or ".xml"
+    return _document_layout(data_root, registry, document.sha256.lower(), extension)
+
+
+def _regular(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
+
+
+def _utf8_nonempty(path: Path) -> str | None:
+    if not _regular(path):
+        return None
+    try:
+        value = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    return value if value.strip() else None
+
+
+def _chunk_snapshot(chunks, documents, tender_id):
+    ids = {document.id for document in documents}
+    valid = bool(chunks)
+    nonempty = 0
+    tokens = 0
+    counts = {document_id: 0 for document_id in ids}
+    ordered = []
+    for chunk in sorted(chunks, key=lambda item: (item.document_id, item.chunk_index)):
+        value = chunk.text or ""
+        if value.strip():
+            nonempty += 1
+        counts[chunk.document_id] = counts.get(chunk.document_id, 0) + 1
+        tokens += int(chunk.token_estimate or 0)
+        if (
+            chunk.tender_id != tender_id
+            or chunk.document_id not in ids
+            or not value.strip()
+            or not isinstance(chunk.text_hash, str)
+            or HASH_RE.fullmatch(chunk.text_hash) is None
+            or chunk.char_start < 0
+            or chunk.char_end <= chunk.char_start
+            or chunk.char_end > len(value)
+            or chunk.token_estimate <= 0
+        ):
+            valid = False
+        ordered.append(
+            (
+                chunk.document_id,
+                chunk.chunk_index,
+                chunk.text_hash,
+                chunk.char_start,
+                chunk.char_end,
+                chunk.token_estimate,
+            )
+        )
+    valid = valid and nonempty == len(chunks) and tokens > 0 and all(counts.values())
+    return (
+        valid,
+        {
+            "chunk_count": len(chunks),
+            "nonempty_chunk_count": nonempty,
+            "token_estimate": tokens,
+            "chunks_by_document": counts,
+        },
+        ordered,
+    )
+
+
+def _existing_state(data_root, registry, tender, documents, chunks):
+    files_valid = True
+    for document in documents:
+        source, extracted = _expected_paths(data_root, registry, document)
+        text_value = _utf8_nonempty(extracted)
+        if (
+            document.local_path != str(source)
+            or document.extracted_text_path != str(extracted)
+            or document.download_status not in {"downloaded", "completed", "ready"}
+            or document.text_extraction_status != "extracted"
+            or not _regular(source)
+            or _sha256(source) != document.sha256.lower()
+            or text_value is None
+            or document.extracted_text_chars != len(text_value)
+        ):
+            files_valid = False
+    chunks_valid, metrics, ordered = _chunk_snapshot(chunks, documents, tender.id)
+    return files_valid and chunks_valid, {
+        **metrics,
+        "files_valid": files_valid,
+        "ordered": ordered,
+    }
+
+
+def _backup_documents(path, registry, documents, chunks):
     payload = {
         "registry_number": registry,
         "documents": [
@@ -244,8 +432,6 @@ def _backup_documents(
                 "extracted_text_chars": d.extracted_text_chars,
                 "size_bytes": d.size_bytes,
                 "sha256": d.sha256,
-                "created_at": d.created_at.isoformat(),
-                "updated_at": d.updated_at.isoformat(),
             }
             for d in documents
         ],
@@ -254,11 +440,11 @@ def _backup_documents(
             for c in chunks
         ],
     }
-    fd, filename = tempfile.mkstemp(
+    fd, name = tempfile.mkstemp(
         prefix="r10-1-document-recovery-", suffix=".json", dir=path
     )
     os.close(fd)
-    backup = Path(filename)
+    backup = Path(name)
     os.chmod(backup, 0o600)
     backup.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -266,9 +452,31 @@ def _backup_documents(
     return backup
 
 
-def _report(**values: Any) -> dict[str, Any]:
-    values.setdefault("provider_called", False)
-    return values
+def _same_filesystem(staging: Path, final_parent: Path) -> bool:
+    try:
+        return staging.stat().st_dev == final_parent.stat().st_dev
+    except OSError:
+        return False
+
+
+def _extract_to_stage(document, source, extracted, extractor, config, extract_dir):
+    fake = SimpleNamespace(
+        text_extraction_status="pending",
+        local_path=str(source),
+        file_name=document.file_name,
+        id=document.id,
+        extracted_text_path=None,
+        extracted_text_chars=None,
+    )
+    extractor(fake, extract_dir, config)
+    produced = Path(fake.extracted_text_path) if fake.extracted_text_path else None
+    if produced is None or not _regular(produced):
+        raise RuntimeError("extraction_failed")
+    value = _utf8_nonempty(produced)
+    if value is None or fake.text_extraction_status != "extracted":
+        raise RuntimeError("extraction_output_invalid")
+    os.replace(produced, extracted)
+    return len(value)
 
 
 def recover_procurement_documents(
@@ -279,13 +487,10 @@ def recover_procurement_documents(
     chunk_indexer_factory: Callable[..., Any] = DocumentChunkIndexer,
     engine_factory: Callable[..., Any] = create_engine,
 ) -> dict[str, Any]:
-    """Recover one tender; default mode is a non-mutating dry-run."""
+    """Run a complete dry-run preflight; persistence requires explicit ``apply``."""
     if request.build_chunks and not request.apply:
         raise ValueError("--build-chunks requires --apply")
     data_root = validate_data_root(request.data_root, request.backup_dir)
-    if request.apply:
-        data_root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(data_root, 0o700)
     backup_dir = _safe_backup_dir(request.backup_dir, data_root, create=request.apply)
     if request.env_file.is_symlink() or not request.env_file.is_file():
         raise ValueError("env_file must be a regular non-symlink file")
@@ -294,14 +499,30 @@ def recover_procurement_documents(
     get_settings.cache_clear()
     clear_zakupki_soap_settings_cache()
     engine = engine_factory(settings.database_url)
-    SessionFactory = sessionmaker(bind=engine)
+    session_factory = sessionmaker(bind=engine)
     soap_settings = get_zakupki_soap_settings()
-    staging = Path(tempfile.mkdtemp(prefix="r10-1-recovery-"))
+    staging = None
     try:
-        with SessionFactory() as session:
-            revision = session.execute(
-                text("SELECT version_num FROM alembic_version")
-            ).scalar_one()
+        with session_factory() as session:
+            try:
+                revision, schema_ready = _schema_revision(engine)
+            except (SQLAlchemyError, OSError, RuntimeError):
+                return _report(
+                    mode="apply" if request.apply else "dry-run",
+                    classification="SCHEMA_MISMATCH",
+                    final_status="DOCUMENT_RECOVERY_SCHEMA_MISMATCH",
+                )
+            base = {
+                "mode": "apply" if request.apply else "dry-run",
+                "database_ready": True,
+                "alembic_revision": revision,
+            }
+            if not schema_ready:
+                return _report(
+                    **base,
+                    classification="SCHEMA_MISMATCH",
+                    final_status="DOCUMENT_RECOVERY_SCHEMA_MISMATCH",
+                )
             tender = session.execute(
                 select(ProcurementTender).where(
                     ProcurementTender.registry_number == request.registry_number
@@ -309,11 +530,7 @@ def recover_procurement_documents(
             ).scalar_one_or_none()
             if tender is None:
                 return _report(
-                    mode="apply" if request.apply else "dry-run",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    classification="DOCUMENT_RECOVERY_REJECTED",
-                    final_status="RECOVERY_PREFLIGHT_IDENTITY_MISMATCH",
+                    **base, final_status="RECOVERY_PREFLIGHT_IDENTITY_MISMATCH"
                 )
             documents = list(
                 session.execute(
@@ -329,300 +546,405 @@ def recover_procurement_documents(
                     )
                 ).scalars()
             )
-            hashes = [d.sha256.lower() for d in documents]
-            if (
-                len(documents) == 0
-                or any(len(h) != 64 for h in hashes)
-                or len(hashes) != len(set(hashes))
-            ):
+            hashes = _valid_hashes(documents)
+            base["expected_document_count"] = len(documents)
+            if not documents or hashes is None:
                 return _report(
-                    mode="apply" if request.apply else "dry-run",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    expected_document_count=len(documents),
+                    **base,
                     classification="IDENTITY_MISMATCH",
                     final_status="RECOVERY_PREFLIGHT_IDENTITY_MISMATCH",
                 )
-            if (
-                request.apply
-                and all(
-                    d.local_path
-                    and d.extracted_text_path
-                    and Path(d.local_path).is_file()
-                    and not Path(d.local_path).is_symlink()
-                    and _sha256(Path(d.local_path)) == d.sha256.lower()
-                    and Path(d.extracted_text_path).is_file()
-                    and not Path(d.extracted_text_path).is_symlink()
-                    and len(Path(d.extracted_text_path).read_text(encoding="utf-8"))
-                    == d.extracted_text_chars
-                    for d in documents
-                )
-                and (not request.build_chunks or bool(chunks))
-            ):
+            existing_valid, existing_metrics = _existing_state(
+                data_root, request.registry_number, tender, documents, chunks
+            )
+            final_dir = (
+                data_root / "tender_research" / "procurements" / request.registry_number
+            )
+            if final_dir.exists():
+                if existing_valid:
+                    return _report(
+                        **base,
+                        **existing_metrics,
+                        classification="ALREADY_RECOVERED_AND_CHUNKED",
+                        final_status="ALREADY_RECOVERED_AND_CHUNKED",
+                    )
+                if request.apply and existing_metrics["files_valid"]:
+                    return _run_chunks_only(
+                        request,
+                        session,
+                        tender,
+                        documents,
+                        chunks,
+                        backup_dir,
+                        settings,
+                        revision,
+                        chunk_indexer_factory,
+                    )
                 return _report(
-                    mode="apply",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    expected_document_count=len(documents),
-                    chunk_count_before=len(chunks),
-                    classification="ALREADY_RECOVERED_AND_CHUNKED",
-                    final_status="ALREADY_RECOVERED_AND_CHUNKED",
+                    **base,
+                    classification="EXISTING_STATE_CONFLICT",
+                    final_status="DOCUMENT_RECOVERY_REJECTED",
                 )
+            final_parent = final_dir.parent
+            staging_parent = final_parent
+            if not final_parent.exists():
+                if request.apply:
+                    final_parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                else:
+                    staging_parent = data_root.parent
+            staging = Path(
+                tempfile.mkdtemp(
+                    prefix=f".r10-1-recovery-staging-{uuid.uuid4().hex}-",
+                    dir=staging_parent,
+                )
+            )
+            os.chmod(staging, 0o700)
+            if not _same_filesystem(staging, staging_parent):
+                return _report(
+                    **base,
+                    classification="SAME_FILESYSTEM_REQUIRED",
+                    final_status="DOCUMENT_RECOVERY_STAGING_FAILED",
+                )
+            archive_stage = staging / "archive.zip"
             client = soap_client_factory(soap_settings)
             result = client.get_docs_by_reestr_number(request.registry_number)
+            base["soap_status"] = result.status
             if result.status != "completed" or not result.archive_url:
                 return _report(
-                    mode="apply" if request.apply else "dry-run",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    soap_status=result.status,
+                    **base,
                     classification="ARCHIVE_UNAVAILABLE",
                     final_status="RECOVERY_PREFLIGHT_ARCHIVE_REJECTED",
                 )
             downloaded = client.download_archive(result.archive_url, staging)
-            archive = staging / downloaded.stored_name
-            if not archive.is_file() or archive.is_symlink():
+            downloaded_path = staging / downloaded.stored_name
+            if not downloaded_path.is_file() or downloaded_path.is_symlink():
                 return _report(
-                    mode="apply" if request.apply else "dry-run",
-                    soap_status=result.status,
+                    **base,
                     classification="ARCHIVE_DOWNLOAD_FAILED",
                     final_status="RECOVERY_PREFLIGHT_ARCHIVE_REJECTED",
                 )
-            inventory, matches = inspect_zip(archive)
+            os.replace(downloaded_path, archive_stage)
+            inventory, matches = inspect_zip(archive_stage)
+            if inventory.nested_zip_count:
+                return _report(
+                    **base,
+                    zip_safety_passed=False,
+                    classification="NESTED_ARCHIVE_UNSUPPORTED",
+                    final_status="NESTED_ARCHIVE_UNSUPPORTED",
+                )
             unique = {
-                h: entries[0] for h, entries in matches.items() if len(entries) == 1
+                digest: entries[0]
+                for digest, entries in matches.items()
+                if len(entries) == 1
             }
             missing = len(set(hashes) - set(matches))
-            ambiguous = sum(len(v) > 1 for v in matches.values())
+            ambiguous = sum(len(entries) > 1 for entries in matches.values())
             extra = max(inventory.regular_file_count - len(unique), 0)
-            safety = inventory.crc_valid and inventory.unsafe_entries == 0
-            if not safety:
+            base.update(
+                {
+                    "zip_safety_passed": inventory.crc_valid
+                    and inventory.unsafe_entries == 0,
+                    "unique_exact_match_count": len(unique),
+                    "missing_expected_hash_count": missing,
+                    "ambiguous_expected_hash_count": ambiguous,
+                    "extra_archive_regular_file_count": extra,
+                }
+            )
+            if not base["zip_safety_passed"]:
                 return _report(
-                    mode="apply" if request.apply else "dry-run",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    soap_status=result.status,
-                    archive_size_bytes=archive.stat().st_size,
-                    zip_safety_passed=False,
-                    expected_document_count=len(documents),
-                    unique_exact_match_count=len(unique),
-                    missing_expected_hash_count=missing,
-                    ambiguous_expected_hash_count=ambiguous,
-                    extra_archive_regular_file_count=extra,
+                    **base,
                     classification="ARCHIVE_UNSAFE_OR_CORRUPT",
                     final_status="RECOVERY_PREFLIGHT_ARCHIVE_REJECTED",
                 )
-            if request.apply and (
-                missing or ambiguous or extra or len(unique) != len(documents)
-            ):
+            if missing or ambiguous or extra or len(unique) != len(documents):
                 return _report(
-                    mode="apply",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    soap_status=result.status,
-                    zip_safety_passed=True,
+                    **base,
                     classification="IDENTITY_MISMATCH",
                     final_status="DOCUMENT_RECOVERY_REJECTED",
                 )
+            stage_procurement = staging / "procurement"
+            source_dir, text_dir, extract_dir = (
+                stage_procurement / "source",
+                stage_procurement / "extracted",
+                staging / "extract-output",
+            )
+            source_dir.mkdir(mode=0o700, parents=True)
+            text_dir.mkdir(mode=0o700)
+            extract_dir.mkdir(mode=0o700)
+            config = load_config()
+            old_chars = sum(int(d.extracted_text_chars or 0) for d in documents)
+            new_chars = 0
+            changed = 0
+            extraction_success = 0
+            for document in documents:
+                entry_archive, entry_name, _level = unique[document.sha256.lower()]
+                digest = document.sha256.lower()
+                source = (
+                    source_dir
+                    / f"{digest}{Path(document.file_name or entry_name).suffix.lower() or '.xml'}"
+                )
+                extracted = text_dir / f"{digest}.txt"
+                with (
+                    zipfile.ZipFile(entry_archive) as archive,
+                    archive.open(entry_name) as source_stream,
+                    source.open("wb") as target,
+                ):
+                    for block in iter(lambda: source_stream.read(1 << 20), b""):
+                        target.write(block)
+                os.chmod(source, 0o600)
+                try:
+                    chars = _extract_to_stage(
+                        document,
+                        source,
+                        extracted,
+                        extraction_helper,
+                        config,
+                        extract_dir,
+                    )
+                except (OSError, RuntimeError, ValueError, UnicodeError) as exc:
+                    return _report(
+                        **base,
+                        extraction_attempted_count=extraction_success + 1,
+                        extraction_success_count=extraction_success,
+                        extraction_failed_count=1,
+                        old_extracted_chars_sum=old_chars,
+                        new_extracted_chars_sum=new_chars,
+                        char_count_changed_document_count=changed,
+                        files_staged_count=extraction_success * 2,
+                        classification="EXTRACTION_FAILED",
+                        final_status="RECOVERY_PREFLIGHT_EXTRACTION_REJECTED",
+                        error_code=type(exc).__name__,
+                    )
+                os.chmod(extracted, 0o600)
+                new_chars += chars
+                changed += chars != int(document.extracted_text_chars or 0)
+                extraction_success += 1
+            base.update(
+                {
+                    "extraction_attempted_count": len(documents),
+                    "extraction_success_count": extraction_success,
+                    "extraction_failed_count": 0,
+                    "old_extracted_chars_sum": old_chars,
+                    "new_extracted_chars_sum": new_chars,
+                    "char_count_changed_document_count": changed,
+                    "files_staged_count": len(documents) * 2,
+                }
+            )
             if not request.apply:
                 return _report(
-                    mode="dry-run",
-                    database_ready=True,
-                    alembic_revision=revision,
-                    soap_status=result.status,
-                    zip_safety_passed=True,
-                    expected_document_count=len(documents),
-                    unique_exact_match_count=len(unique),
-                    missing_expected_hash_count=missing,
-                    ambiguous_expected_hash_count=ambiguous,
-                    extra_archive_regular_file_count=extra,
-                    classification="RECOVERY_PREFLIGHT_READY"
-                    if len(unique) == len(documents) and not missing and not ambiguous
-                    else "RECOVERY_PREFLIGHT_IDENTITY_MISMATCH",
-                    final_status="RECOVERY_PREFLIGHT_READY"
-                    if len(unique) == len(documents) and not missing and not ambiguous
-                    else "RECOVERY_PREFLIGHT_IDENTITY_MISMATCH",
+                    **base,
+                    classification="RECOVERY_PREFLIGHT_READY",
+                    final_status="RECOVERY_PREFLIGHT_READY",
                 )
-            return _apply_recovery(
+            if final_dir.exists():
+                return _report(
+                    **base,
+                    classification="EXISTING_STATE_CONFLICT",
+                    final_status="DOCUMENT_RECOVERY_REJECTED",
+                )
+            return _publish_and_commit(
+                data_root,
                 request,
                 session,
                 tender,
                 documents,
                 chunks,
-                archive,
-                unique,
-                data_root,
+                stage_procurement,
+                final_dir,
                 backup_dir,
-                extraction_helper,
-                chunk_indexer_factory,
                 settings,
                 revision,
-                result.status,
-                inventory,
+                chunk_indexer_factory,
+                base,
             )
+    except (OSError, RuntimeError, ValueError, SQLAlchemyError) as exc:
+        return _report(
+            mode="apply" if request.apply else "dry-run",
+            classification="DOCUMENT_RECOVERY_REJECTED",
+            final_status="DOCUMENT_RECOVERY_REJECTED",
+            error_code=type(exc).__name__,
+        )
     finally:
-        import shutil
-
-        shutil.rmtree(staging, ignore_errors=True)
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
         engine.dispose()
 
 
-def _apply_recovery(
+def _publish_and_commit(
+    data_root,
     request,
     session,
     tender,
     documents,
     chunks,
-    archive,
-    unique,
-    data_root,
+    stage_procurement,
+    final_dir,
     backup_dir,
-    extraction_helper,
-    chunk_indexer_factory,
     settings,
     revision,
-    soap_status,
-    inventory,
+    indexer_factory,
+    base,
 ):
     backup = _backup_documents(backup_dir, request.registry_number, documents, chunks)
-    config = load_config()
-    staged: list[tuple[Path, Path, ProcurementTenderDocument, int]] = []
+    published = False
     try:
+        os.replace(stage_procurement, final_dir)
+        published = True
+        base["persistent_filesystem_mutation_performed"] = True
         for document in documents:
-            entry_name, _level = unique[document.sha256.lower()]
-            source_stage = Path(
-                tempfile.mkstemp(
-                    prefix="r10-1-source-",
-                    suffix=Path(entry_name).suffix.lower(),
-                    dir="/tmp",
-                )[1]
+            source, extracted = _expected_paths(
+                data_root, request.registry_number, document
             )
-            os.chmod(source_stage, 0o600)
-            with (
-                zipfile.ZipFile(archive) as z,
-                z.open(entry_name) as source,
-                source_stage.open("wb") as target,
-            ):
-                for block in iter(lambda: source.read(1 << 20), b""):
-                    target.write(block)
-            digest = _sha256(source_stage)
-            extension = Path(entry_name).suffix.lower() or ".xml"
-            source_final, text_final = _document_layout(
-                data_root, request.registry_number, digest, extension
-            )
-            text_stage = Path(tempfile.mkstemp(prefix="r10-1-text-", dir="/tmp")[1])
-            os.chmod(text_stage, 0o600)
-            fake = SimpleNamespace(
-                text_extraction_status="pending",
-                local_path=str(source_stage),
-                file_name=f"{digest}{extension}",
-                id=document.id,
-                extracted_text_path=None,
-                extracted_text_chars=None,
-            )
-            extraction_helper(fake, text_stage.parent, config)
-            produced = (
-                Path(fake.extracted_text_path) if fake.extracted_text_path else None
-            )
-            if (
-                fake.text_extraction_status != "extracted"
-                or produced is None
-                or not produced.is_file()
-            ):
-                raise RuntimeError("extraction_failed")
-            os.replace(produced, text_stage)
-            chars = len(text_stage.read_text(encoding="utf-8"))
-            staged.append((source_stage, text_stage, document, chars))
-        published = []
-        for source_stage, text_stage, document, chars in staged:
-            source_final, text_final = _document_layout(
-                data_root,
-                request.registry_number,
-                document.sha256.lower(),
-                Path(source_stage).suffix,
-            )
-            _publish(source_stage, text_stage, source_final, text_final)
-            published.extend([source_final, text_final])
-            document.local_path = str(source_final)
-            document.extracted_text_path = str(text_final)
+            document.local_path = str(source)
+            document.extracted_text_path = str(extracted)
             document.download_status = "downloaded"
             document.text_extraction_status = "extracted"
-            document.extracted_text_chars = chars
-            document.size_bytes = source_final.stat().st_size
-        session.commit()
-        chunk_before = len(chunks)
-        after_first = after_second = chunk_before
-        stable = True
-        if request.build_chunks:
-            repo = TenderRepository(session)
-            indexer = chunk_indexer_factory(repo, config)
-            indexer.build_for_tender(tender.id)
-            session.expire_all()
-            after_first = len(
-                session.execute(
-                    select(ProcurementDocumentChunk).where(
-                        ProcurementDocumentChunk.tender_id == tender.id
-                    )
+            document.extracted_text_chars = len(_utf8_nonempty(extracted) or "")
+            document.size_bytes = source.stat().st_size
+        repo = TenderRepository(session)
+        indexer = indexer_factory(repo, load_config())
+        indexer.build_for_tender(tender.id, commit=False)
+        first_chunks = list(
+            session.execute(
+                select(ProcurementDocumentChunk).where(
+                    ProcurementDocumentChunk.tender_id == tender.id
                 )
-                .scalars()
-                .all()
-            )
-            first_hashes = [
-                c.text_hash
-                for c in session.execute(
-                    select(ProcurementDocumentChunk)
-                    .where(ProcurementDocumentChunk.tender_id == tender.id)
-                    .order_by(
-                        ProcurementDocumentChunk.document_id,
-                        ProcurementDocumentChunk.chunk_index,
-                    )
-                ).scalars()
-            ]
-            indexer.build_for_tender(tender.id)
-            session.expire_all()
-            final_chunks = (
-                session.execute(
-                    select(ProcurementDocumentChunk)
-                    .where(ProcurementDocumentChunk.tender_id == tender.id)
-                    .order_by(
-                        ProcurementDocumentChunk.document_id,
-                        ProcurementDocumentChunk.chunk_index,
-                    )
-                )
-                .scalars()
-                .all()
-            )
-            after_second = len(final_chunks)
-            stable = first_hashes == [c.text_hash for c in final_chunks]
-        return _report(
-            mode="apply",
-            database_ready=True,
-            alembic_revision=revision,
-            soap_status=soap_status,
-            backup_created=True,
-            files_published=len(published),
-            documents_updated=len(documents),
-            chunk_count_before=chunk_before,
-            chunk_count_after_first_build=after_first,
-            chunk_count_after_second_build=after_second,
-            chunk_hashes_stable=stable,
-            classification="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT"
-            if request.build_chunks and stable
-            else "DOCUMENTS_RESTORED",
-            final_status="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT"
-            if request.build_chunks and stable
-            else "DOCUMENTS_RESTORED",
+            ).scalars()
         )
-    except (OSError, RuntimeError, ValueError, zipfile.BadZipFile):
-        session.rollback()
-        for source_stage, text_stage, _, _ in staged:
-            source_stage.unlink(missing_ok=True)
-            text_stage.unlink(missing_ok=True)
+        valid_first, metrics_first, ordered_first = _chunk_snapshot(
+            first_chunks, documents, tender.id
+        )
+        if not valid_first:
+            raise RuntimeError("chunk_build_failed")
+        indexer.build_for_tender(tender.id, commit=False)
+        second_chunks = list(
+            session.execute(
+                select(ProcurementDocumentChunk).where(
+                    ProcurementDocumentChunk.tender_id == tender.id
+                )
+            ).scalars()
+        )
+        valid_second, metrics_second, ordered_second = _chunk_snapshot(
+            second_chunks, documents, tender.id
+        )
+        if (
+            not valid_second
+            or metrics_first != metrics_second
+            or ordered_first != ordered_second
+        ):
+            raise RuntimeError("chunk_idempotency_failed")
+        session.commit()
+        base.update(
+            {
+                "backup_created": backup.exists(),
+                "files_published": len(documents) * 2,
+                "documents_updated_count": len(documents),
+                "chunk_count_before": len(chunks),
+                "chunk_count_after_first_build": metrics_first["chunk_count"],
+                "chunk_count_after_second_build": metrics_second["chunk_count"],
+                "nonempty_chunk_count": metrics_second["nonempty_chunk_count"],
+                "token_estimate": metrics_second["token_estimate"],
+                "chunk_hashes_stable": True,
+                "database_mutation_performed": True,
+            }
+        )
         return _report(
-            mode="apply",
-            database_ready=True,
-            alembic_revision=revision,
+            **base,
+            classification="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+            final_status="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+        )
+    except (
+        OSError,
+        RuntimeError,
+        ValueError,
+        SQLAlchemyError,
+        zipfile.BadZipFile,
+    ) as exc:
+        session.rollback()
+        if published:
+            try:
+                shutil.rmtree(final_dir)
+                base["filesystem_rollback_performed"] = True
+            except OSError:
+                return _report(
+                    **base,
+                    classification="DOCUMENT_RECOVERY_ROLLBACK_FAILED",
+                    final_status="DOCUMENT_RECOVERY_ROLLBACK_FAILED",
+                )
+        classification = (
+            "DOCUMENT_RECOVERY_CHUNK_BUILD_FAILED"
+            if "chunk" in str(exc)
+            else "DOCUMENT_RECOVERY_DATABASE_COMMIT_FAILED"
+        )
+        return _report(
+            **base, classification=classification, final_status=classification
+        )
+
+
+def _run_chunks_only(
+    request,
+    session,
+    tender,
+    documents,
+    chunks,
+    backup_dir,
+    settings,
+    revision,
+    indexer_factory,
+):
+    base = _report(
+        mode="apply",
+        database_ready=True,
+        alembic_revision=revision,
+        expected_document_count=len(documents),
+        persistent_filesystem_mutation_performed=False,
+    )
+    try:
+        backup = _backup_documents(
+            backup_dir, request.registry_number, documents, chunks
+        )
+        indexer = indexer_factory(TenderRepository(session), load_config())
+        indexer.build_for_tender(tender.id, commit=False)
+        current = list(
+            session.execute(
+                select(ProcurementDocumentChunk).where(
+                    ProcurementDocumentChunk.tender_id == tender.id
+                )
+            ).scalars()
+        )
+        valid, metrics, ordered = _chunk_snapshot(current, documents, tender.id)
+        if not valid:
+            raise RuntimeError("chunk_build_failed")
+        indexer.build_for_tender(tender.id, commit=False)
+        final = list(
+            session.execute(
+                select(ProcurementDocumentChunk).where(
+                    ProcurementDocumentChunk.tender_id == tender.id
+                )
+            ).scalars()
+        )
+        valid2, metrics2, ordered2 = _chunk_snapshot(final, documents, tender.id)
+        if not valid2 or metrics != metrics2 or ordered != ordered2:
+            raise RuntimeError("chunk_idempotency_failed")
+        session.commit()
+        return _report(
+            **base,
             backup_created=backup.exists(),
-            classification="DOCUMENT_RECOVERY_DATABASE_COMMIT_FAILED",
-            final_status="DOCUMENT_RECOVERY_DATABASE_COMMIT_FAILED",
+            chunk_count_before=len(chunks),
+            chunk_count_after_first_build=metrics["chunk_count"],
+            chunk_count_after_second_build=metrics2["chunk_count"],
+            nonempty_chunk_count=metrics2["nonempty_chunk_count"],
+            token_estimate=metrics2["token_estimate"],
+            chunk_hashes_stable=True,
+            database_mutation_performed=True,
+            classification="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+            final_status="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+        )
+    except (OSError, RuntimeError, ValueError, SQLAlchemyError) as exc:
+        session.rollback()
+        return _report(
+            **base,
+            classification="DOCUMENT_RECOVERY_CHUNK_BUILD_FAILED",
+            final_status="DOCUMENT_RECOVERY_CHUNK_BUILD_FAILED",
+            error_code=type(exc).__name__,
         )

@@ -1,8 +1,12 @@
+import hashlib
 import struct
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 from src.modules.production_llm_analysis.document_recovery import (
     DocumentRecoveryRequest,
@@ -11,6 +15,14 @@ from src.modules.production_llm_analysis.document_recovery import (
     inspect_zip,
     validate_data_root,
 )
+from src.shared.db.base import Base
+from src.tender_research.config import TenderResearchConfig
+from src.tender_research.models import (
+    ProcurementDocumentChunk,
+    ProcurementTender,
+    ProcurementTenderDocument,
+)
+from src.tender_research.rag.indexer import DocumentChunkIndexer
 
 
 def make_zip(path: Path, entries: list[tuple[str, bytes]]) -> Path:
@@ -18,6 +30,99 @@ def make_zip(path: Path, entries: list[tuple[str, bytes]]) -> Path:
         for name, content in entries:
             archive.writestr(name, content)
     return path
+
+
+def _recovery_fixture(
+    tmp_path: Path,
+    monkeypatch,
+    content: bytes = b"<doc>text</doc>",
+    old_chars: int = 7,
+):
+    from src.modules.production_llm_analysis import document_recovery as recovery
+
+    database = tmp_path / "recovery.db"
+    engine = create_engine(f"sqlite:///{database}", future=True)
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            ProcurementTender.__table__,
+            ProcurementTenderDocument.__table__,
+            ProcurementDocumentChunk.__table__,
+        ],
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text("CREATE TABLE alembic_version (version_num VARCHAR(255))")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO alembic_version (version_num) VALUES ('096_add_r8_canonical_snapshot_binding')"
+            )
+        )
+    digest = hashlib.sha256(content).hexdigest()
+    with Session(engine) as session:
+        tender = ProcurementTender(
+            source="eis",
+            external_id="external",
+            registry_number="registry",
+            title="Tender",
+        )
+        session.add(tender)
+        session.flush()
+        session.add(
+            ProcurementTenderDocument(
+                tender_id=tender.id,
+                file_name="doc.xml",
+                sha256=digest,
+                download_status="pending",
+                text_extraction_status="pending",
+                extracted_text_chars=old_chars,
+            )
+        )
+        session.commit()
+    archive = tmp_path / "archive.zip"
+    make_zip(archive, [("doc.xml", content)])
+
+    class FakeClient:
+        def __init__(self, _settings):
+            self.called = False
+
+        def get_docs_by_reestr_number(self, _registry):
+            self.called = True
+            return SimpleNamespace(
+                status="completed", archive_url="https://example.test/archive"
+            )
+
+        def download_archive(self, _url, destination):
+            target = destination / "download.zip"
+            target.write_bytes(archive.read_bytes())
+            return SimpleNamespace(stored_name=target.name)
+
+    client = FakeClient(None)
+
+    def extract(fake, output_dir, _config):
+        result = output_dir / f"{fake.id}.txt"
+        result.write_text("text-ok", encoding="utf-8")
+        fake.extracted_text_path = str(result)
+        fake.text_extraction_status = "extracted"
+
+    monkeypatch.setattr(
+        recovery,
+        "Settings",
+        lambda **_kwargs: SimpleNamespace(database_url=f"sqlite:///{database}"),
+    )
+    monkeypatch.setattr(recovery, "get_zakupki_soap_settings", lambda: object())
+    monkeypatch.setattr(
+        recovery,
+        "_schema_revision",
+        lambda _engine: ("096_add_r8_canonical_snapshot_binding", True),
+    )
+    env_file = tmp_path / "env"
+    env_file.write_text("AI_CORP_DATABASE_URL=ignored\n", encoding="utf-8")
+    request = DocumentRecoveryRequest(
+        "registry", env_file, tmp_path / "data", tmp_path / "backup"
+    )
+    return recovery, engine, client, extract, request, database
 
 
 def test_inspect_zip_reports_exact_hash_and_safe_inventory(tmp_path: Path) -> None:
@@ -220,3 +325,147 @@ def test_build_chunks_requires_apply(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="requires --apply"):
         recover_procurement_documents(request)
+
+
+def test_recovery_dry_run_executes_extraction_without_persistent_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recovery, engine, client, extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch
+    )
+
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings: client,
+        extraction_helper=extractor,
+    )
+
+    assert report["final_status"] == "RECOVERY_PREFLIGHT_READY"
+    assert report["extraction_attempted_count"] == 1
+    assert report["extraction_success_count"] == 1
+    assert report["persistent_filesystem_mutation_performed"] is False
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "backup").exists()
+    assert client.called is True
+    engine.dispose()
+
+
+def test_recovery_dry_run_allows_char_count_drift(tmp_path: Path, monkeypatch) -> None:
+    recovery, engine, client, extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch, old_chars=999
+    )
+
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings: client,
+        extraction_helper=extractor,
+    )
+
+    assert report["final_status"] == "RECOVERY_PREFLIGHT_READY"
+    assert report["char_count_changed_document_count"] == 1
+    assert report["old_extracted_chars_sum"] == 999
+    assert report["new_extracted_chars_sum"] == 7
+    engine.dispose()
+
+
+def test_recovery_dry_run_fails_closed_on_extraction_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recovery, engine, client, _extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch
+    )
+
+    def failing_extractor(*_args):
+        raise RuntimeError("extractor failed")
+
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings: client,
+        extraction_helper=failing_extractor,
+    )
+
+    assert report["final_status"] == "RECOVERY_PREFLIGHT_EXTRACTION_REJECTED"
+    assert report["extraction_attempted_count"] == 1
+    assert report["extraction_success_count"] == 0
+    assert report["extraction_failed_count"] == 1
+    assert report["provider_called"] is False
+    assert not (tmp_path / "data").exists()
+    engine.dispose()
+
+
+@pytest.mark.parametrize("bad_hash", [None, "not-a-sha256"])
+def test_recovery_rejects_null_or_nonhex_hash_before_soap(
+    tmp_path: Path, monkeypatch, bad_hash: str | None
+) -> None:
+    recovery, engine, client, extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch
+    )
+    with engine.begin() as connection:
+        connection.execute(
+            text("UPDATE procurement_tender_documents SET sha256 = :sha"),
+            {"sha": bad_hash},
+        )
+
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings: client,
+        extraction_helper=extractor,
+    )
+
+    assert report["final_status"] == "RECOVERY_PREFLIGHT_IDENTITY_MISMATCH"
+    assert client.called is False
+    engine.dispose()
+
+
+def test_recovery_rejects_schema_revision_mismatch_before_soap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recovery, engine, client, extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch
+    )
+    monkeypatch.setattr(
+        recovery,
+        "_schema_revision",
+        lambda _engine: ("095_old_revision", False),
+    )
+
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings: client,
+        extraction_helper=extractor,
+    )
+
+    assert report["final_status"] == "DOCUMENT_RECOVERY_SCHEMA_MISMATCH"
+    assert client.called is False
+    engine.dispose()
+
+
+def test_legacy_chunk_indexer_commits_by_default() -> None:
+    class FakeSession:
+        def __init__(self):
+            self.commits = 0
+            self.flushes = 0
+
+        def commit(self):
+            self.commits += 1
+
+        def flush(self):
+            self.flushes += 1
+
+    class FakeRepo:
+        def __init__(self):
+            self._session = FakeSession()
+
+        def list_extracted_documents_by_tender(self, _tender_id):
+            return []
+
+    repo = FakeRepo()
+    indexer = DocumentChunkIndexer(repo, TenderResearchConfig())
+
+    indexer.build_for_tender("tender")
+    assert repo._session.commits == 1
+    assert repo._session.flushes == 0
+
+    indexer.build_for_tender("tender", commit=False)
+    assert repo._session.commits == 1
+    assert repo._session.flushes == 1
