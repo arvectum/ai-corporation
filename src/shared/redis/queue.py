@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -58,7 +58,7 @@ class QueueEnvelope:
             "procurement_case_id": self.procurement_case_id,
             "run_id": self.run_id,
             "payload": self.payload,
-            "enqueued_at": self.enqueued_at or datetime.now(timezone.utc).isoformat(),
+            "enqueued_at": self.enqueued_at or datetime.now(UTC).isoformat(),
             "attempt": self.attempt,
             "max_attempts": self.max_attempts,
             "visibility_timeout_seconds": self.visibility_timeout_seconds,

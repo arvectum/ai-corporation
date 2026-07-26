@@ -50,10 +50,10 @@ def get(key: str) -> object | None:
         logger.warning("Cache corrupt value", extra={"operation": "get"})
         try:
             client.delete(key)
-        except Exception:
+        except Exception:  # noqa: BLE001, S110
             pass
         return None
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning("Cache get error", extra={"operation": "get"})
         return None
 
@@ -68,7 +68,7 @@ def set(key: str, value: object, ttl_seconds: int | None = None) -> None:
     try:
         raw = _serialize(value)
         client.set(key, raw, ex=ttl)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning("Cache set error", extra={"operation": "set"})
 
 
@@ -78,5 +78,5 @@ def delete(key: str) -> None:
         return
     try:
         client.delete(key)
-    except Exception:
+    except Exception:  # noqa: BLE001
         logger.warning("Cache delete error", extra={"operation": "delete"})

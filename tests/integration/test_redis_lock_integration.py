@@ -1,11 +1,12 @@
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
+
 import pytest
+
 from src.shared.redis.client import reset_redis_runtime
 from src.shared.redis.errors import RedisAlreadyLockedError, RedisLockTimeoutError
 from src.shared.redis.lock import acquire, release
-
 
 pytestmark = pytest.mark.integration
 

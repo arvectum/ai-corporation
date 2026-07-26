@@ -7,9 +7,9 @@ from src.shared.redis.errors import (
 )
 
 __all__ = [
-    "RedisDisabledError",
-    "RedisUnavailableError",
     "RedisAlreadyLockedError",
-    "RedisLockTimeoutError",
+    "RedisDisabledError",
     "RedisLockNotOwnedError",
+    "RedisLockTimeoutError",
+    "RedisUnavailableError",
 ]

@@ -1,6 +1,8 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
+
 import pytest
+
 from src.shared.redis.queue import QueueEnvelope
 
 
@@ -16,7 +18,7 @@ class TestQueueEnvelopeValidation:
             procurement_case_id="case_1",
             run_id="run_1",
             payload={"key": "value"},
-            enqueued_at=datetime.now(timezone.utc).isoformat(),
+            enqueued_at=datetime.now(UTC).isoformat(),
             deduplication_key=uuid4().hex,
         )
         envelope.validate()

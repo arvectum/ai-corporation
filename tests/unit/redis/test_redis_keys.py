@@ -1,6 +1,8 @@
 import hashlib
+
 import pytest
-from src.shared.redis.keys import build_key, build_idempotency_key, build_lock_key
+
+from src.shared.redis.keys import build_idempotency_key, build_key, build_lock_key
 
 
 class TestKeyBuilder:
@@ -37,7 +39,7 @@ class TestKeyBuilder:
             build_key("arvectum", "test", "lock", tenant="")
 
     def test_deterministic(self):
-        kwargs = dict(namespace="ns", environment="env", component="c", customer="cust", project="proj")
+        kwargs = {"namespace": "ns", "environment": "env", "component": "c", "customer": "cust", "project": "proj"}
         assert build_key(**kwargs) == build_key(**kwargs)
 
     def test_cross_tenant_isolation(self):

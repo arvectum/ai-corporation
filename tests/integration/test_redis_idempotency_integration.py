@@ -1,9 +1,10 @@
 import os
 import time
+
 import pytest
+
 from src.shared.redis.client import reset_redis_runtime
 from src.shared.redis.idempotency import claim, release
-
 
 pytestmark = pytest.mark.integration
 

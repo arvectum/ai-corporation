@@ -1,9 +1,10 @@
 import os
 import time
-import pytest
-from src.shared.redis.client import close_client, reset_redis_runtime
-from src.shared.redis.cache import get, set, delete
 
+import pytest
+
+from src.shared.redis.cache import delete, get, set
+from src.shared.redis.client import close_client, reset_redis_runtime
 
 pytestmark = pytest.mark.integration
 

@@ -1,26 +1,29 @@
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+
 import pytest
 from fastapi.testclient import TestClient
-from src.main import app
 
+from src.main import app
 
 pytestmark = pytest.mark.integration
 
 
 @pytest.fixture()
 def client():
-    from src.shared.api.dependencies import get_db_session
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
-    from src.shared.db.base import Base
+
+    from src.shared.api.dependencies import get_db_session
     from src.shared.db import models  # noqa: F401
+    from src.shared.db.base import Base
     from src.shared.redis.client import reset_redis_runtime
 
     reset_redis_runtime()
-    import redis as redis_py
     import os
+
+    import redis as redis_py
     r = redis_py.Redis.from_url(os.environ.get("AI_CORP_REDIS_URL", "redis://127.0.0.1:6379/1"))
     r.flushdb()
 

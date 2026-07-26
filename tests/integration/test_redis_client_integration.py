@@ -1,7 +1,14 @@
 import pytest
-from src.shared.redis.client import close_client, get_client, ping, health_snapshot, require_client, reset_redis_runtime
-from src.shared.redis.errors import RedisDisabledError
 
+from src.shared.redis.client import (
+    close_client,
+    get_client,
+    health_snapshot,
+    ping,
+    require_client,
+    reset_redis_runtime,
+)
+from src.shared.redis.errors import RedisDisabledError
 
 pytestmark = pytest.mark.integration
 

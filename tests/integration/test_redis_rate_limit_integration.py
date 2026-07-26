@@ -1,9 +1,10 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
+
 import pytest
+
 from src.shared.redis.client import reset_redis_runtime
 from src.shared.redis.rate_limit import check
-
 
 pytestmark = pytest.mark.integration
 

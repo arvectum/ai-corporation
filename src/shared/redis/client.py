@@ -5,7 +5,6 @@ import time
 from threading import Lock
 
 import redis as redis_py
-
 from src.shared.config.settings import get_settings
 from src.shared.redis.errors import RedisDisabledError, RedisUnavailableError
 
@@ -75,7 +74,7 @@ def close_client() -> None:
         if _client_instance is not None:
             try:
                 _client_instance.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.warning("Redis client close failed", extra={"operation": "close"})
             _client_instance = None
         _client_disabled = False

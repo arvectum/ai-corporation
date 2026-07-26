@@ -176,7 +176,7 @@ class Settings(BaseSettings):
             url = self.arvectum_redis_url
             if not url:
                 raise ValueError("ARVECTUM_REDIS_URL is required when REDIS_ENABLED=true")
-            if not (url.startswith("redis://") or url.startswith("rediss://")):
+            if not url.startswith(("redis://", "rediss://")):
                 raise ValueError("ARVECTUM_REDIS_URL must start with redis:// or rediss://")
             if not self.arvectum_redis_namespace.strip():
                 raise ValueError("ARVECTUM_REDIS_NAMESPACE must not be empty in production")
