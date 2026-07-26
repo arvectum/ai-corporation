@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/nomenclature.schema.json",
+  "title": "ARV-067 electrical nomenclature",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "catalog_id",
+    "version",
+    "status",
+    "locale",
+    "runtime_import",
+    "purpose",
+    "source_snapshots",
+    "coverage",
+    "sections",
+    "governance"
+  ],
+  "properties": {
+    "catalog_id": {
+      "const": "ARV-067-ELECTRICAL-NOMENCLATURE"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "status": {
+      "const": "research_asset"
+    },
+    "locale": {
+      "const": "ru-RU"
+    },
+    "runtime_import": {
+      "const": false
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 30
+    },
+    "source_snapshots": {
+      "type": "array",
+      "minItems": 2
+    },
+    "coverage": {
+      "type": "object"
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 28,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title_ru",
+          "registry",
+          "registry_row_start",
+          "registry_page_start",
+          "aliases",
+          "subcategories",
+          "discriminator_attributes",
+          "detailed_profile_refs",
+          "profile_status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "title_ru": {
+            "type": "string",
+            "minLength": 3
+          },
+          "registry": {
+            "enum": [
+              "primary",
+              "secondary"
+            ]
+          },
+          "registry_row_start": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "registry_page_start": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "aliases": {
+            "type": "array",
+            "minItems": 3
+          },
+          "subcategories": {
+            "type": "array",
+            "minItems": 3
+          },
+          "discriminator_attributes": {
+            "type": "array",
+            "minItems": 5
+          },
+          "detailed_profile_refs": {
+            "type": "array"
+          },
+          "profile_status": {
+            "enum": [
+              "taxonomy_only",
+              "detailed_and_taxonomy"
+            ]
+          }
+        }
+      }
+    },
+    "governance": {
+      "type": "object"
+    }
+  }
+}
