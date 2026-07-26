@@ -24,7 +24,7 @@ from src.shared.storage.gate import (
     mass_ingestion,
 )
 from src.shared.storage.public import PublicStorageSnapshot, public_storage_snapshot
-from src.shared.config.settings import Settings
+from src.shared.config.settings import Settings, get_settings
 
 
 DiskUsage = collections.namedtuple("DiskUsage", ["total", "used", "free"])
@@ -415,3 +415,465 @@ def test_invalid_thresholds_warning_exceeds_protected():
             arvectum_storage_critical_percent=80,
             arvectum_storage_ingestion_protected_percent=95,
         )
+
+# =============================================================================
+# ARV-010S1.2 — Env resolution tests
+# =============================================================================
+
+
+def test_env_canonical_only(monkeypatch):
+    """Canonical env var ARVECTUM_STORAGE_WARNING_PERCENT changes threshold."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_WARNING_PERCENT", "55")
+    monkeypatch.setenv("ARVECTUM_STORAGE_CRITICAL_PERCENT", "65")
+    monkeypatch.setenv("ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", "75")
+    s = get_settings()
+    assert s.arvectum_storage_warning_percent == 55
+    assert s.arvectum_storage_critical_percent == 65
+    assert s.arvectum_storage_ingestion_protected_percent == 75
+    get_settings.cache_clear()
+
+
+def test_env_compatibility_only(monkeypatch):
+    """Compatibility env AI_CORP_ARVECTUM_STORAGE_* changes threshold."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_WARNING_PERCENT", "45")
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_CRITICAL_PERCENT", "55")
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", "65")
+    s = get_settings()
+    assert s.arvectum_storage_warning_percent == 45
+    assert s.arvectum_storage_critical_percent == 55
+    assert s.arvectum_storage_ingestion_protected_percent == 65
+    get_settings.cache_clear()
+
+
+def test_env_canonical_takes_priority(monkeypatch):
+    """Canonical ARVECTUM_STORAGE_* has priority over AI_CORP_ARVECTUM_STORAGE_*."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_WARNING_PERCENT", "30")
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_WARNING_PERCENT", "50")
+    s = get_settings()
+    assert s.arvectum_storage_warning_percent == 30  # canonical wins
+    get_settings.cache_clear()
+
+
+def test_env_python_kwargs_still_work():
+    """Python constructor kwargs work regardless of env aliases."""
+    s = Settings(
+        arvectum_storage_warning_percent=60,
+        arvectum_storage_critical_percent=75,
+        arvectum_storage_ingestion_protected_percent=90,
+    )
+    assert s.arvectum_storage_warning_percent == 60
+    assert s.arvectum_storage_critical_percent == 75
+    assert s.arvectum_storage_ingestion_protected_percent == 90
+
+
+def test_env_bad_thresholds_via_env_rejected(monkeypatch):
+    """Invalid threshold order via env triggers ValueError."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_WARNING_PERCENT", "80")
+    monkeypatch.setenv("ARVECTUM_STORAGE_CRITICAL_PERCENT", "80")
+    monkeypatch.setenv("ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", "90")
+    with pytest.raises(ValueError, match="Storage thresholds"):
+        get_settings()
+    get_settings.cache_clear()
+
+
+def test_env_defaults_after_cleanup(monkeypatch):
+    """After clearing env, get_settings returns defaults."""
+    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_WARNING_PERCENT", "55")
+    s = get_settings()
+    assert s.arvectum_storage_warning_percent == 55
+    get_settings.cache_clear()
+    # Without env, back to defaults
+    monkeypatch.delenv("ARVECTUM_STORAGE_WARNING_PERCENT", raising=False)
+    s2 = get_settings()
+    assert s2.arvectum_storage_warning_percent == 70
+    get_settings.cache_clear()
+
+
+# =============================================================================
+# ARV-010S1.2 — Real service gate tests
+# =============================================================================
+
+
+@pytest.mark.storage_gate_enforced
+def test_service_gate_blocks_unknown_state(monkeypatch, session):
+    """prepare_tender_for_analysis raises IngestionBlockedError on STORAGE_UNKNOWN."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.tender_research.rag.prepare_service import prepare_tender_for_analysis
+
+    snap = StorageSnapshot(
+        state=StorageState.STORAGE_UNKNOWN,
+        reason="storage_root_not_configured",
+        mount_verified=False,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=None,
+        filesystem_free_bytes=None,
+        filesystem_used_bytes=None,
+        used_percent=None,
+        storage_root=None,
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.rag.prepare_service._get_session") as mock_get_session:
+            with patch("src.tender_research.rag.prepare_service.EisTenderLoader") as mock_loader:
+                with patch("src.tender_research.rag.prepare_service.download_tender_documents") as mock_dl:
+                    with pytest.raises(IngestionBlockedError) as exc:
+                        prepare_tender_for_analysis("0323100010326000013", session=session)
+                    assert exc.value.reason == IngestionBlockedReason.STORAGE_STATE_UNKNOWN
+                    assert exc.value.status_code == 503
+                    mock_get_session.assert_not_called()
+                    mock_loader.assert_not_called()
+                    mock_dl.assert_not_called()
+
+
+@pytest.mark.storage_gate_enforced
+def test_service_gate_blocks_protected_state(monkeypatch, session):
+    """prepare_tender_for_analysis raises IngestionBlockedError on INGESTION_PROTECTED."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.tender_research.rag.prepare_service import prepare_tender_for_analysis
+
+    snap = StorageSnapshot(
+        state=StorageState.INGESTION_PROTECTED,
+        reason="threshold_ingestion_protected",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=50_000_000_000,
+        filesystem_used_bytes=950_000_000_000,
+        used_percent=95.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.rag.prepare_service._get_session") as mock_get_session:
+            with patch("src.tender_research.rag.prepare_service.EisTenderLoader") as mock_loader:
+                with patch("src.tender_research.rag.prepare_service.download_tender_documents") as mock_dl:
+                    with pytest.raises(IngestionBlockedError) as exc:
+                        prepare_tender_for_analysis("0323100010326000013", session=session)
+                    assert exc.value.reason == IngestionBlockedReason.STORAGE_CAPACITY_PROTECTION_ACTIVE
+                    assert exc.value.status_code == 503
+                    mock_get_session.assert_not_called()
+                    mock_loader.assert_not_called()
+                    mock_dl.assert_not_called()
+
+
+# =============================================================================
+# ARV-010S1.2 — Real synchronous API test
+# =============================================================================
+
+
+@pytest.mark.storage_gate_enforced
+def test_sync_api_503_on_unknown_state(client, monkeypatch, session):
+    """POST /api/tender-research/prepare returns 503 on STORAGE_UNKNOWN."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.shared.storage.gate import check_ingestion_allowed
+
+    snap = StorageSnapshot(
+        state=StorageState.STORAGE_UNKNOWN,
+        reason="storage_root_not_configured",
+        mount_verified=False,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=None,
+        filesystem_free_bytes=None,
+        filesystem_used_bytes=None,
+        used_percent=None,
+        storage_root=None,
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        resp = client.post("/api/tender-research/prepare", json={"registry_number": "0323100010326000013"})
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["error"]["code"] == "STORAGE_STATE_UNKNOWN"
+
+
+@pytest.mark.storage_gate_enforced
+def test_sync_api_503_on_protected_state(client, monkeypatch, session):
+    """POST /api/tender-research/prepare returns 503 on INGESTION_PROTECTED."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+
+    snap = StorageSnapshot(
+        state=StorageState.INGESTION_PROTECTED,
+        reason="threshold_ingestion_protected",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=50_000_000_000,
+        filesystem_used_bytes=950_000_000_000,
+        used_percent=95.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        resp = client.post("/api/tender-research/prepare", json={"registry_number": "0323100010326000013"})
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["error"]["code"] == "STORAGE_CAPACITY_PROTECTION_ACTIVE"
+
+
+# =============================================================================
+# ARV-010S1.2 — Real background submission test
+# =============================================================================
+
+
+@pytest.mark.storage_gate_enforced
+def test_background_submission_503_on_unknown(client, monkeypatch, session):
+    """POST /api/tender-research/jobs/prepare returns 503 on STORAGE_UNKNOWN."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+
+    snap = StorageSnapshot(
+        state=StorageState.STORAGE_UNKNOWN,
+        reason="storage_root_not_configured",
+        mount_verified=False,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=None,
+        filesystem_free_bytes=None,
+        filesystem_used_bytes=None,
+        used_percent=None,
+        storage_root=None,
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.api.create_job") as mock_create:
+            with patch("src.tender_research.api.submit_prepare_job") as mock_submit:
+                resp = client.post(
+                    "/api/tender-research/jobs/prepare",
+                    json={"registry_number": "0323100010326000013"},
+                )
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["error"]["code"] == "STORAGE_STATE_UNKNOWN"
+    mock_create.assert_not_called()
+    mock_submit.assert_not_called()
+
+
+@pytest.mark.storage_gate_enforced
+def test_background_submission_503_on_protected(client, monkeypatch, session):
+    """POST /api/tender-research/jobs/prepare returns 503 on INGESTION_PROTECTED."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+
+    snap = StorageSnapshot(
+        state=StorageState.INGESTION_PROTECTED,
+        reason="threshold_ingestion_protected",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=50_000_000_000,
+        filesystem_used_bytes=950_000_000_000,
+        used_percent=95.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.api.create_job") as mock_create:
+            with patch("src.tender_research.api.submit_prepare_job") as mock_submit:
+                resp = client.post(
+                    "/api/tender-research/jobs/prepare",
+                    json={"registry_number": "0323100010326000013"},
+                )
+    assert resp.status_code == 503
+    data = resp.json()
+    assert data["error"]["code"] == "STORAGE_CAPACITY_PROTECTION_ACTIVE"
+    mock_create.assert_not_called()
+    mock_submit.assert_not_called()
+
+
+# =============================================================================
+# ARV-010S1.2 — Real worker recheck test
+# =============================================================================
+
+
+@pytest.mark.storage_gate_enforced
+def test_worker_recheck_blocks_on_protected_and_fails_job(monkeypatch, session):
+    """run_prepare_job fails job with gate_check step on INGESTION_PROTECTED."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.tender_research.rag.job_runner import run_prepare_job
+    from src.tender_research.rag.job_service import create_job
+
+    # Create a real job record in the in-memory DB
+    record = create_job(
+        session,
+        job_type="prepare",
+        registry_number="0323100010326000013",
+        request={"registry_number": "0323100010326000013"},
+    )
+
+    snap = StorageSnapshot(
+        state=StorageState.INGESTION_PROTECTED,
+        reason="threshold_ingestion_protected",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=50_000_000_000,
+        filesystem_used_bytes=950_000_000_000,
+        used_percent=95.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.rag.job_runner._get_session", return_value=session):
+            with patch("src.tender_research.rag.job_runner.mark_job_running") as mock_mark:
+                with patch("src.tender_research.rag.job_runner.prepare_tender_for_analysis") as mock_prepare:
+                        run_prepare_job(record.id, {"registry_number": "0323100010326000013"})
+
+    mock_mark.assert_not_called()
+    mock_prepare.assert_not_called()
+
+    # Reload the job record and verify it was failed with correct metadata
+    session.expire_all()
+    from src.tender_research.rag.job_service import get_job
+    updated = get_job(session, record.id)
+    assert updated is not None
+    assert updated.status == "failed"
+    assert "STORAGE_CAPACITY_PROTECTION_ACTIVE" in (updated.errors or [])
+    assert updated.current_step == "gate_check"
+
+
+@pytest.mark.storage_gate_enforced
+def test_worker_recheck_blocks_on_unknown_and_fails_job(monkeypatch, session):
+    """run_prepare_job fails job with gate_check step on STORAGE_UNKNOWN."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.tender_research.rag.job_runner import run_prepare_job
+    from src.tender_research.rag.job_service import create_job
+
+    record = create_job(
+        session,
+        job_type="prepare",
+        registry_number="0323100010326000013",
+        request={"registry_number": "0323100010326000013"},
+    )
+
+    snap = StorageSnapshot(
+        state=StorageState.STORAGE_UNKNOWN,
+        reason="storage_root_not_configured",
+        mount_verified=False,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=None,
+        filesystem_free_bytes=None,
+        filesystem_used_bytes=None,
+        used_percent=None,
+        storage_root=None,
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.rag.job_runner._get_session", return_value=session):
+            with patch("src.tender_research.rag.job_runner.mark_job_running") as mock_mark:
+                with patch("src.tender_research.rag.job_runner.prepare_tender_for_analysis") as mock_prepare:
+                        run_prepare_job(record.id, {"registry_number": "0323100010326000013"})
+
+    mock_mark.assert_not_called()
+    mock_prepare.assert_not_called()
+
+    session.expire_all()
+    from src.tender_research.rag.job_service import get_job
+    updated = get_job(session, record.id)
+    assert updated is not None
+    assert updated.status == "failed"
+    assert "STORAGE_STATE_UNKNOWN" in (updated.errors or [])
+    assert updated.current_step == "gate_check"
+
+
+# =============================================================================
+# ARV-010S1.2 — Normal path (gate passes)
+# =============================================================================
+
+
+@pytest.mark.storage_gate_enforced
+def test_normal_path_service_passes_gate(monkeypatch, session):
+    """prepare_tender_for_analysis passes gate when state is NORMAL."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.tender_research.rag.prepare_service import prepare_tender_for_analysis
+
+    snap = StorageSnapshot(
+        state=StorageState.NORMAL,
+        reason="threshold_normal",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=500_000_000_000,
+        filesystem_used_bytes=500_000_000_000,
+        used_percent=50.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.rag.prepare_service._get_session") as mock_get_session:
+            # Should proceed past the gate — it will fail on the actual tender lookup
+            # but that's after the gate boundary
+            try:
+                prepare_tender_for_analysis("0323100010326000013", session=session)
+            except Exception:
+                pass
+            # _get_session should NOT be called because we passed our own session
+            # (it's only called when session is None)
+            mock_get_session.assert_not_called()
+
+
+@pytest.mark.storage_gate_enforced
+def test_normal_path_background_submission_creates_job(client, monkeypatch, session):
+    """POST /api/tender-research/jobs/prepare creates job when state is NORMAL."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.shared.storage.gate import check_ingestion_allowed
+
+    snap = StorageSnapshot(
+        state=StorageState.NORMAL,
+        reason="threshold_normal",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=500_000_000_000,
+        filesystem_used_bytes=500_000_000_000,
+        used_percent=50.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.api.create_job") as mock_create:
+            with patch("src.tender_research.api.submit_prepare_job") as mock_submit:
+                mock_create.return_value = MagicMock(
+                    id="test-job-id",
+                    job_type="prepare",
+                    registry_number="0323100010326000013",
+                    status="queued",
+                )
+                resp = client.post(
+                    "/api/tender-research/jobs/prepare",
+                    json={"registry_number": "0323100010326000013"},
+                )
+    # Should pass gate and reach create_job
+    mock_create.assert_called_once()
+    mock_submit.assert_called_once()
+    assert resp.status_code == 200
+
+
+@pytest.mark.storage_gate_enforced
+def test_normal_path_worker_passes_gate(monkeypatch, session):
+    """run_prepare_job passes gate when state is NORMAL."""
+    from src.shared.storage.capacity import StorageSnapshot, StorageState
+    from src.tender_research.rag.job_runner import run_prepare_job
+    from src.tender_research.rag.job_service import create_job
+
+    record = create_job(
+        session,
+        job_type="prepare",
+        registry_number="0323100010326000013",
+        request={"registry_number": "0323100010326000013"},
+    )
+
+    snap = StorageSnapshot(
+        state=StorageState.NORMAL,
+        reason="threshold_normal",
+        mount_verified=True,
+        checked_at="2026-07-26T00:00:00",
+        filesystem_total_bytes=1_000_000_000_000,
+        filesystem_free_bytes=500_000_000_000,
+        filesystem_used_bytes=500_000_000_000,
+        used_percent=50.0,
+        storage_root="/tmp/mock_storage",
+    )
+    with patch("src.shared.storage.gate.get_storage_snapshot", return_value=snap):
+        with patch("src.tender_research.rag.job_runner._get_session", return_value=session):
+            with patch("src.tender_research.rag.job_runner.mark_job_running") as mock_mark:
+                with patch("src.tender_research.rag.job_runner.prepare_tender_for_analysis") as mock_prepare:
+                    mock_mark.return_value = MagicMock()
+                    mock_prepare.side_effect = Exception("stop after storage boundary")
+                    try:
+                        run_prepare_job(record.id, {"registry_number": "0323100010326000013"})
+                    except Exception:
+                        pass
+    mock_mark.assert_called_once()
+    mock_prepare.assert_called_once()

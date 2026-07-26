@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -104,11 +104,25 @@ class Settings(BaseSettings):
     hermes_enabled: bool = False
 
     # Storage capacity guardrails (ARV-010)
-    # NOTE: no validation_alias - pydantic-settings auto-resolves env vars from field name + env_prefix
-    arvectum_storage_root: str | None = Field(default=None)
-    arvectum_storage_warning_percent: int = Field(default=70, ge=0, le=100)
-    arvectum_storage_critical_percent: int = Field(default=80, ge=0, le=100)
-    arvectum_storage_ingestion_protected_percent: int = Field(default=90, ge=0, le=100)
+    # Canonical env: ARVECTUM_STORAGE_*; compatibility: AI_CORP_ARVECTUM_STORAGE_*
+    # Canonical has priority via AliasChoices order.
+    # Python field names work via populate_by_name=True in model_config.
+    arvectum_storage_root: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ARVECTUM_STORAGE_ROOT", "AI_CORP_ARVECTUM_STORAGE_ROOT"),
+    )
+    arvectum_storage_warning_percent: int = Field(
+        default=70, ge=0, le=100,
+        validation_alias=AliasChoices("ARVECTUM_STORAGE_WARNING_PERCENT", "AI_CORP_ARVECTUM_STORAGE_WARNING_PERCENT"),
+    )
+    arvectum_storage_critical_percent: int = Field(
+        default=80, ge=0, le=100,
+        validation_alias=AliasChoices("ARVECTUM_STORAGE_CRITICAL_PERCENT", "AI_CORP_ARVECTUM_STORAGE_CRITICAL_PERCENT"),
+    )
+    arvectum_storage_ingestion_protected_percent: int = Field(
+        default=90, ge=0, le=100,
+        validation_alias=AliasChoices("ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", "AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT"),
+    )
 
     def model_post_init(self, __context, /):
         warning = self.arvectum_storage_warning_percent
@@ -124,6 +138,7 @@ class Settings(BaseSettings):
         env_prefix="AI_CORP_",
         env_file=[".env", ".env.local"],
         extra="ignore",
+        populate_by_name=True,
     )
 
     def allowed_hosts_list(self) -> list[str]:
