@@ -338,6 +338,11 @@ def _report(**values: Any) -> dict[str, Any]:
         "transport_policy_injected": False,
         "runtime_diagnostics_enabled": False,
         "temporary_diagnostics_used": False,
+        "staging_created": False,
+        "staging_cleanup_attempted": False,
+        "staging_cleanup_succeeded": False,
+        "staging_cleanup_retry_performed": False,
+        "staging_persisted_after_cleanup": False,
         "classification": "DOCUMENT_RECOVERY_REJECTED",
         "final_status": "DOCUMENT_RECOVERY_REJECTED",
     }
@@ -579,6 +584,69 @@ def _same_filesystem(staging: Path, final_parent: Path) -> bool:
         return False
 
 
+class _StagingCleanupError(RuntimeError):
+    def __init__(self, error_code: str):
+        super().__init__(error_code)
+        self.error_code = error_code
+
+
+def _validate_staging_path(staging: Path, allowed_parent: Path) -> None:
+    if staging.parent != allowed_parent or not staging.name.startswith(
+        ".r10-1-recovery-staging-"
+    ):
+        raise _StagingCleanupError("staging_cleanup_path_changed")
+    try:
+        if staging.is_symlink():
+            raise _StagingCleanupError("staging_cleanup_symlink_rejected")
+    except OSError as exc:
+        raise _StagingCleanupError("staging_cleanup_os_error") from exc
+
+
+def _repair_staging_permissions(staging: Path) -> None:
+    for root, dirs, files in os.walk(staging, topdown=True, followlinks=False):
+        root_path = Path(root)
+        os.chmod(root_path, 0o700)
+        for name in dirs:
+            path = root_path / name
+            if path.is_symlink():
+                continue
+            os.chmod(path, 0o700)
+        for name in files:
+            path = root_path / name
+            if path.is_symlink():
+                continue
+            os.chmod(path, 0o600)
+
+
+def _cleanup_staging_strict(
+    staging: Path, allowed_parent: Path, cleanup_state: dict[str, Any] | None = None
+) -> bool:
+    _validate_staging_path(staging, allowed_parent)
+    if not staging.exists() and not staging.is_symlink():
+        return True
+    try:
+        shutil.rmtree(staging)
+    except PermissionError:
+        if cleanup_state is not None:
+            cleanup_state["staging_cleanup_retry_performed"] = True
+        try:
+            _validate_staging_path(staging, allowed_parent)
+            _repair_staging_permissions(staging)
+            shutil.rmtree(staging)
+        except PermissionError as exc:
+            raise _StagingCleanupError("staging_cleanup_permission_denied") from exc
+        except OSError as exc:
+            raise _StagingCleanupError("staging_cleanup_os_error") from exc
+    except OSError as exc:
+        raise _StagingCleanupError("staging_cleanup_os_error") from exc
+    try:
+        if staging.exists() or staging.is_symlink():
+            raise _StagingCleanupError("staging_cleanup_not_empty")
+    except OSError as exc:
+        raise _StagingCleanupError("staging_cleanup_os_error") from exc
+    return True
+
+
 def _load_explicit_settings(env_file: Path) -> Settings:
     original_environment = os.environ.copy()
     try:
@@ -638,6 +706,46 @@ def recover_procurement_documents(
     engine_factory: Callable[..., Any] = create_engine,
     root_validator: Callable[[Path, Path], Path] = validate_data_root,
 ) -> dict[str, Any]:
+    cleanup_state = {
+        "staging_created": False,
+        "staging_cleanup_attempted": False,
+        "staging_cleanup_succeeded": False,
+        "staging_cleanup_retry_performed": False,
+        "staging_persisted_after_cleanup": False,
+        "temporary_diagnostics_used": False,
+    }
+    try:
+        report = _recover_procurement_documents_impl(
+            request,
+            soap_client_factory=soap_client_factory,
+            extraction_helper=extraction_helper,
+            chunk_indexer_factory=chunk_indexer_factory,
+            engine_factory=engine_factory,
+            root_validator=root_validator,
+            cleanup_state=cleanup_state,
+        )
+    except _StagingCleanupError as exc:
+        return _report(
+            mode="apply" if request.apply else "dry-run",
+            classification="STAGING_CLEANUP_FAILED",
+            final_status="DOCUMENT_RECOVERY_STAGING_CLEANUP_FAILED",
+            error_code=exc.error_code,
+            **cleanup_state,
+        )
+    report.update(cleanup_state)
+    return report
+
+
+def _recover_procurement_documents_impl(
+    request: DocumentRecoveryRequest,
+    *,
+    soap_client_factory: Callable[[Any], Any] = ZakupkiSoapClient,
+    extraction_helper: Callable[..., None] = _try_extract,
+    chunk_indexer_factory: Callable[..., Any] = DocumentChunkIndexer,
+    engine_factory: Callable[..., Any] = create_engine,
+    root_validator: Callable[[Path, Path], Path] = validate_data_root,
+    cleanup_state: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Run a complete dry-run preflight; persistence requires explicit ``apply``."""
     if request.build_chunks and not request.apply:
         raise ValueError("--build-chunks requires --apply")
@@ -668,6 +776,9 @@ def recover_procurement_documents(
         "runtime_diagnostics_enabled": False,
     }
     staging = None
+    staging_parent = None
+    diagnostics_dir = None
+    cleanup_state = cleanup_state or {}
     try:
         with session_factory() as session:
             try:
@@ -774,6 +885,7 @@ def recover_procurement_documents(
                 )
             )
             os.chmod(staging, 0o700)
+            cleanup_state["staging_created"] = True
             if not _same_filesystem(staging, staging_parent):
                 return _report(
                     **base,
@@ -810,9 +922,6 @@ def recover_procurement_documents(
                     error_code=endpoint_error,
                 )
             diagnostics_dir = staging / "soap-diagnostics"
-            diagnostics_dir.mkdir(mode=0o700)
-            os.chmod(diagnostics_dir, 0o700)
-            base["temporary_diagnostics_used"] = True
             archive_stage = staging / "archive.zip"
             client = soap_client_factory(
                 soap_settings,
@@ -990,9 +1099,26 @@ def recover_procurement_documents(
             error_code=type(exc).__name__,
         )
     finally:
-        if staging is not None:
-            shutil.rmtree(staging, ignore_errors=True)
-        engine.dispose()
+        try:
+            if diagnostics_dir is not None:
+                cleanup_state["temporary_diagnostics_used"] = (
+                    diagnostics_dir.exists() or diagnostics_dir.is_symlink()
+                )
+            if staging is not None:
+                cleanup_state["staging_cleanup_attempted"] = True
+                try:
+                    _cleanup_staging_strict(staging, staging_parent, cleanup_state)
+                except _StagingCleanupError:
+                    cleanup_state["staging_persisted_after_cleanup"] = (
+                        staging.exists() or staging.is_symlink()
+                    )
+                    raise
+                cleanup_state["staging_cleanup_succeeded"] = True
+                cleanup_state["staging_persisted_after_cleanup"] = (
+                    staging.exists() or staging.is_symlink()
+                )
+        finally:
+            engine.dispose()
 
 
 def _publish_and_commit(

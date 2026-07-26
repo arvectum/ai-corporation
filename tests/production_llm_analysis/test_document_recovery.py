@@ -353,6 +353,105 @@ def test_recovery_dry_run_executes_extraction_without_persistent_mutation(
     assert not (tmp_path / "data").exists()
     assert not (tmp_path / "backup").exists()
     assert client.called is True
+    assert report["staging_created"] is True
+    assert report["staging_cleanup_attempted"] is True
+    assert report["staging_cleanup_succeeded"] is True
+    assert report["staging_cleanup_retry_performed"] is False
+    assert report["staging_persisted_after_cleanup"] is False
+    assert report["temporary_diagnostics_used"] is False
+    assert not list(tmp_path.glob(".r10-1-recovery-staging-*"))
+    engine.dispose()
+
+
+def test_staging_cleanup_does_not_follow_symlink(tmp_path: Path) -> None:
+    from src.modules.production_llm_analysis import document_recovery as recovery
+
+    staging = tmp_path / ".r10-1-recovery-staging-test"
+    outside = tmp_path / "outside"
+    staging.mkdir()
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    (staging / "link").symlink_to(outside, target_is_directory=True)
+
+    assert recovery._cleanup_staging_strict(staging, tmp_path) is True
+    assert not staging.exists()
+    assert (outside / "keep.txt").exists()
+
+
+def test_staging_cleanup_rejects_wrong_parent_and_prefix(tmp_path: Path) -> None:
+    from src.modules.production_llm_analysis import document_recovery as recovery
+
+    wrong_prefix = tmp_path / "staging"
+    wrong_prefix.mkdir()
+    with pytest.raises(recovery._StagingCleanupError) as error:
+        recovery._cleanup_staging_strict(wrong_prefix, tmp_path)
+    assert error.value.error_code == "staging_cleanup_path_changed"
+    wrong_prefix.rmdir()
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    valid_name = tmp_path / ".r10-1-recovery-staging-valid"
+    valid_name.mkdir()
+    with pytest.raises(recovery._StagingCleanupError) as error:
+        recovery._cleanup_staging_strict(valid_name, outside)
+    assert error.value.error_code == "staging_cleanup_path_changed"
+    valid_name.rmdir()
+
+
+def test_staging_cleanup_performs_one_bounded_permission_retry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from src.modules.production_llm_analysis import document_recovery as recovery
+
+    staging = tmp_path / ".r10-1-recovery-staging-retry"
+    staging.mkdir()
+    (staging / "payload.txt").write_text("payload", encoding="utf-8")
+    original_rmtree = recovery.shutil.rmtree
+    calls = 0
+
+    def fail_once(path, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise PermissionError("blocked")
+        return original_rmtree(path, *args, **kwargs)
+
+    state = {}
+    monkeypatch.setattr(recovery.shutil, "rmtree", fail_once)
+    assert recovery._cleanup_staging_strict(staging, tmp_path, state) is True
+    assert calls == 2
+    assert state["staging_cleanup_retry_performed"] is True
+    assert not staging.exists()
+
+
+def test_persistent_staging_cleanup_failure_is_not_success(
+    tmp_path: Path, monkeypatch
+) -> None:
+    recovery, engine, client, extractor, request, _database = _recovery_fixture(
+        tmp_path, monkeypatch
+    )
+
+    def always_blocked(*_args, **_kwargs):
+        raise PermissionError("blocked")
+
+    monkeypatch.setattr(recovery.shutil, "rmtree", always_blocked)
+    report = recovery.recover_procurement_documents(
+        request,
+        soap_client_factory=lambda _settings, **_kwargs: client,
+        extraction_helper=extractor,
+        root_validator=lambda data, _backup: data.resolve(),
+    )
+
+    assert report["classification"] == "STAGING_CLEANUP_FAILED"
+    assert report["final_status"] == "DOCUMENT_RECOVERY_STAGING_CLEANUP_FAILED"
+    assert report["error_code"] == "staging_cleanup_permission_denied"
+    assert report["staging_cleanup_succeeded"] is False
+    assert report["staging_cleanup_retry_performed"] is True
+    assert report["staging_persisted_after_cleanup"] is True
+    assert report["final_status"] != "RECOVERY_PREFLIGHT_READY"
+    monkeypatch.undo()
+    for staging in tmp_path.glob(".r10-1-recovery-staging-*"):
+        recovery.shutil.rmtree(staging)
     engine.dispose()
 
 
@@ -696,6 +795,7 @@ def test_same_filesystem_compares_target_device(monkeypatch, tmp_path: Path) -> 
         ("DOCUMENTS_ALREADY_RESTORED_CHUNKS_NOT_REQUESTED", 0),
         ("ALREADY_RECOVERED_AND_CHUNKED", 0),
         ("DOCUMENT_RECOVERY_REJECTED", 2),
+        ("DOCUMENT_RECOVERY_STAGING_CLEANUP_FAILED", 2),
     ],
 )
 def test_cli_exit_code_matches_final_status(
