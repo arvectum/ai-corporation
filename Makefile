@@ -1,4 +1,4 @@
-.PHONY: check test ci test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance eis-preflight r4-local-start
+.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean
 
 check:
 	python -m compileall -q src
@@ -26,6 +26,24 @@ test-r8-acceptance:
 	python scripts/acceptance/run_r8_acceptance.py --phase full
 
 ci: check test
+
+test-redis-unit:
+	python -m pytest -q tests/unit/redis/
+
+test-redis-integration:
+	python -m pytest -q tests/integration/test_redis_*_integration.py --run-integration -p no:cacheprovider
+
+redis-start:
+	docker compose -f docker-compose.redis-test.yml up -d
+
+redis-ping:
+	docker compose -f docker-compose.redis-test.yml exec redis redis-cli ping
+
+redis-stop:
+	docker compose -f docker-compose.redis-test.yml down
+
+redis-clean:
+	docker compose -f docker-compose.redis-test.yml down -v
 
 # Local-only developer targets: require the maintainer's local trust material
 # under /Users/master and are intentionally not used by CI or deployment.

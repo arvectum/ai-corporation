@@ -18,6 +18,7 @@ dependencies = [
   "pydantic-settings>=2.3,<3.0",
   "PyYAML>=6.0,<7.0",
   "psycopg[binary]>=3.1,<4.0",
+  "redis>=5.0,<6.0",
   "reportlab>=4.2,<5.0",
   "sqlalchemy>=2.0.30,<3.0",
   "truststore>=0.10,<1.0",
@@ -44,9 +45,10 @@ include = ["src*"]
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
-  "integration: optional integration tests that are disabled in the default offline profile",
+  "integration: optional integration tests that require a Redis or other service and are disabled in the default offline profile",
   "network: optional tests that require live network access and are disabled by default",
   "llama_cpp: optional tests for llama.cpp-specific integration points, disabled by default",
   "live_smoke: optional live smoke tests for the Mac mini/runtime contour, disabled by default",
   "postgres: optional integration tests that require a PostgreSQL database with pgvector extension",
+  "redis: optional integration tests that require a Redis server, disabled by default",
 ]

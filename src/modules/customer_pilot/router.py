@@ -35,6 +35,10 @@ from src.modules.customer_pilot.binding_verifier import (
 from src.modules.customer_registry.models import CustomerProfile
 from src.shared.api.dependencies import DBSession
 from src.shared.db.base import utcnow
+from src.shared.redis.errors import RedisDisabledError, RedisUnavailableError
+from src.shared.redis.keys import build_lock_key
+from src.shared.redis.lock import acquire as redis_acquire_lock, release as redis_release_lock
+from src.shared.config.settings import get_settings
 from src.tender_research.models import TenderAnalysisRun
 
 router = APIRouter(prefix="/api/operator/pilot", tags=["customer-pilot"])
@@ -227,6 +231,7 @@ def start_run(
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
 ):
     case = _case(session, customer_id, case_id)
+
     existing = session.scalar(
         select(TenderAnalysisRun).where(
             TenderAnalysisRun.procurement_case_id == case_id,
@@ -240,50 +245,28 @@ def start_run(
             "idempotent": True,
             "artifact_key": existing.artifact_key,
         }
-    startable = {"created", "collecting_documents", "failed", "operator_review"}
-    claimed = session.execute(
-        update(ProcurementCase)
-        .where(
-            ProcurementCase.id == case_id,
-            ProcurementCase.customer_id == customer_id,
-            ProcurementCase.status.in_(startable),
+
+    settings = get_settings()
+    lock_token: str | None = None
+    if settings.arvectum_redis_enabled:
+        lock_key = build_lock_key(
+            namespace=settings.arvectum_redis_namespace,
+            environment="production",
+            customer=customer_id,
+            project=case.project_id,
+            case=case_id,
+            operation="start_run",
+            idempotency_key_raw=idempotency_key,
         )
-        .values(status="analyzing", updated_at=utcnow())
-    ).rowcount
-    if claimed != 1:
-        session.rollback()
-        existing = session.scalar(
-            select(TenderAnalysisRun).where(
-                TenderAnalysisRun.procurement_case_id == case_id,
-                TenderAnalysisRun.idempotency_key == idempotency_key,
+        try:
+            lock_token = redis_acquire_lock(lock_key)
+        except (RedisDisabledError, RedisUnavailableError):
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "redis_unavailable", "message": "Run coordination unavailable"},
             )
-        )
-        if existing:
-            return {
-                "id": existing.id,
-                "status": existing.status,
-                "idempotent": True,
-                "artifact_key": existing.artifact_key,
-            }
-        raise HTTPException(409, "A run is already active or case cannot be started")
-    run = TenderAnalysisRun(
-        registry_number=payload.registry_number
-        or case.procurement_number
-        or "manual-documents",
-        status="analyzing",
-        customer_id=customer_id,
-        project_id=case.project_id,
-        procurement_case_id=case_id,
-        idempotency_key=idempotency_key,
-        artifact_key=f"r_{uuid4().hex}",
-        source="customer_pilot",
-    )
+
     try:
-        session.add(run)
-        session.flush()
-        case.current_run_id = run.id
-    except IntegrityError:
-        session.rollback()
         existing = session.scalar(
             select(TenderAnalysisRun).where(
                 TenderAnalysisRun.procurement_case_id == case_id,
@@ -297,22 +280,88 @@ def start_run(
                 "idempotent": True,
                 "artifact_key": existing.artifact_key,
             }
-        raise HTTPException(409, "Concurrent analysis start was rejected")
-    _audit(
-        session,
-        "analysis_started",
-        customer_id=customer_id,
-        project_id=case.project_id,
-        case_id=case_id,
-        run_id=run.id,
-    )
-    session.commit()
-    return {
-        "id": run.id,
-        "status": run.status,
-        "idempotent": False,
-        "artifact_key": run.artifact_key,
-    }
+
+        startable = {"created", "collecting_documents", "failed", "operator_review"}
+        claimed = session.execute(
+            update(ProcurementCase)
+            .where(
+                ProcurementCase.id == case_id,
+                ProcurementCase.customer_id == customer_id,
+                ProcurementCase.status.in_(startable),
+            )
+            .values(status="analyzing", updated_at=utcnow())
+        ).rowcount
+        if claimed != 1:
+            session.rollback()
+            existing = session.scalar(
+                select(TenderAnalysisRun).where(
+                    TenderAnalysisRun.procurement_case_id == case_id,
+                    TenderAnalysisRun.idempotency_key == idempotency_key,
+                )
+            )
+            if existing:
+                return {
+                    "id": existing.id,
+                    "status": existing.status,
+                    "idempotent": True,
+                    "artifact_key": existing.artifact_key,
+                }
+            raise HTTPException(409, "A run is already active or case cannot be started")
+
+        run = TenderAnalysisRun(
+            registry_number=payload.registry_number
+            or case.procurement_number
+            or "manual-documents",
+            status="analyzing",
+            customer_id=customer_id,
+            project_id=case.project_id,
+            procurement_case_id=case_id,
+            idempotency_key=idempotency_key,
+            artifact_key=f"r_{uuid4().hex}",
+            source="customer_pilot",
+        )
+        try:
+            session.add(run)
+            session.flush()
+            case.current_run_id = run.id
+        except IntegrityError:
+            session.rollback()
+            existing = session.scalar(
+                select(TenderAnalysisRun).where(
+                    TenderAnalysisRun.procurement_case_id == case_id,
+                    TenderAnalysisRun.idempotency_key == idempotency_key,
+                )
+            )
+            if existing:
+                return {
+                    "id": existing.id,
+                    "status": existing.status,
+                    "idempotent": True,
+                    "artifact_key": existing.artifact_key,
+                }
+            raise HTTPException(409, "Concurrent analysis start was rejected")
+
+        _audit(
+            session,
+            "analysis_started",
+            customer_id=customer_id,
+            project_id=case.project_id,
+            case_id=case_id,
+            run_id=run.id,
+        )
+        session.commit()
+        return {
+            "id": run.id,
+            "status": run.status,
+            "idempotent": False,
+            "artifact_key": run.artifact_key,
+        }
+    finally:
+        if lock_token is not None:
+            try:
+                redis_release_lock(lock_key, lock_token)
+            except Exception:
+                pass
 
 
 @router.post("/customers/{customer_id}/cases/{case_id}/runs/{run_id}/complete")

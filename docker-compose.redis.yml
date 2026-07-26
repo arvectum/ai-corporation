@@ -1,0 +1,25 @@
+name: arvectum-redis
+services:
+  redis:
+    image: redis:7.4.9-alpine
+    container_name: arvectum-redis
+    command: ["redis-server", "--requirepass", "${ARVECTUM_REDIS_PASSWORD:-CHANGE_ME}"]
+    env_file:
+      - .env.local
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a ${ARVECTUM_REDIS_PASSWORD:-CHANGE_ME} ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - arvectum-redis-net
+    volumes:
+      - arvectum_redis_data:/data
+
+networks:
+  arvectum-redis-net:
+    driver: bridge
+
+volumes:
+  arvectum_redis_data:
