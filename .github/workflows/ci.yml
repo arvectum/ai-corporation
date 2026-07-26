@@ -112,8 +112,3 @@ jobs:
           AI_CORP_REDIS_ENABLED: "true"
           AI_CORP_REDIS_URL: redis://127.0.0.1:16379/1
           AI_CORP_REDIS_NAMESPACE: ci-${{ github.sha }}
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: redis-pytest-output-${{ github.event.pull_request.head.sha || github.sha }}
-          path: output/pytest-redis.log

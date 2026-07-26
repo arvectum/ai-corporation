@@ -2,7 +2,7 @@
 
 check:
 	python -m compileall -q src
-	python -m ruff check src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/ src/shared/redis/ tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/
+	python -m ruff check src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/preflight.py src/shared/redis/ tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/ tests/test_r0_security_boundary.py
 
 test:
 	python -m pytest -q
@@ -31,7 +31,7 @@ test-redis-unit:
 	python -m pytest -q tests/unit/redis/
 
 test-redis-integration:
-	mkdir -p output && python -m pytest -v tests/integration/test_redis_*_integration.py --run-integration -p no:cacheprovider 2>&1 | tee output/pytest-redis.log
+	python -m pytest -q tests/integration/test_redis_*_integration.py --run-integration -p no:cacheprovider
 
 redis-start:
 	docker compose -f docker-compose.redis-test.yml up -d
