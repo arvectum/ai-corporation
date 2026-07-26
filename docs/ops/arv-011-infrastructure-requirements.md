@@ -55,7 +55,7 @@ The repository contains **multiple configuration variants** for different contou
 
 - **Dockerfile**: FastAPI/Uvicorn, `CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]`
 - **docker-compose.yml**: only PostgreSQL `postgres:16-alpine`, host bind `5432:5432`, named volume `postgres_data`
-- **pgvector** is NOT available in this compose image — it is `postgres:16-alpine` without pgvector
+- **pgvector** is NOT available in this compose image — it is `postgres:16-alpine` without pgvector; pgvector is required only for pgvector-backed vector storage; the default JSON vector store (`settings.rag_vector_store = "json"`) does not require pgvector
 
 ### B. Dedicated PostgreSQL compose (docker-compose.postgres.yml)
 
@@ -100,7 +100,7 @@ The repository contains **multiple configuration variants** for different contou
 | Background ThreadPoolExecutor | observed | In-process executor for RAG prepare/analyze | No (ephemeral) |
 | PostgreSQL Compose definitions | observed | postgres:16-alpine and pgvector/pgvector variants | Yes |
 | pgvector extension | observed (migrations, diagnostics, dedicated/test Compose) | Vector similarity search for RAG | Yes |
-| pgvector in main Compose | gap — NOT available in postgres:16-alpine | N/A | N/A |
+| pgvector in main Compose | gap — NOT available in postgres:16-alpine; JSON-backed RAG mode may function without it | pgvector required only for pgvector-backed vector storage | N/A |
 | LLM/embedding/Hermes HTTP clients | observed | Configurable provider abstractions in code | No |
 | EIS/SOAP client | observed | Zakupki.gov.ru SOAP client | No |
 | Document storage code | observed | Filesystem download/extract/store logic | No (code) |
@@ -152,7 +152,7 @@ Evidence: `src/main.py:107-225`, `Dockerfile:22`
 - **Named volume `postgres_data`** for PostgreSQL data persistence
 
 ### Risks
-- Main `docker-compose.yml` uses `postgres:16-alpine` **without pgvector** — the r8-acceptance and postgres compose files use the correct `pgvector/pgvector` image
+- Main `docker-compose.yml` uses `postgres:16-alpine` **without pgvector** — the r8-acceptance and postgres compose files use the correct `pgvector/pgvector` image; pgvector is required only for pgvector-backed vector storage; default JSON vector store (`settings.rag_vector_store = "json"`) does not require pgvector
 - PostgreSQL in main compose is publicly bound (`5432:5432`), not restricted to `127.0.0.1`
 - No connection pooling (e.g., PgBouncer) configured
 - No backup mechanism evident in the repository
@@ -355,7 +355,7 @@ Evidence: `.env.example`, `.env.macmini.example`, `.env.runtime.example`, `src/s
 | 10 | Allowed hosts validation | required_for_pilot | TrustedHostMiddleware not installed when ALLOWED_HOSTS is empty |
 | 11 | CORS restriction | required_before_production | CORSMiddleware not installed when CORS_ALLOW_ORIGINS is empty |
 | 12 | Safe proxy headers handling | required_for_pilot | `--proxy-headers` is set but no reverse proxy validates forwarded headers |
-| 13 | Minimized public port exposure | required_before_production | Only port 8000 (with TLS) should be public |
+| 13 | Minimized public port exposure | required_before_production | Public ingress exposes HTTPS/TLS, normally port 443; application port 8000 remains internal, reachable only from the ingress/reverse-proxy layer; PostgreSQL remains internal |
 | 14 | Controlled egress to EIS and LLM providers | required_before_production | No controlled egress point for Russian endpoints |
 | 15 | Raw procurement/customer document protection | required_for_pilot | Encryption-at-rest configuration is not evidenced in the repository; status: unknown/gap |
 | 16 | Customer data isolation (tenant) | required_for_pilot | Database has tenant isolation via registry_number/customer_inn but no hard tenant boundary |
@@ -390,7 +390,7 @@ Infrastructure requirement: "Hosting in the Russian Federation where applicable 
 - **Observability**: `/health`, `/health/ready` endpoints; application-level logging to stdout
 - **Scaling direction**: Horizontal (add nodes behind load balancer)
 - **Dependencies**: PostgreSQL, LLM provider (local or cloud), document storage (filesystem or object storage)
-- **Unresolved**: CPU/RAM requirements not measured — proposed envelope based on typical Python web app
+- **Unresolved**: CPU/RAM requirements not measured — proposed envelope (proposed_initial_envelope, requires validation) based on typical Python web app
 
 ### 18.2 PostgreSQL/pgvector node
 
@@ -400,13 +400,13 @@ Infrastructure requirement: "Hosting in the Russian Federation where applicable 
 - **Functional requirements**:
   - pgvector extension enabled
   - Database connection pooler
-  - Automated daily `pg_dump` to backup storage
+  - Automated daily scheduled database backup to backup storage
   - Point-in-time recovery not required initially
   - Replication not required for pilot
 - **Persistence**: Full (all application state)
 - **Network access**: Application node(s) only (not publicly accessible)
 - **Security boundary**: Bind to `127.0.0.1` or internal network, strong password, TLS for connections
-- **Backup**: Daily `pg_dump` to backup storage; verified restore every 30 days
+- **Backup**: Scheduled database backup to backup storage; verified restore every 30 days
 - **Observability**: Disk usage, connection count, query performance
 - **Scaling direction**: Vertical (more RAM) for pilot; read replicas for production
 - **Dependencies**: Persistent block storage with snapshots
@@ -464,7 +464,7 @@ Infrastructure requirement: "Hosting in the Russian Federation where applicable 
 - **Persistence**: None (stateless)
 - **Network access**: Public inbound on port 443; forward to application node on port 8000
 - **Security boundary**: Public-facing; must be hardened
-- **Backup**: Configuration backup (git-ops)
+- **Backup**: Configuration backup (version-controlled configuration management)
 - **Observability**: Access logs, error logs, metrics for 5xx rate
 - **Scaling direction**: Can be combined with application node for pilot; separate for production
 - **Dependencies**: Application node
@@ -537,7 +537,7 @@ Infrastructure requirement: "Hosting in the Russian Federation where applicable 
 
 ### Topology
 ```
-Internet → VPS (nginx, TLS, rate limit) → Mac Mini (FastAPI, PostgreSQL, storage)
+Internet → VPS (reverse proxy / TLS ingress, TLS, rate limit) → Mac Mini (FastAPI, PostgreSQL, storage)
 ```
 
 ### Stateful components
@@ -552,7 +552,7 @@ Internet → VPS (nginx, TLS, rate limit) → Mac Mini (FastAPI, PostgreSQL, sto
 ### Advantages
 - Preserves existing investment in Mac Mini and 4 TB SSD
 - Minimal operational change — add VPS as TLS termination and public ingress
-- Low additional cost (small VPS, 1–2 vCPU, 2–4 GB RAM)
+- Low additional cost (small VPS, 1–2 vCPU, 2–4 GB RAM — proposed_initial_envelope, requires validation)
 - Quick to implement (days, not weeks)
 
 ### Limitations
@@ -569,8 +569,8 @@ Internet → VPS (nginx, TLS, rate limit) → Mac Mini (FastAPI, PostgreSQL, sto
 - PostgreSQL port must be firewalled from the internet
 
 ### Operational complexity
-- Low — single VPS, single Mac Mini, SSH tunnel or VPN
-- Backup requires additional scripting (scp/rsync from Mac Mini to VPS or cloud storage)
+- Low — single VPS, single Mac Mini, authenticated encrypted private tunnel
+- Backup requires additional scripting (encrypted file-transfer or backup mechanism from Mac Mini to VPS or cloud storage)
 
 ### Single points of failure
 - Mac Mini hardware failure
@@ -631,12 +631,12 @@ Internet → Single server (reverse proxy + FastAPI + PostgreSQL + storage)
 - Firewall: only ports 443 (HTTPS) and 22 (SSH) open
 - PostgreSQL on Unix socket or 127.0.0.1
 - TLS with automated certificate management
-- Automated brute-force protection on SSH
+- Automated brute-force protection on ingress
 - Regular OS patching
 
 ### Operational complexity
 - Medium — single server OS management, Docker or bare deployment
-- Backup: `pg_dump` cron + rsync to backup storage
+- Backup: scheduled database backup + encrypted file-transfer to backup storage
 
 ### Single points of failure
 - Single server hardware failure
@@ -645,7 +645,7 @@ Internet → Single server (reverse proxy + FastAPI + PostgreSQL + storage)
 ### When this option fits
 - After pilot scale-out is needed but before HA is required
 - Single server cost is acceptable
-- 10–20 active clients
+- 10–20 active clients (proposed_initial_envelope, requires validation)
 
 ### When it stops fitting
 - HA requirement
@@ -667,7 +667,7 @@ Internet → Single server (reverse proxy + FastAPI + PostgreSQL + storage)
 ```
 Internet → Reverse proxy node → Application node(s) → PostgreSQL node
                                           ↓
-                                    Document storage (NFS/S3)
+                                     Document storage (object-compatible storage or shared filesystem)
                                           ↓
                                     Backup storage (off-device)
 ```
@@ -680,7 +680,7 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 
 ### Network flow
 - Public traffic → reverse proxy (TLS) → app node(s) (internal network) → PostgreSQL (internal)
-- App node(s) → document storage (internal network or S3 API)
+- App node(s) → document storage (internal network or object storage API)
 - App node(s) → EIS, LLM providers (outbound internet)
 - Backup: PostgreSQL node → backup storage; document storage → backup storage
 
@@ -693,14 +693,14 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 ### Limitations
 - Highest operational complexity
 - Highest cost (multiple nodes/services)
-- Requires container orchestration platform or manual coordination
+- Requires container orchestration platform (provider-agnostic) or manual coordination
 - Over-engineered for pilot phase
 
 ### Security considerations
 - Defense in depth: firewall per node, network segmentation
 - TLS everywhere, including inter-node communication
-- IAM for object storage access
-- VPN for inter-node communication if across providers
+- IAM for shared filesystem or object-compatible storage access
+- Authenticated encrypted private tunnel for inter-node communication if across providers
 
 ### Operational complexity
 - High — multiple services, network configuration, monitoring, backup coordination
@@ -710,8 +710,8 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 
 ### When this option fits
 - Production with contractual SLA
-- Regulatory compliance (152-FZ, 44-FZ data localization)
-- Large scale (20+ active clients)
+- Legal, contractual, or customer requirements for data placement, isolation, availability, or on-premise deployment
+- Large scale (20+ active clients — proposed_initial_envelope, requires validation)
 
 ### When it stops fitting
 - Cost-sensitive early stage
@@ -722,8 +722,8 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 - Start with PostgreSQL separation, then document storage, then app scaling
 
 ### Unresolved questions
-- What container orchestration platform to use?
-- What object-compatible document storage backend to use?
+- What container orchestration platform (provider-agnostic) to use?
+- What object-compatible document storage backend (provider-agnostic) to use?
 - Is multi-region required for compliance?
 
 ## 23. Recommended sequencing
@@ -731,12 +731,12 @@ Internet → Reverse proxy node → Application node(s) → PostgreSQL node
 ### Phase 0 (current pilot) — Option A
 - Keep Mac Mini as application + database + storage server
 - Add a small VPS for TLS termination and public ingress
-- Implement basic backup (cron + scp to VPS or cloud storage)
+- Implement basic backup (scheduled encrypted file-transfer or backup mechanism to VPS or cloud storage)
 - Measure actual CPU, RAM, disk, and network utilization
 
 ### Phase 1 (initial production) — Option B
-- Single VPS or dedicated server with 8+ vCPU, 16+ GB RAM, 4 TB+ storage
-- Docker-based deployment with docker-compose or single-server orchestration
+- Single VPS or dedicated server with 8+ vCPU, 16+ GB RAM, 4 TB+ storage (proposed_initial_envelope, requires validation)
+- Container-based deployment with container runtime or single-server orchestration
 - Automated daily backup with off-device copy
 - Rate limiting and TLS on the reverse proxy
 

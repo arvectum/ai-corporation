@@ -3,7 +3,7 @@
   "schema_version": "1.0",
   "repository": "arutyunoveth/ai-corporation",
   "base_sha": "da7b0785db82eb3728552081e70a8beccacc2e43",
-  "generated_at": "2026-07-26T00:00:00Z",
+  "generated_at": "2026-07-26T17:08:00Z",
   "scope": {
     "allowed_changes": [
       "docs/ops/arv-011-infrastructure-requirements.md",
@@ -112,8 +112,8 @@
       "status": "observed",
       "purpose": "Vector similarity search for document chunk embeddings in RAG pipeline",
       "implementation": "Provided by pgvector/pgvector Docker images; checked at runtime via pg_extension query; migration 090 enables it",
-      "required_for_pilot": true,
-      "required_for_production": true,
+      "required_for_pilot": false,
+      "required_for_production": false,
       "stateful": true,
       "persistent_paths": ["same as PostgreSQL data directory"],
       "network_exposure": "same as PostgreSQL",
@@ -129,8 +129,8 @@
         {"file": "src/shared/db/diagnostics.py", "line": 44, "description": "Runtime check for pgvector extension"},
         {"file": "migrations/versions/090_enable_pgvector_and_add_rag_tables.py", "description": "Migration enabling pgvector extension"}
       ],
-      "unknowns": ["vector index memory requirements at scale"],
-      "risks": ["NOT available in postgres:16-alpine (main compose)", "index build time for large document sets"]
+      "unknowns": ["vector index memory requirements at scale", "actual pilot vector-store mode is unknown unless runtime configuration is inspected"],
+      "risks": ["NOT available in postgres:16-alpine (main compose)", "pgvector is required only for pgvector-backed vector storage; default JSON vector store does not require pgvector"]
     },
     {
       "id": "pgvector-in-main-compose",
@@ -138,8 +138,8 @@
       "status": "gap",
       "purpose": "pgvector is not available in the postgres:16-alpine image used by docker-compose.yml",
       "implementation": "absent — main compose uses postgres:16-alpine without pgvector",
-      "required_for_pilot": true,
-      "required_for_production": true,
+      "required_for_pilot": false,
+      "required_for_production": false,
       "stateful": false,
       "persistent_paths": [],
       "network_exposure": "N/A",
@@ -154,8 +154,8 @@
       "evidence": [
         {"file": "docker-compose.yml", "line": 3, "description": "image: postgres:16-alpine — no pgvector"}
       ],
-      "unknowns": [],
-      "risks": ["main compose is not usable for RAG workflows without pgvector"]
+      "unknowns": ["actual pilot vector-store mode is unknown unless runtime configuration is inspected"],
+      "risks": ["pgvector is unavailable in main compose; pgvector is required only for pgvector-backed vector storage; default JSON vector store does not require pgvector"]
     },
     {
       "id": "alembic",
@@ -781,7 +781,7 @@
       "id": "SEC-13",
       "requirement": "Minimized public port exposure",
       "classification": "required_before_production",
-      "rationale": "Only port 8000 (with TLS) should be public"
+      "rationale": "Public ingress exposes HTTPS/TLS, normally port 443; application port 8000 remains internal, reachable only from the ingress/reverse-proxy layer; PostgreSQL remains internal"
     },
     {
       "id": "SEC-14",
@@ -837,11 +837,11 @@
       "purpose": "Primary database with vector similarity search",
       "pilot_requirement": "proposed_initial_envelope, requires validation: 2 vCPU, 4 GB RAM, 50 GB SSD",
       "production_requirement": "proposed_initial_envelope, requires validation: 4+ vCPU, 8-16 GB RAM, 100-200 GB SSD, dedicated node",
-      "functional_requirements": ["pgvector extension", "database connection pooler", "automated daily pg_dump", "PITR not required initially"],
+      "functional_requirements": ["pgvector extension", "database connection pooler", "automated daily scheduled database backup", "PITR not required initially"],
       "persistence": true,
       "network_access": "application node(s) only",
       "security_boundary": "127.0.0.1 or internal network, strong password, TLS",
-      "backup": "daily pg_dump to backup storage; verified restore every 30 days",
+      "backup": "scheduled database backup to backup storage; verified restore every 30 days",
       "observability": "disk usage, connection count, query performance",
       "scaling_direction": "vertical for pilot; read replicas for production",
       "dependencies": ["persistent block storage"],
@@ -889,7 +889,7 @@
       "persistence": false,
       "network_access": "public inbound port 443; forward to app node port 8000",
       "security_boundary": "public-facing; must be hardened",
-      "backup": "configuration backup (git-ops)",
+      "backup": "configuration backup (version-controlled configuration management)",
       "observability": "access logs, error logs, 5xx rate metrics",
       "scaling_direction": "combined with app for pilot; separate for production",
       "dependencies": ["application-node"],
@@ -1110,7 +1110,7 @@
     {
       "id": "option-a",
       "name": "Mac Mini + small public ingress VPS",
-      "topology": "Internet -> VPS (reverse proxy, TLS, rate limit) -> Mac Mini (FastAPI, PostgreSQL, storage)",
+      "topology": "Internet -> VPS (reverse proxy / TLS ingress, TLS, rate limit) -> Mac Mini (FastAPI, PostgreSQL, storage)",
       "stateful_components": ["PostgreSQL data on Mac Mini", "Document storage on Mac Mini external SSD"],
       "network_flow": "Public traffic -> VPS port 443 (TLS) -> authenticated encrypted private tunnel -> Mac Mini port 8000",
       "advantages": [
@@ -1147,7 +1147,7 @@
       "network_flow": "Public -> server port 443 (TLS) -> reverse proxy -> local port 8000",
       "advantages": ["simple architecture", "no inter-service latency", "full hardware control", "single security perimeter"],
       "limitations": ["no HA (single machine failure = everything down)", "resource contention app + database", "vertical scaling only"],
-      "security_considerations": ["firewall: only ports 443 and 22 open", "PostgreSQL on Unix socket or 127.0.0.1", "TLS with automated certificate management", "automated brute-force protection on SSH", "regular OS patching"],
+      "security_considerations": ["firewall: only ports 443 and 22 open", "PostgreSQL on Unix socket or 127.0.0.1", "TLS with automated certificate management", "automated brute-force protection on ingress", "regular OS patching"],
       "operational_complexity": "medium",
       "single_points_of_failure": ["single server hardware", "single VPS provider"],
       "when_it_fits": "post-pilot scale-out before HA required, 10-20 active clients",
@@ -1163,13 +1163,13 @@
       "network_flow": "Public -> reverse proxy (TLS) -> app (internal) -> PostgreSQL (internal); app -> document storage; app -> EIS/LLM (outbound)",
       "advantages": ["independent scaling per component", "no single point of failure", "regulatory compliance ready", "production-grade"],
       "limitations": ["highest operational complexity", "highest cost", "over-engineered for pilot"],
-      "security_considerations": ["defense in depth per node", "TLS for inter-node communication", "IAM for object storage", "VPN between nodes"],
+      "security_considerations": ["defense in depth per node", "TLS for inter-node communication", "IAM for shared filesystem or object-compatible storage", "authenticated encrypted private tunnel between nodes"],
       "operational_complexity": "high",
       "single_points_of_failure": "mitigated with redundancy",
-      "when_it_fits": "production with SLA, regulatory compliance, 20+ active clients",
+      "when_it_fits": "production with SLA, legal/customer requirements for data placement/isolation/availability/on-premise, 20+ active clients",
       "when_it_stops_fitting": "cost-sensitive early stage, small team",
       "migration_path": "from Option A or B: incremental per component",
-      "unresolved_questions": ["container orchestration platform", "object-compatible document storage backend", "multi-region requirements"]
+      "unresolved_questions": ["container orchestration platform (provider-agnostic)", "object-compatible document storage backend (provider-agnostic)", "multi-region requirements"]
     }
   ],
   "unknowns": [
