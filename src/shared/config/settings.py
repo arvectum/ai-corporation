@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     hermes_timeout_seconds: int = 120
     hermes_enabled: bool = False
 
+    # Storage capacity guardrails (ARV-010)
+    arvectum_storage_root: str | None = Field(default=None, validation_alias="ARVECTUM_STORAGE_ROOT")
+    arvectum_storage_warning_percent: int = Field(default=70, validation_alias="ARVECTUM_STORAGE_WARNING_PERCENT", ge=0, le=100)
+    arvectum_storage_critical_percent: int = Field(default=80, validation_alias="ARVECTUM_STORAGE_CRITICAL_PERCENT", ge=0, le=100)
+    arvectum_storage_ingestion_protected_percent: int = Field(default=90, validation_alias="ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", ge=0, le=100)
+
     model_config = SettingsConfigDict(
         env_prefix="AI_CORP_",
         env_file=[".env", ".env.local"],

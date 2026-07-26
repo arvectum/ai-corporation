@@ -99,6 +99,7 @@ from src.modules.workspace_feed.router import router as workspace_feed_router
 from src.shared.api.errors import register_exception_handlers
 from src.shared.api.middleware import install_runtime_middlewares
 from src.shared.api.site_mount import install_optional_site_mount
+from src.shared.storage.capacity import storage_metrics_dict
 from src.shared.config.settings import get_settings
 
 settings = get_settings()
@@ -211,7 +212,14 @@ def healthcheck() -> dict[str, str]:
 def readiness() -> dict[str, object]:
     data_dir = Path(settings.arvectum_data_dir)
     writable = data_dir.exists() and data_dir.is_dir()
-    return {"status": "ok" if writable else "degraded", "data_writable": writable, "timestamp": datetime.now(UTC).isoformat()}
+    storage_metrics = storage_metrics_dict()
+    overall_status = "ok" if writable and storage_metrics.get("ingestion_allowed", False) else "degraded"
+    return {
+        "status": overall_status,
+        "data_writable": writable,
+        "storage": storage_metrics,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
 
 
 install_optional_site_mount(app, settings)
