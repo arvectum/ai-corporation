@@ -67,3 +67,6 @@ tmp/*_context.json
 
 # Local proxy/PAC overrides and backups
 /local_config/
+
+# R9 test artifacts (backup/restore smoke tests)
+/output/

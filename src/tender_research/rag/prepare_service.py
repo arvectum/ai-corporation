@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.shared.config.settings import get_settings
 from src.shared.db.base import Base
+from src.shared.storage.gate import check_ingestion_allowed
 from src.tender_research.config import load_config
 from src.tender_research.document_store import download_tender_documents
 from src.tender_research.eis_loader import EisTenderLoader
@@ -112,6 +113,8 @@ def prepare_tender_for_analysis(
     session: Session | None = None,
     progress_callback=None,
 ) -> TenderPreparationResult:
+    check_ingestion_allowed()
+
     own_session = False
     if session is None:
         session = _get_session()

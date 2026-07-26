@@ -26,6 +26,10 @@ from src.shared.db.base import Base
 from src.shared.db import models  # noqa: F401
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "storage_gate_enforced: do NOT patch check_ingestion_allowed — test exercises real storage gate")
+
+
 def pytest_addoption(parser: pytest.Parser) -> None:
     group = parser.getgroup("ai-corporation test profiles")
     group.addoption(
@@ -104,3 +108,19 @@ def client(session: Session) -> Generator[TestClient, None, None]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _allow_ingestion_by_default(request: pytest.FixtureRequest):
+    """Allow ingestion in all tests by default.
+    Tests with @pytest.mark.storage_gate_enforced bypass this fixture
+    so the real storage gate is exercised.
+    """
+    if request.node.get_closest_marker("storage_gate_enforced"):
+        yield
+        return
+    import unittest.mock
+    with unittest.mock.patch("src.tender_research.rag.prepare_service.check_ingestion_allowed", return_value=None):
+        with unittest.mock.patch("src.tender_research.rag.job_runner.check_ingestion_allowed", return_value=None):
+            with unittest.mock.patch("src.tender_research.api.check_ingestion_allowed", return_value=None):
+                yield
