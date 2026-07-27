@@ -1,0 +1,82 @@
+suite_id: ARV-067E-PRODUCT-CATALOG-CONTRACT-CASES
+version: 1.0.0
+base_catalog_id: ARV-067E-ELECTRICAL-PRODUCT-CATALOG
+cases:
+- id: valid_baseline
+  mutation: none
+  expected_error_codes: []
+- id: unknown_category_on_series
+  mutation: unknown_category_on_series
+  target_id: series.fixture.arv_nord.cable_joint
+  expected_error_codes:
+  - CATALOG_UNKNOWN_CATEGORY
+- id: series_execution_values_forbidden
+  mutation: series_execution_values_forbidden
+  target_id: series.fixture.arv_nord.cable_joint
+  expected_error_codes:
+  - CATALOG_SERIES_EXECUTION_VALUES_FORBIDDEN
+- id: model_capability_range_forbidden
+  mutation: model_capability_range_forbidden
+  target_id: model.fixture.arv_nord.cj35
+  expected_error_codes:
+  - CATALOG_MODEL_CAPABILITY_RANGE_FORBIDDEN
+- id: unknown_manufacturer
+  mutation: unknown_manufacturer
+  target_id: series.fixture.arv_nord.cable_joint
+  expected_error_codes:
+  - CATALOG_UNKNOWN_MANUFACTURER
+- id: model_replacement_cycle
+  mutation: model_replacement_cycle
+  target_id: model.fixture.arv_vector.lbs_next
+  expected_error_codes:
+  - CATALOG_MODEL_REPLACEMENT_CYCLE
+  - CATALOG_REPLACEMENT_SOURCE_NOT_RETIRED
+- id: execution_replacement_cycle
+  mutation: execution_replacement_cycle
+  target_id: execution.fixture.arv_vector.lbs_next_630
+  expected_error_codes:
+  - CATALOG_EXECUTION_REPLACEMENT_CYCLE
+  - CATALOG_REPLACEMENT_SOURCE_NOT_RETIRED
+- id: execution_outside_series_range
+  mutation: execution_outside_series_range
+  target_id: execution.fixture.arv_vector.rcd4_40a_30ma
+  attribute_id: rated_current_a
+  value: 160
+  expected_error_codes:
+  - CATALOG_EXECUTION_OUTSIDE_SERIES_RANGE
+- id: unknown_attribute
+  mutation: unknown_attribute
+  target_id: execution.fixture.arv_vector.rcd4_40a_30ma
+  attribute_id: fixture_unknown_attribute
+  expected_error_codes:
+  - CATALOG_UNKNOWN_ATTRIBUTE
+- id: missing_evidence_reference
+  mutation: missing_evidence_reference
+  target_id: execution.fixture.arv_vector.rcd4_40a_30ma
+  expected_error_codes:
+  - CATALOG_EVIDENCE_REFERENCE_MISSING
+- id: offer_unknown_execution
+  mutation: offer_unknown_execution
+  target_id: offer.fixture.supplier_beta.rcd4_40a_30ma
+  expected_error_codes:
+  - CATALOG_OFFER_EXECUTION_UNKNOWN
+- id: offer_technical_values_forbidden
+  mutation: offer_technical_values_forbidden
+  target_id: offer.fixture.supplier_beta.rcd4_40a_30ma
+  expected_error_codes:
+  - CATALOG_OFFER_TECHNICAL_VALUES_FORBIDDEN
+- id: operator_approval_targets_category
+  mutation: operator_approval_targets_category
+  target_id: evidence.fixture.operator_approval.rossetti.ins70_35kv
+  expected_error_codes:
+  - CATALOG_OPERATOR_APPROVAL_CATEGORY_TARGET_FORBIDDEN
+- id: rossetti_wrong_evidence_type
+  mutation: rossetti_wrong_evidence_type
+  target_id: evidence.fixture.cert.ins70_35kv
+  expected_error_codes:
+  - CATALOG_ROSSETTI_REQUIRES_OPERATOR_APPROVAL
+- id: duplicate_entity_id
+  mutation: duplicate_entity_id
+  target_id: manufacturer.fixture.arv_nord
+  expected_error_codes:
+  - CATALOG_DUPLICATE_ENTITY_ID

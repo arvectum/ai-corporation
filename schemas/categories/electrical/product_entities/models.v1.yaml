@@ -1,0 +1,76 @@
+fragment_id: ARV-067E-PRODUCT-MODELS
+version: 1.0.0
+entity_type: ProductModel
+records:
+- id: model.fixture.arv_nord.cj35
+  series_id: series.fixture.arv_nord.cable_joint
+  category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  factory_designation: CJ-35
+  aliases:
+  - cj35
+  - cj-35
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-M-CJ35
+- id: model.fixture.arv_vector.lbs_old
+  series_id: series.fixture.arv_vector.load_break_switch
+  category_id: electrical.primary.switches.load_break_switch
+  factory_designation: LBS-10-OLD
+  aliases:
+  - lbs old
+  - lbs-10-old
+  lifecycle_status: discontinued
+  valid_from: '2020-01-01'
+  valid_to: '2025-12-31'
+  replacement_model_id: model.fixture.arv_vector.lbs_next
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-M-LBS-OLD
+- id: model.fixture.arv_vector.lbs_next
+  series_id: series.fixture.arv_vector.load_break_switch
+  category_id: electrical.primary.switches.load_break_switch
+  factory_designation: LBS-10-NEXT
+  aliases:
+  - lbs next
+  - lbs-10-next
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-M-LBS-NEXT
+- id: model.fixture.arv_line.ins70
+  series_id: series.fixture.arv_line.insulator
+  category_id: electrical.primary.insulators
+  factory_designation: INS-70
+  aliases:
+  - ins70
+  - ins-70
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-M-INS70
+- id: model.fixture.arv_vector.rcd4
+  series_id: series.fixture.arv_vector.rcd
+  category_id: electrical.primary.other_primary
+  factory_designation: RCD-4
+  aliases:
+  - rcd4
+  - rcd-4
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-M-RCD4

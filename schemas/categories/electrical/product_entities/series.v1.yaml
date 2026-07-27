@@ -1,0 +1,88 @@
+fragment_id: ARV-067E-PRODUCT-SERIES
+version: 1.0.0
+entity_type: ProductSeries
+records:
+- id: series.fixture.arv_nord.cable_joint
+  manufacturer_id: manufacturer.fixture.arv_nord
+  category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  title: CJ — синтетическая серия кабельных муфт
+  aliases:
+  - cj
+  - серия cj
+  lifecycle_status: active
+  capability_ranges:
+  - attribute_id: rated_voltage_kv
+    min: 1
+    max: 35
+    unit: kV
+  - attribute_id: supported_cross_section_range_mm2
+    min: 16
+    max: 400
+    unit: mm2
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: series.fixture.arv_vector.load_break_switch
+  manufacturer_id: manufacturer.fixture.arv_vector
+  category_id: electrical.primary.switches.load_break_switch
+  title: LBS — синтетическая серия выключателей нагрузки
+  aliases:
+  - lbs
+  - серия lbs
+  lifecycle_status: active
+  capability_ranges:
+  - attribute_id: rated_voltage_kv
+    min: 6
+    max: 35
+    unit: kV
+  - attribute_id: rated_current_a
+    min: 400
+    max: 1250
+    unit: A
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: series.fixture.arv_line.insulator
+  manufacturer_id: manufacturer.fixture.arv_line
+  category_id: electrical.primary.insulators
+  title: INS — синтетическая серия изоляторов
+  aliases:
+  - ins
+  - серия ins
+  lifecycle_status: active
+  capability_ranges:
+  - attribute_id: rated_voltage_kv
+    min: 6
+    max: 220
+    unit: kV
+  - attribute_id: mechanical_failing_load_kn
+    min: 40
+    max: 210
+    unit: kN
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: series.fixture.arv_vector.rcd
+  manufacturer_id: manufacturer.fixture.arv_vector
+  category_id: electrical.primary.other_primary
+  title: RCD — синтетическая серия УЗО
+  aliases:
+  - rcd
+  - серия rcd
+  lifecycle_status: active
+  capability_ranges:
+  - attribute_id: rated_current_a
+    min: 16
+    max: 100
+    unit: A
+  - attribute_id: rated_residual_current_a
+    min: 0.01
+    max: 0.3
+    unit: A
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture

@@ -24,6 +24,8 @@ ARV-067C adds nine typed relations, three component roles, 25 explainable assert
 
 ARV-067D adds 15 wave-1 detailed profiles, 11 category-promotion overlays and 180 fixture cases for cable accessories, surge protection, switching equipment, line hardware, insulators and low-voltage control/protection products.
 
+ARV-067E adds separate manufacturer, series, model, execution, supplier-offer and evidence layers with stable IDs, articles, designation suffixes, replacement history and Rosseti-to-operator-approval mapping. The included records are synthetic contract fixtures and do not assert real product approval.
+
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
 ## Files
@@ -83,6 +85,15 @@ Wave-1 detailed profiles:
 - `wave1_profile_matcher.py` — deterministic five-outcome matcher;
 - `validate_wave1_profiles.py` — schema, cross-reference, fixture and benchmark validator.
 
+Product catalog entities:
+
+- `product_catalog.v1.yaml` — ARV-067E entity manifest and governance;
+- `product_catalog.schema.json` — closed manifest contract;
+- `product_entity_fragment.schema.json` — closed contracts for six entity types;
+- `product_entities/*.v1.yaml` — synthetic manufacturers, series, models, executions, offers and evidence;
+- `product_catalog_contract_cases.schema.json` — negative/positive contract-case schema;
+- `validate_product_catalog.py` — identifier, lifecycle, evidence and cross-reference validator.
+
 Fixtures live in `fixtures/ontology/electrical/`.
 
 ## Validation
@@ -94,12 +105,14 @@ python schemas/categories/electrical/validate_attributes.py
 python schemas/categories/electrical/validate_category_tree.py
 python schemas/categories/electrical/validate_relations.py
 python schemas/categories/electrical/validate_wave1_profiles.py
+python schemas/categories/electrical/validate_product_catalog.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
 python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 python -m pytest -q tests/test_arv067a_attribute_registry.py
 python -m pytest -q tests/test_arv067b_category_tree.py
 python -m pytest -q tests/test_arv067c_relations.py
 python -m pytest -q tests/test_arv067d_wave1_profiles.py
+python -m pytest -q tests/test_arv067e_product_catalog.py
 ```
 
 Successful validator markers:
@@ -111,6 +124,7 @@ ARV-067A attribute registry: OK (..., runtime_import=false)
 ARV-067B category tree: OK (nodes=166, families=28, subcategories=135, detailed_profiles=4, routing_cases=24, runtime_import=false)
 ARV-067C relation graph: OK (types=9, components=3, assertions=25, fixtures=26, runtime_import=false)
 ARV-067D wave1 profiles: OK (profiles=15, bindings=11, fixtures=180, attributes=..., runtime_import=false)
+ARV-067E product catalog: OK (manufacturers=3, series=4, models=5, executions=6, offers=5, evidence=8, contract_cases=15, runtime_import=false)
 ```
 
 ## Safety boundary
@@ -118,6 +132,10 @@ ARV-067D wave1 profiles: OK (profiles=15, bindings=11, fixtures=180, attributes=
 - no database model, migration or production resolver is changed;
 - taxonomy-only families, provisional attributes and category nodes are not production matchers;
 - ARV-067D promotions are overlays and do not rewrite the source category snapshot;
+- ARV-067E records are synthetic fixtures and do not assert real products or approvals;
+- manufacturers, series, models and supplier SKUs never become canonical categories;
+- series ranges are not proof of a concrete execution's parameters;
+- Rosseti registry rows map to operator-approval evidence, not categories or certificates;
 - broad family matches and cross-branch ambiguity require review;
 - compatibility, completeness and equivalence remain separate concepts;
 - role-specific voltage and current fields are not merged automatically;

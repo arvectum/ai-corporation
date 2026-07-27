@@ -1,0 +1,74 @@
+fragment_id: ARV-067E-CATALOG-OFFERS
+version: 1.0.0
+entity_type: CatalogOffer
+records:
+- id: offer.fixture.supplier_alpha.cj35_3x95_240
+  execution_id: execution.fixture.arv_nord.cj35_3x95_240
+  supplier_id: supplier.fixture.alpha
+  supplier_name: Поставщик Альфа — синтетический пример
+  supplier_sku: A-CJ-001
+  aliases:
+  - муфта 35 кв 3x95-240
+  offer_status: active
+  valid_from: '2026-07-01'
+  valid_to: '2026-12-31'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: offer.fixture.supplier_beta.cj35_1x240_400
+  execution_id: execution.fixture.arv_nord.cj35_1x240_400
+  supplier_id: supplier.fixture.beta
+  supplier_name: Поставщик Бета — синтетический пример
+  supplier_sku: B-CJ-002
+  aliases:
+  - муфта 35 кв 1x240-400
+  offer_status: active
+  valid_from: '2026-07-01'
+  valid_to: '2026-12-31'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: offer.fixture.supplier_alpha.lbs_next_630
+  execution_id: execution.fixture.arv_vector.lbs_next_630
+  supplier_id: supplier.fixture.alpha
+  supplier_name: Поставщик Альфа — синтетический пример
+  supplier_sku: A-LBS-630
+  aliases:
+  - выключатель нагрузки 10 кв 630 а
+  offer_status: active
+  valid_from: '2026-07-01'
+  valid_to: '2026-12-31'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: offer.fixture.supplier_gamma.ins70_35kv
+  execution_id: execution.fixture.arv_line.ins70_35kv
+  supplier_id: supplier.fixture.gamma
+  supplier_name: Поставщик Гамма — синтетический пример
+  supplier_sku: G-INS-7035
+  aliases:
+  - изолятор 70 кн 35 кв
+  offer_status: active
+  valid_from: '2026-07-01'
+  valid_to: '2026-12-31'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: offer.fixture.supplier_beta.rcd4_40a_30ma
+  execution_id: execution.fixture.arv_vector.rcd4_40a_30ma
+  supplier_id: supplier.fixture.beta
+  supplier_name: Поставщик Бета — синтетический пример
+  supplier_sku: B-RCD-440030
+  aliases:
+  - узо 4p 40a 30ma тип a
+  offer_status: active
+  valid_from: '2026-07-01'
+  valid_to: '2026-12-31'
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture

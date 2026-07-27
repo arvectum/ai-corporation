@@ -1,0 +1,218 @@
+fragment_id: ARV-067E-PRODUCT-EXECUTIONS
+version: 1.0.0
+entity_type: ProductExecution
+records:
+- id: execution.fixture.arv_nord.cj35_3x95_240
+  model_id: model.fixture.arv_nord.cj35
+  category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  execution_code: CJ-35-3X95-240-CU
+  aliases:
+  - cj 35 3x95-240
+  - cj-35-3x95-240-cu
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  attribute_values:
+  - attribute_id: rated_voltage_kv
+    value: 35
+    unit: kV
+    evidence_refs:
+    - evidence.fixture.cert.cj35_3x95_240
+  - attribute_id: supported_cross_section_range_mm2
+    value:
+      min: 95
+      max: 240
+    unit: mm2
+    evidence_refs:
+    - evidence.fixture.cert.cj35_3x95_240
+  - attribute_id: supported_core_count_range
+    value:
+      min: 3
+      max: 3
+    unit: dimensionless
+    evidence_refs:
+    - evidence.fixture.cert.cj35_3x95_240
+  - attribute_id: joint_type
+    value: straight_through
+    evidence_refs:
+    - evidence.fixture.cert.cj35_3x95_240
+  - attribute_id: conductor_material
+    value: copper
+    evidence_refs:
+    - evidence.fixture.cert.cj35_3x95_240
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-E-CJ35-001
+  designation_suffixes:
+  - 3X95-240
+  - CU
+- id: execution.fixture.arv_nord.cj35_1x240_400
+  model_id: model.fixture.arv_nord.cj35
+  category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  execution_code: CJ-35-1X240-400-CU
+  aliases:
+  - cj 35 1x240-400
+  - cj-35-1x240-400-cu
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  attribute_values:
+  - attribute_id: rated_voltage_kv
+    value: 35
+    unit: kV
+    evidence_refs:
+    - evidence.fixture.cert.cj35_1x240_400
+  - attribute_id: supported_cross_section_range_mm2
+    value:
+      min: 240
+      max: 400
+    unit: mm2
+    evidence_refs:
+    - evidence.fixture.cert.cj35_1x240_400
+  - attribute_id: supported_core_count_range
+    value:
+      min: 1
+      max: 1
+    unit: dimensionless
+    evidence_refs:
+    - evidence.fixture.cert.cj35_1x240_400
+  - attribute_id: joint_type
+    value: termination
+    evidence_refs:
+    - evidence.fixture.cert.cj35_1x240_400
+  - attribute_id: conductor_material
+    value: copper
+    evidence_refs:
+    - evidence.fixture.cert.cj35_1x240_400
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-E-CJ35-002
+  designation_suffixes:
+  - 1X240-400
+  - CU
+- id: execution.fixture.arv_vector.lbs_old_630
+  model_id: model.fixture.arv_vector.lbs_old
+  category_id: electrical.primary.switches.load_break_switch
+  execution_code: LBS-10-OLD-630
+  aliases:
+  - lbs old 630
+  - lbs-10-old-630
+  lifecycle_status: discontinued
+  valid_from: '2020-01-01'
+  valid_to: '2025-12-31'
+  replacement_execution_id: execution.fixture.arv_vector.lbs_next_630
+  attribute_values:
+  - attribute_id: rated_voltage_kv
+    value: 10
+    unit: kV
+    evidence_refs:
+    - evidence.fixture.cert.lbs_old_630
+  - attribute_id: rated_current_a
+    value: 630
+    unit: A
+    evidence_refs:
+    - evidence.fixture.cert.lbs_old_630
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-E-LBS-OLD-630
+  designation_suffixes:
+  - 630A
+  - OLD
+- id: execution.fixture.arv_vector.lbs_next_630
+  model_id: model.fixture.arv_vector.lbs_next
+  category_id: electrical.primary.switches.load_break_switch
+  execution_code: LBS-10-NEXT-630
+  aliases:
+  - lbs next 630
+  - lbs-10-next-630
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  attribute_values:
+  - attribute_id: rated_voltage_kv
+    value: 10
+    unit: kV
+    evidence_refs:
+    - evidence.fixture.cert.lbs_next_630
+  - attribute_id: rated_current_a
+    value: 630
+    unit: A
+    evidence_refs:
+    - evidence.fixture.cert.lbs_next_630
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-E-LBS-NEXT-630
+  designation_suffixes:
+  - 630A
+  - NEXT
+- id: execution.fixture.arv_line.ins70_35kv
+  model_id: model.fixture.arv_line.ins70
+  category_id: electrical.primary.insulators
+  execution_code: INS-70-35
+  aliases:
+  - ins 70 35
+  - ins-70-35
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  attribute_values:
+  - attribute_id: rated_voltage_kv
+    value: 35
+    unit: kV
+    evidence_refs:
+    - evidence.fixture.cert.ins70_35kv
+  - attribute_id: mechanical_failing_load_kn
+    value: 70
+    unit: kN
+    evidence_refs:
+    - evidence.fixture.cert.ins70_35kv
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-E-INS70-35
+  designation_suffixes:
+  - 70KN
+  - 35KV
+- id: execution.fixture.arv_vector.rcd4_40a_30ma
+  model_id: model.fixture.arv_vector.rcd4
+  category_id: electrical.primary.other_primary
+  execution_code: RCD-4-40-030-A
+  aliases:
+  - rcd 4p 40a 30ma a
+  - rcd-4-40-030-a
+  lifecycle_status: active
+  valid_from: '2026-01-01'
+  attribute_values:
+  - attribute_id: rated_current_a
+    value: 40
+    unit: A
+    evidence_refs:
+    - evidence.fixture.cert.rcd4_40a_30ma
+  - attribute_id: rated_residual_current_a
+    value: 0.03
+    unit: A
+    evidence_refs:
+    - evidence.fixture.cert.rcd4_40a_30ma
+  - attribute_id: poles
+    value: 4
+    evidence_refs:
+    - evidence.fixture.cert.rcd4_40a_30ma
+  - attribute_id: residual_current_type
+    value: A
+    evidence_refs:
+    - evidence.fixture.cert.rcd4_40a_30ma
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+  manufacturer_article: FIX-E-RCD4-40030
+  designation_suffixes:
+  - 4P
+  - 40A
+  - 30MA
+  - A

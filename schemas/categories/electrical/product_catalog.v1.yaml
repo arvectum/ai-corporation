@@ -1,0 +1,98 @@
+catalog_id: ARV-067E-ELECTRICAL-PRODUCT-CATALOG
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+data_scope: synthetic_contract_fixtures
+purpose: Versioned offline contract that separates canonical electrical categories from manufacturers, product series, models,
+  executions, supplier offers and evidence links.
+source_assets:
+- id: category_tree_v1
+  path: schemas/categories/electrical/category_tree.v1.yaml
+  role: stable_category_ids
+- id: attribute_registry_v1
+  path: schemas/categories/electrical/attribute_registry.v1.yaml
+  role: canonical_attribute_ids_units_and_types
+- id: relation_graph_v1
+  path: schemas/categories/electrical/relation_graph.v1.yaml
+  role: typed_relation_governance
+- id: detailed_profiles_wave1_v1
+  path: schemas/categories/electrical/detailed_profiles_wave1.v1.yaml
+  role: profile_context_only
+entity_files:
+  manufacturers: product_entities/manufacturers.v1.yaml
+  series: product_entities/series.v1.yaml
+  models: product_entities/models.v1.yaml
+  executions: product_entities/executions.v1.yaml
+  offers: product_entities/offers.v1.yaml
+  evidence: product_entities/evidence.v1.yaml
+entity_counts:
+  manufacturers: 3
+  series: 4
+  models: 5
+  executions: 6
+  offers: 5
+  evidence: 8
+lifecycles:
+  manufacturer:
+  - active
+  - inactive
+  - merged
+  series:
+  - active
+  - legacy
+  - discontinued
+  model:
+  - active
+  - legacy
+  - discontinued
+  execution:
+  - active
+  - discontinued
+  offer:
+  - draft
+  - active
+  - expired
+  - withdrawn
+  evidence:
+  - fixture_only
+  - source_verified
+  - expired
+  - revoked
+evidence_types:
+- certificate
+- operator_approval
+operator_sources:
+  rossetti:
+    source_document_ids:
+    - rossetti_primary_equipment_registry_2026-06-10
+    - rossetti_secondary_equipment_registry_2026-06-10
+    mapping_rule: registry_rows_create_operator_approval_evidence_only
+reason_codes:
+- CATALOG_UNKNOWN_CATEGORY
+- CATALOG_SERIES_EXECUTION_VALUES_FORBIDDEN
+- CATALOG_MODEL_CAPABILITY_RANGE_FORBIDDEN
+- CATALOG_UNKNOWN_MANUFACTURER
+- CATALOG_MODEL_REPLACEMENT_CYCLE
+- CATALOG_EXECUTION_REPLACEMENT_CYCLE
+- CATALOG_EXECUTION_OUTSIDE_SERIES_RANGE
+- CATALOG_UNKNOWN_ATTRIBUTE
+- CATALOG_EVIDENCE_REFERENCE_MISSING
+- CATALOG_OFFER_EXECUTION_UNKNOWN
+- CATALOG_OFFER_TECHNICAL_VALUES_FORBIDDEN
+- CATALOG_OPERATOR_APPROVAL_CATEGORY_TARGET_FORBIDDEN
+- CATALOG_ROSSETTI_REQUIRES_OPERATOR_APPROVAL
+- CATALOG_DUPLICATE_ENTITY_ID
+- CATALOG_REPLACEMENT_SOURCE_NOT_RETIRED
+governance:
+  category_independent_of_manufacturer: true
+  series_ranges_are_not_execution_values: true
+  model_identifiers_are_not_technical_evidence: true
+  execution_values_use_arv067a: true
+  catalog_offers_do_not_define_product_identity: true
+  certificates_and_operator_approvals_are_separate_evidence: true
+  rossetti_rows_map_to_operator_approval: true
+  operator_approval_is_not_universal_equivalence: true
+  replacement_history_is_versioned: true
+  synthetic_fixture_data_never_asserts_real_approval: true
+  production_runtime_not_wired: true

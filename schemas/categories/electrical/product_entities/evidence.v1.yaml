@@ -1,0 +1,158 @@
+fragment_id: ARV-067E-PRODUCT-EVIDENCE
+version: 1.0.0
+entity_type: Evidence
+records:
+- id: evidence.fixture.cert.cj35_3x95_240
+  evidence_type: certificate
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_nord.cj35_3x95_240
+  evidence_status: fixture_only
+  source_document_id: fixture_certificate_cj35_3x95_240
+  source_title: Синтетический сертификат CJ-35-3X95-240
+  source_locator: fixture-only
+  certificate_number: FIX-CJ-001
+  valid_from: '2026-01-01'
+  valid_to: '2027-12-31'
+  supported_attribute_ids:
+  - rated_voltage_kv
+  - supported_cross_section_range_mm2
+  - supported_core_count_range
+  - joint_type
+  - conductor_material
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: evidence.fixture.cert.cj35_1x240_400
+  evidence_type: certificate
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_nord.cj35_1x240_400
+  evidence_status: fixture_only
+  source_document_id: fixture_certificate_cj35_1x240_400
+  source_title: Синтетический сертификат CJ-35-1X240-400
+  source_locator: fixture-only
+  certificate_number: FIX-CJ-002
+  valid_from: '2026-01-01'
+  valid_to: '2027-12-31'
+  supported_attribute_ids:
+  - rated_voltage_kv
+  - supported_cross_section_range_mm2
+  - supported_core_count_range
+  - joint_type
+  - conductor_material
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: evidence.fixture.cert.lbs_old_630
+  evidence_type: certificate
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_vector.lbs_old_630
+  evidence_status: expired
+  source_document_id: fixture_certificate_lbs_old_630
+  source_title: Синтетический сертификат LBS-10-OLD-630
+  source_locator: fixture-only
+  certificate_number: FIX-LBS-OLD
+  valid_from: '2020-01-01'
+  valid_to: '2025-12-31'
+  supported_attribute_ids:
+  - rated_voltage_kv
+  - rated_current_a
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: evidence.fixture.cert.lbs_next_630
+  evidence_type: certificate
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_vector.lbs_next_630
+  evidence_status: fixture_only
+  source_document_id: fixture_certificate_lbs_next_630
+  source_title: Синтетический сертификат LBS-10-NEXT-630
+  source_locator: fixture-only
+  certificate_number: FIX-LBS-NEXT
+  valid_from: '2026-01-01'
+  valid_to: '2027-12-31'
+  supported_attribute_ids:
+  - rated_voltage_kv
+  - rated_current_a
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: evidence.fixture.cert.ins70_35kv
+  evidence_type: certificate
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_line.ins70_35kv
+  evidence_status: fixture_only
+  source_document_id: fixture_certificate_ins70_35kv
+  source_title: Синтетический сертификат INS-70-35
+  source_locator: fixture-only
+  certificate_number: FIX-INS-7035
+  valid_from: '2026-01-01'
+  valid_to: '2027-12-31'
+  supported_attribute_ids:
+  - rated_voltage_kv
+  - mechanical_failing_load_kn
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: evidence.fixture.cert.rcd4_40a_30ma
+  evidence_type: certificate
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_vector.rcd4_40a_30ma
+  evidence_status: fixture_only
+  source_document_id: fixture_certificate_rcd4_40a_30ma
+  source_title: Синтетический сертификат RCD-4-40-030-A
+  source_locator: fixture-only
+  certificate_number: FIX-RCD-440030
+  valid_from: '2026-01-01'
+  valid_to: '2027-12-31'
+  supported_attribute_ids:
+  - rated_current_a
+  - rated_residual_current_a
+  - poles
+  - residual_current_type
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: evidence.fixture.operator_approval.rossetti.lbs_next_630
+  evidence_type: operator_approval
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_vector.lbs_next_630
+  evidence_status: fixture_only
+  source_document_id: rossetti_primary_equipment_registry_2026-06-10
+  source_title: Раздел I. Первичное оборудование ПАО «Россети» на 10.06.2026
+  source_locator: synthetic mapping example; no real product approval is asserted
+  source_snapshot_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+  operator_id: rossetti
+  supported_attribute_ids: []
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: source_snapshot_mapping_fixture
+    source_ref: ARV-067E architecture fixture
+- id: evidence.fixture.operator_approval.rossetti.ins70_35kv
+  evidence_type: operator_approval
+  target_type: ProductExecution
+  target_id: execution.fixture.arv_line.ins70_35kv
+  evidence_status: fixture_only
+  source_document_id: rossetti_primary_equipment_registry_2026-06-10
+  source_title: Раздел I. Первичное оборудование ПАО «Россети» на 10.06.2026
+  source_locator: synthetic mapping example; no real product approval is asserted
+  source_snapshot_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+  operator_id: rossetti
+  supported_attribute_ids: []
+  asserts_real_approval: false
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: source_snapshot_mapping_fixture
+    source_ref: ARV-067E architecture fixture

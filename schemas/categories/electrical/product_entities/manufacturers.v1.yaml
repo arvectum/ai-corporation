@@ -1,0 +1,40 @@
+fragment_id: ARV-067E-MANUFACTURERS
+version: 1.0.0
+entity_type: Manufacturer
+records:
+- id: manufacturer.fixture.arv_nord
+  legal_name: Арв Норд Электрик — синтетический пример
+  brand_names:
+  - ARV NORD
+  aliases:
+  - арв норд
+  - arv nord
+  lifecycle_status: active
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: manufacturer.fixture.arv_vector
+  legal_name: Арв Вектор Аппарат — синтетический пример
+  brand_names:
+  - ARV VECTOR
+  aliases:
+  - арв вектор
+  - arv vector
+  lifecycle_status: active
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
+- id: manufacturer.fixture.arv_line
+  legal_name: Арв Лайн Изолятор — синтетический пример
+  brand_names:
+  - ARV LINE
+  aliases:
+  - арв лайн
+  - arv line
+  lifecycle_status: active
+  data_status: synthetic_fixture
+  provenance:
+    source_kind: synthetic_fixture
+    source_ref: ARV-067E contract fixture
