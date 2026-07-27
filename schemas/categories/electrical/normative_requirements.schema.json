@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registry_id",
+    "version",
+    "status",
+    "locale",
+    "runtime_import",
+    "source_registry_ref",
+    "document_edition_file",
+    "requirement_files",
+    "fixture_file",
+    "counts",
+    "applicability_priorities",
+    "constraint_types",
+    "review_statuses",
+    "requirement_statuses",
+    "conflict_policy",
+    "decision_policy",
+    "governance"
+  ],
+  "properties": {
+    "registry_id": {
+      "const": "ARV-067F-ELECTRICAL-NORMATIVE-REQUIREMENTS"
+    },
+    "version": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "locale": {
+      "type": "string"
+    },
+    "runtime_import": {
+      "const": false
+    },
+    "source_registry_ref": {
+      "type": "string"
+    },
+    "document_edition_file": {
+      "type": "string"
+    },
+    "requirement_files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string"
+      }
+    },
+    "fixture_file": {
+      "type": "string"
+    },
+    "counts": {
+      "type": "object"
+    },
+    "applicability_priorities": {
+      "type": "object"
+    },
+    "constraint_types": {
+      "type": "array"
+    },
+    "review_statuses": {
+      "type": "array"
+    },
+    "requirement_statuses": {
+      "type": "array"
+    },
+    "conflict_policy": {
+      "type": "object"
+    },
+    "decision_policy": {
+      "type": "object"
+    },
+    "governance": {
+      "type": "object"
+    }
+  }
+}

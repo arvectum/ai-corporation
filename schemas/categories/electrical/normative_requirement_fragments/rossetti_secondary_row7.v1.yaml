@@ -1,0 +1,375 @@
+fragment_id: ARV-067F-ROSSETTI-SECONDARY-ROW7-REQUIREMENTS
+version: 1.0.0
+requirements:
+- id: NRF-SEC-ROW7-APPROVAL
+  title_ru: Действующий операторский допуск строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:approval-validity
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: 26.08.2025 26.08.2030 IIА-48/25
+  source_excerpt_sha256: 207c3487532909e62ad5218fea1bf918b1c78dd95b5824597ef80158217f2223
+  category_refs: &id001
+  - electrical.secondary.automated_metering_systems.data_acquisition_unit
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+  constraint:
+    type: required_evidence
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: operator_approval
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: '2025-08-26'
+  valid_to: '2030-08-26'
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW7-TYPE-APPROVAL
+  title_ru: Номер утверждённого типа СИ строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:equipment-description:type-approval
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: Утверждены как тип СИ, внесены в реестр под № 67646-17
+  source_excerpt_sha256: 332422a9ec5f1da992f2904a139bba9493aa39166d10738b39467b878fff142e
+  category_refs: *id001
+  attribute_refs:
+  - type_approval_registry_number
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+  constraint:
+    type: required_evidence
+    attribute_id: type_approval_registry_number
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: metrology_type_approval
+    marking_pattern: null
+    documentation_reference: 67646-17
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW7-SOFTWARE
+  title_ru: Маркировка версии ПО строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:equipment-description:software-version
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: Версия ПО 01.ХХ.
+  source_excerpt_sha256: 5910eef14f973da953ca739caebcaba299113ce227f75a87d0878abc2b3181ee
+  category_refs: *id001
+  attribute_refs:
+  - software_version
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+  constraint:
+    type: marking
+    attribute_id: software_version
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: ^01\.[0-9A-Za-zА-Яа-я]{2}$
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW7-IP54
+  title_ru: Минимальная степень защиты шкафа строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:recommendation:enclosure-protection
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: с размещением в шкафу со степенью защиты не менее IP54
+  source_excerpt_sha256: 92fee837603bf181a63c959014eb1e3a892c4a992cd7ee06cc752478ed3645f8
+  category_refs: *id001
+  attribute_refs:
+  - enclosure_ip
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+    - field: installation_type
+      operator: eq
+      value: cabinet
+      values: null
+      range: null
+  constraint:
+    type: minimum
+    attribute_id: enclosure_ip
+    context_field: null
+    unit: null
+    values: null
+    minimum: IP54
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW7-TU
+  title_ru: Технические условия строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:equipment-description:technical-conditions
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: ТУ 4200-070-11821941-2015 (изм. № 20 от 13.06.2024)
+  source_excerpt_sha256: f3bb3d5137140d5da0d2ed76699329a5c3414d659d916e45bf67e771f5150cad
+  category_refs: *id001
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+  constraint:
+    type: documentation
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: ТУ 4200-070-11821941-2015; изменение № 20 от 13.06.2024
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW7-IEC61850-LIMIT
+  title_ru: Ограничение обмена по МЭК 61850 строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:recommendation:integration-limitation
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: без обеспечения обмена информацией с другими устройствами
+  source_excerpt_sha256: 24f94ff47575aa0976445fdddb807add24efaef5c252326edb5efc151b235b28
+  category_refs: *id001
+  attribute_refs:
+  - communication_interfaces
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+  constraint:
+    type: documentation
+    attribute_id: communication_interfaces
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: Не использовать обмен с терминалами РЗ/ПА и устройствами АСУ ТП по МЭК 61850
+  applicability_level: recommended
+  priority: 100
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW7-TELECONTROL-EVIDENCE
+  title_ru: Внешнее аттестованное устройство телеуправления строки 7
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-7:recommendation:telecontrol-modules
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: Исполнение команд телеуправления должно осуществляться через внешние аттестованные устройства
+  source_excerpt_sha256: feaad56f40cec1c735e3b0e16cb2ec9c86920cd1eb451e280810b4a9630db9c2
+  category_refs: *id001
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 7
+      values: null
+      range: null
+    - field: telecontrol_enabled
+      operator: eq
+      value: true
+      values: null
+      range: null
+  constraint:
+    type: required_evidence
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: external_certified_telecontrol_module
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: recommended
+  priority: 100
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false

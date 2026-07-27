@@ -1,0 +1,64 @@
+registry_id: ARV-067F-ELECTRICAL-NORMATIVE-REQUIREMENTS
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+source_registry_ref: ARV-067-ELECTRICAL-NORMATIVE-BASE@1.0.0
+document_edition_file: normative_document_editions.v1.yaml
+requirement_files:
+- normative_requirement_fragments/rossetti_primary.v1.yaml
+- normative_requirement_fragments/rossetti_secondary_row6.v1.yaml
+- normative_requirement_fragments/rossetti_secondary_row7.v1.yaml
+- normative_requirement_fragments/rossetti_secondary_row8.v1.yaml
+fixture_file: fixtures/ontology/electrical/normative_requirement_cases.yaml
+counts:
+  document_editions: 2
+  requirements: 22
+  fixture_cases: 20
+applicability_priorities:
+  mandatory: 400
+  contractual: 300
+  operator: 200
+  recommended: 100
+constraint_types:
+- allowed_values
+- minimum
+- maximum
+- range
+- required_evidence
+- marking
+- documentation
+review_statuses:
+- draft
+- source_checked
+- expert_reviewed
+- rejected
+requirement_statuses:
+- candidate
+- active_snapshot
+- superseded
+- withdrawn
+conflict_policy:
+  same_priority_overlapping_incompatible_is_error: true
+  higher_priority_wins_only_with_explicit_resolution: true
+  missing_context_is_uncertain: true
+  edition_status_is_not_inferred: true
+decision_policy:
+  automatic_compliance_decision: false
+  source_quote_and_page_required: true
+  human_review_required: true
+  edition_and_amendment_recheck_required: true
+  evaluation_outcomes:
+  - SATISFIED
+  - VIOLATED
+  - NOT_APPLICABLE
+  - UNCERTAIN
+  - CONFLICT
+governance:
+  full_text_sources_are_not_stored: true
+  source_file_and_page_hashes_required: true
+  category_refs_use_arv067b: true
+  attribute_refs_use_arv067a: true
+  operator_snapshot_is_not_general_law: true
+  recommended_registry_text_is_not_mandatory_requirement: true
+  production_runtime_not_wired: true

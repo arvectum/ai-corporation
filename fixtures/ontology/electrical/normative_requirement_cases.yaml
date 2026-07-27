@@ -1,0 +1,103 @@
+suite_id: ARV-067F-NORMATIVE-REQUIREMENT-CONTRACT-CASES
+version: 1.0.0
+base_registry_id: ARV-067F-ELECTRICAL-NORMATIVE-REQUIREMENTS
+cases:
+- id: valid_baseline
+  mutation: none
+  target_id: null
+  expected_error_codes: []
+- id: unknown_document
+  mutation: unknown_document
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_UNKNOWN_DOCUMENT_EDITION
+- id: missing_page
+  mutation: missing_page
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_SOURCE_PAGE_REQUIRED
+- id: bad_quote_hash
+  mutation: bad_quote_hash
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_SOURCE_EXCERPT_HASH_MISMATCH
+- id: unknown_category
+  mutation: unknown_category
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_UNKNOWN_CATEGORY
+- id: unknown_attribute
+  mutation: unknown_attribute
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_UNKNOWN_ATTRIBUTE
+- id: missing_conditions
+  mutation: missing_conditions
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_APPLIES_WHEN_REQUIRED
+- id: auto_compliance_enabled
+  mutation: auto_compliance_enabled
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_AUTOMATIC_COMPLIANCE_FORBIDDEN
+- id: review_gate_disabled
+  mutation: review_gate_disabled
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_HUMAN_REVIEW_REQUIRED
+- id: priority_mismatch
+  mutation: priority_mismatch
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_PRIORITY_MISMATCH
+- id: constraint_payload_invalid
+  mutation: constraint_payload_invalid
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_CONSTRAINT_PAYLOAD_INVALID
+- id: evidence_kind_missing
+  mutation: evidence_kind_missing
+  target_id: NRF-PRI-ROW2-APPROVAL
+  expected_error_codes:
+  - NRF_CONSTRAINT_PAYLOAD_INVALID
+- id: attribute_not_declared
+  mutation: attribute_not_declared
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_CONSTRAINT_ATTRIBUTE_NOT_DECLARED
+- id: page_out_of_bounds
+  mutation: page_out_of_bounds
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_SOURCE_PAGE_OUT_OF_BOUNDS
+- id: current_status_inferred
+  mutation: current_status_inferred
+  target_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  expected_error_codes:
+  - NRF_EDITION_STATUS_INFERENCE_FORBIDDEN
+- id: full_text_stored
+  mutation: full_text_stored
+  target_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  expected_error_codes:
+  - NRF_FULL_TEXT_STORAGE_FORBIDDEN
+- id: approved_without_reviewer
+  mutation: approved_without_reviewer
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_REVIEWER_REQUIRED
+- id: same_priority_conflict
+  mutation: same_priority_conflict
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_UNRESOLVED_CONFLICT
+- id: unknown_constraint_type
+  mutation: unknown_constraint_type
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_UNKNOWN_CONSTRAINT_TYPE
+- id: source_file_hash_mismatch
+  mutation: source_file_hash_mismatch
+  target_id: NRF-PRI-ROW2-UHL-VOLTAGE
+  expected_error_codes:
+  - NRF_SOURCE_FILE_HASH_MISMATCH

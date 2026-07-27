@@ -1,0 +1,60 @@
+fragment_id: ARV-067F-ROSSETTI-SECONDARY-ROW8-REQUIREMENTS
+version: 1.0.0
+requirements:
+- id: NRF-SEC-ROW8-DISCRETE-PORT-MAX
+  title_ru: Максимум дискретных портов строки 8
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-8:recommendation:discrete-port-limit
+  page: 3
+  page_text_sha256: 4f140679d332bb207f4e8b2c0a7e9677fd203547527c997134cb441b3cb478f7
+  source_excerpt: наличие не более одного дискретного порта напряжением 24 В
+  source_excerpt_sha256: 67b0aeae422c6785a41a1d5ca36a45a8ecd5bbf701e3766bc83e07f0c4d8be93
+  category_refs:
+  - electrical.secondary.automated_metering_systems.data_acquisition_unit
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 8
+      values: null
+      range: null
+    - field: construction_execution
+      operator: eq
+      value: II
+      values: null
+      range: null
+  constraint:
+    type: maximum
+    attribute_id: null
+    context_field: discrete_port_count
+    unit: dimensionless
+    values: null
+    minimum: null
+    maximum: 1
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: recommended
+  priority: 100
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false

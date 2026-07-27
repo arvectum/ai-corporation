@@ -1,0 +1,267 @@
+fragment_id: ARV-067F-ROSSETTI-SECONDARY-ROW6-REQUIREMENTS
+version: 1.0.0
+requirements:
+- id: NRF-SEC-ROW6-APPROVAL
+  title_ru: Действующий операторский допуск строки 6
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-6:approval-validity
+  page: 2
+  page_text_sha256: 066955f32df714e0fbc1e88e55850410dd44597fcf612174bd304fc7e905e0a9
+  source_excerpt: 04.09.2023 27.07.2028 IIП-42/23
+  source_excerpt_sha256: ec3a806038e49985bcf9a7fcbbf5cf183f7c43f22907f5128b85d02e0dfc4021
+  category_refs: &id001
+  - electrical.secondary.automated_metering_systems.three_phase_meter
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 6
+      values: null
+      range: null
+  constraint:
+    type: required_evidence
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: operator_approval
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: '2023-09-04'
+  valid_to: '2028-07-27'
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW6-TYPE-APPROVAL
+  title_ru: Номер утверждённого типа СИ строки 6
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-6:equipment-description:type-approval
+  page: 2
+  page_text_sha256: 066955f32df714e0fbc1e88e55850410dd44597fcf612174bd304fc7e905e0a9
+  source_excerpt: 'Утверждены как тип СИ. Внесены в реестр: №64195-16.'
+  source_excerpt_sha256: 05d27510296b173d50664495fa0485115143596918a9824a3d5d22f7136594a5
+  category_refs: *id001
+  attribute_refs:
+  - type_approval_registry_number
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 6
+      values: null
+      range: null
+  constraint:
+    type: required_evidence
+    attribute_id: type_approval_registry_number
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: metrology_type_approval
+    marking_pattern: null
+    documentation_reference: 64195-16
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW6-SOFTWARE
+  title_ru: Минимальная версия ПО строки 6
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-6:equipment-description:software-version
+  page: 2
+  page_text_sha256: 066955f32df714e0fbc1e88e55850410dd44597fcf612174bd304fc7e905e0a9
+  source_excerpt: 'Версия ПО: v.4.00 и выше.'
+  source_excerpt_sha256: a796ccce9a5ffe3ce71ef4ae7ba8870c63bd43f46b53eda0432b2c5dac8594e6
+  category_refs: *id001
+  attribute_refs:
+  - software_version
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 6
+      values: null
+      range: null
+  constraint:
+    type: minimum
+    attribute_id: software_version
+    context_field: null
+    unit: null
+    values: null
+    minimum: '4.00'
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW6-MARKING
+  title_ru: Перечень исполнений строки 6
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-6:equipment-description:executions
+  page: 2
+  page_text_sha256: 066955f32df714e0fbc1e88e55850410dd44597fcf612174bd304fc7e905e0a9
+  source_excerpt: исполнения 489.24, 489.30, 489.32, 489.34, 489.36, 489.38
+  source_excerpt_sha256: f3b5005e8813dffa3d47cd8294e0e44e8420106e9c2cee10ba751c8c075632e2
+  category_refs: *id001
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 6
+      values: null
+      range: null
+  constraint:
+    type: marking
+    attribute_id: null
+    context_field: execution_designation
+    unit: null
+    values:
+    - '489.24'
+    - '489.30'
+    - '489.32'
+    - '489.34'
+    - '489.36'
+    - '489.38'
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-SEC-ROW6-TU
+  title_ru: Технические условия строки 6
+  document_edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  clause_ref: table-row-6:equipment-description:technical-conditions
+  page: 2
+  page_text_sha256: 066955f32df714e0fbc1e88e55850410dd44597fcf612174bd304fc7e905e0a9
+  source_excerpt: ТУ 4228-076-11821941-2015 изм. 7 от 31.08.2023.
+  source_excerpt_sha256: 939002f9502804cbd9d17045a7d56124ab3b4c352c958f06770e929fb2f0e513
+  category_refs: *id001
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 6
+      values: null
+      range: null
+  constraint:
+    type: documentation
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: ТУ 4228-076-11821941-2015; изменение 7 от 31.08.2023
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    source_kind: operator_registry_snapshot
+    full_text_stored: false

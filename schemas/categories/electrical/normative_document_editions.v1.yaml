@@ -1,0 +1,35 @@
+registry_id: ARV-067F-NORMATIVE-DOCUMENT-EDITIONS
+version: 1.0.0
+documents:
+- edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  normative_document_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10
+  title_ru: Реестр допущенного оборудования ПАО «Россети». Раздел I. Первичное оборудование
+  edition: snapshot-2026-06-10
+  amendments: []
+  status: snapshot_requires_recheck
+  effective_from: '2026-06-10'
+  effective_to: null
+  replaced_by: null
+  current_status_inferred: false
+  source:
+    file_name: Раздел I. Первичное оборудование материалы и системы допущенные к применению на объектах ПАО Россети на 10.06.2026.pdf
+    file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    page_count: 325
+    access: user_supplied_public_snapshot
+    full_text_stored: false
+- edition_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10@2026-06-10
+  normative_document_id: ROSSETI-REGISTRY-SECONDARY-2026-06-10
+  title_ru: Реестр допущенного оборудования ПАО «Россети». Раздел II. Вторичное оборудование
+  edition: snapshot-2026-06-10
+  amendments: []
+  status: snapshot_requires_recheck
+  effective_from: '2026-06-10'
+  effective_to: null
+  replaced_by: null
+  current_status_inferred: false
+  source:
+    file_name: Раздел II. Вторичное оборудование, материалы и системы, допущенные к применению на объектах ПАО «Россети» на 10.06.2026.pdf
+    file_sha256: f2c1990e7fe2c91d533987e9114bd4f76279b49a8d5e627f70a9dfb2c5542e99
+    page_count: 110
+    access: user_supplied_public_snapshot
+    full_text_stored: false

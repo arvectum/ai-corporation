@@ -1,0 +1,463 @@
+fragment_id: ARV-067F-ROSSETTI-PRIMARY-REQUIREMENTS
+version: 1.0.0
+requirements:
+- id: NRF-PRI-ROW2-APPROVAL
+  title_ru: Действующий операторский допуск строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:approval-validity
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: 22.04.2024 22.04.2029 IП-54/24
+  source_excerpt_sha256: 9b1ea879f07ddae585cbd891a3540b263f1a28598b9867229905705720380350
+  category_refs: &id001
+  - electrical.primary.switches.sf6_circuit_breaker
+  attribute_refs: []
+  applies_when:
+    all: &id005
+    - &id002
+      field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - &id003
+      field: registry_row
+      operator: eq
+      value: 2
+      values: null
+      range: null
+    - &id004
+      field: model_family
+      operator: in
+      value: null
+      values:
+      - ВГТ-УЭТМ-330
+      - ВГТ-УЭТМ-500
+      range: null
+  constraint:
+    type: required_evidence
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: operator_approval
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: '2024-04-22'
+  valid_to: '2029-04-22'
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-UHL-VOLTAGE
+  title_ru: Номинальные напряжения варианта УХЛ строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:equipment-description:uhl-voltage
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: напряжения 330 и 500 кВ на номинальный ток 3150 А
+  source_excerpt_sha256: 2689df3c49fdfb96e78c020a5e6cf4099eb1ad0daa6e375c482231071ffc5ca0
+  category_refs: *id001
+  attribute_refs:
+  - rated_voltage_kv
+  applies_when:
+    all:
+    - *id002
+    - *id003
+    - *id004
+    - field: climate_variant
+      operator: eq
+      value: УХЛ*
+      values: null
+      range: null
+  constraint:
+    type: allowed_values
+    attribute_id: rated_voltage_kv
+    context_field: null
+    unit: kV
+    values:
+    - 330
+    - 500
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-UHL-CURRENT
+  title_ru: Номинальный ток варианта УХЛ строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:equipment-description:uhl-current
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: напряжения 330 и 500 кВ на номинальный ток 3150 А
+  source_excerpt_sha256: 2689df3c49fdfb96e78c020a5e6cf4099eb1ad0daa6e375c482231071ffc5ca0
+  category_refs: *id001
+  attribute_refs:
+  - rated_current_a
+  applies_when:
+    all:
+    - *id002
+    - *id003
+    - *id004
+    - field: climate_variant
+      operator: eq
+      value: УХЛ*
+      values: null
+      range: null
+  constraint:
+    type: allowed_values
+    attribute_id: rated_current_a
+    context_field: null
+    unit: A
+    values:
+    - 3150
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-UHL-BREAKING
+  title_ru: Ток отключения варианта УХЛ строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:equipment-description:uhl-breaking-current
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: номинальный ток от-ключения 50 кА
+  source_excerpt_sha256: 89311a843622789bd0827938785db713473168d81af137572718cf0a5386a16b
+  category_refs: *id001
+  attribute_refs:
+  - breaking_current_ka
+  applies_when:
+    all:
+    - *id002
+    - *id003
+    - *id004
+    - field: climate_variant
+      operator: eq
+      value: УХЛ*
+      values: null
+      range: null
+  constraint:
+    type: allowed_values
+    attribute_id: breaking_current_ka
+    context_field: null
+    unit: kA
+    values:
+    - 50
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-U-HL-CURRENT
+  title_ru: Номинальные токи вариантов У и ХЛ строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:equipment-description:u-hl-current
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: на номинальные токи 2000, 2500, 3150, 4000 А
+  source_excerpt_sha256: bbaf86423421c99234083f500e44b0f47b0ced1aab577325ca822f252b739cf7
+  category_refs: *id001
+  attribute_refs:
+  - rated_current_a
+  applies_when:
+    all:
+    - *id002
+    - *id003
+    - *id004
+    - field: climate_variant
+      operator: in
+      value: null
+      values:
+      - У
+      - ХЛ*
+      range: null
+  constraint:
+    type: allowed_values
+    attribute_id: rated_current_a
+    context_field: null
+    unit: A
+    values:
+    - 2000
+    - 2500
+    - 3150
+    - 4000
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-U-HL-BREAKING
+  title_ru: Токи отключения вариантов У и ХЛ строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:equipment-description:u-hl-breaking-current
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: номинальные токи отключения 31,5 и 40 кА
+  source_excerpt_sha256: 5d9cad3e65b87835a4fd6c742d326a513f1dab185ea5f540dcccd6bb7f83381e
+  category_refs: *id001
+  attribute_refs:
+  - breaking_current_ka
+  applies_when:
+    all:
+    - *id002
+    - *id003
+    - *id004
+    - field: climate_variant
+      operator: in
+      value: null
+      values:
+      - У
+      - ХЛ*
+      range: null
+  constraint:
+    type: allowed_values
+    attribute_id: breaking_current_ka
+    context_field: null
+    unit: kA
+    values:
+    - 31.5
+    - 40
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: null
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-TU
+  title_ru: Технические условия и изменение строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:equipment-description:technical-conditions
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: 2БП.029.024 ТУ (изм. № 3)
+  source_excerpt_sha256: af43d24c211f66d3658729eb3c9994fbb87ff9545ac464260b319018a8886b27
+  category_refs: *id001
+  attribute_refs: []
+  applies_when:
+    all: *id005
+  constraint:
+    type: documentation
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: 2БП.029.024 ТУ; изменение № 3
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW2-SWITCHING-LIMIT
+  title_ru: Ограничение коммутационного цикла строки 2
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-2:recommendation:switching-cycle-limitation
+  page: 1
+  page_text_sha256: b2ed6ed454f49d81416bd8a41e0bd4098505c25c61218e8cbdfbaddc740a5e1f
+  source_excerpt: не предназначены для коммутации в цикле «О-0,3с-ВО-20с-ВО»
+  source_excerpt_sha256: b232a18e31b2212824ed30a5dfcc5fd9d9dbeddb311746e5d256c2a67bc9a2f7
+  category_refs: *id001
+  attribute_refs:
+  - switching_duty
+  applies_when:
+    all: *id005
+  constraint:
+    type: documentation
+    attribute_id: switching_duty
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: Исключить применение в цикле О-0,3с-ВО-20с-ВО
+  applicability_level: recommended
+  priority: 100
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
+- id: NRF-PRI-ROW3-SCORE
+  title_ru: Зафиксированный операторский балл строки 3
+  document_edition_id: ROSSETI-REGISTRY-PRIMARY-2026-06-10@2026-06-10
+  clause_ref: table-row-3:operator-assessment-score
+  page: 2
+  page_text_sha256: cd6e02d20da6d032bbec06b51aa90237bfc8195b99fb3857ec4e1fd1bc018aaa
+  source_excerpt: Количество баллов в соответствии с СТО 34.01-22-002-2023 – 81,66.
+  source_excerpt_sha256: 4a1e5cdda3ae7a5a3dc33c9c694e1cd111c60d5fbb225544e710d2460d198099
+  category_refs: *id001
+  attribute_refs: []
+  applies_when:
+    all:
+    - field: operator_id
+      operator: eq
+      value: rossetti
+      values: null
+      range: null
+    - field: registry_row
+      operator: eq
+      value: 3
+      values: null
+      range: null
+  constraint:
+    type: documentation
+    attribute_id: null
+    context_field: null
+    unit: null
+    values: null
+    minimum: null
+    maximum: null
+    range: null
+    evidence_kind: null
+    marking_pattern: null
+    documentation_reference: СТО 34.01-22-002-2023; 81,66 балла
+  applicability_level: operator
+  priority: 200
+  status: active_snapshot
+  valid_from: null
+  valid_to: null
+  review:
+    status: source_checked
+    required_expert_role: electrical_normative_expert
+    reviewer_id: null
+    reviewed_at: null
+  human_review_required: true
+  automatic_compliance_decision: false
+  provenance:
+    extraction_method: manual_page_review
+    source_file_sha256: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    source_kind: operator_registry_snapshot
+    full_text_stored: false
