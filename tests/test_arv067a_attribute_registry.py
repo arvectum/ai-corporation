@@ -80,6 +80,8 @@ def test_arv067a_registry_covers_detailed_taxonomy_and_wave1_attributes() -> Non
     }
 
     assert original_detailed <= verified
+    # Only the explicit wave-1 extension fragment is promoted. Reused taxonomy
+    # discriminators remain provisional until their own source-verification gate.
     assert len(wave1_verified) == 30
     assert wave1_verified <= verified
     assert wave1_verified <= wave1_detailed
