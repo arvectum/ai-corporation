@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://arvectum.com/schemas/categories/electrical/attribute_registry.schema.json",
-  "title": "ARV-067A electrical attribute registry",
+  "title": "ARV-067A electrical attribute registry manifest",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -13,33 +13,19 @@
     "purpose",
     "source_assets",
     "profile_id_aliases",
+    "attribute_files",
     "units",
     "comparators",
     "value_sets",
-    "attributes",
     "governance"
   ],
   "properties": {
-    "registry_id": {
-      "const": "ARV-067A-ELECTRICAL-ATTRIBUTE-REGISTRY"
-    },
-    "version": {
-      "type": "string",
-      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-    },
-    "status": {
-      "const": "research_asset"
-    },
-    "locale": {
-      "const": "ru-RU"
-    },
-    "runtime_import": {
-      "const": false
-    },
-    "purpose": {
-      "type": "string",
-      "minLength": 60
-    },
+    "registry_id": {"const": "ARV-067A-ELECTRICAL-ATTRIBUTE-REGISTRY"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "status": {"const": "research_asset"},
+    "locale": {"const": "ru-RU"},
+    "runtime_import": {"const": false},
+    "purpose": {"type": "string", "minLength": 60},
     "source_assets": {
       "type": "array",
       "minItems": 2,
@@ -57,6 +43,11 @@
     "profile_id_aliases": {
       "type": "object",
       "additionalProperties": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"}
+    },
+    "attribute_files": {
+      "type": "array",
+      "minItems": 7,
+      "items": {"type": "string", "pattern": "^attributes/[a-z0-9_]+\\.v1\\.yaml$"}
     },
     "units": {
       "type": "array",
@@ -104,46 +95,6 @@
         "properties": {
           "source": {"type": "string"},
           "values": {"type": "array", "minItems": 1, "items": {"type": "string"}}
-        }
-      }
-    },
-    "attributes": {
-      "type": "array",
-      "minItems": 100,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id", "title_ru", "value_type", "default_comparator", "semantic_role",
-          "maturity", "aliases", "provenance"
-        ],
-        "properties": {
-          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
-          "title_ru": {"type": "string", "minLength": 3},
-          "value_type": {"enum": ["number", "integer", "enum", "boolean", "text", "set", "range"]},
-          "canonical_unit": {"type": "string"},
-          "default_comparator": {"enum": ["exact", "minimum", "maximum", "contains", "range_overlap"]},
-          "semantic_role": {
-            "enum": [
-              "identity", "capability", "constraint", "compatibility", "applicability",
-              "construction", "environment", "configuration", "safety", "efficiency",
-              "reliability", "lifecycle", "evidence"
-            ]
-          },
-          "maturity": {"enum": ["verified_detailed_profile", "provisional_taxonomy", "deprecated"]},
-          "aliases": {"type": "array", "items": {"type": "string"}},
-          "value_set_ref": {"type": "string"},
-          "allowed_values": {"type": "array", "items": {"type": "string"}},
-          "notes": {"type": "string"},
-          "provenance": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["source_asset", "basis"],
-            "properties": {
-              "source_asset": {"enum": ["electrical.v1.yaml", "nomenclature.v1.yaml"]},
-              "basis": {"enum": ["explicit_attribute_definition", "discriminator_id_and_engineering_inference"]}
-            }
-          }
         }
       }
     },
