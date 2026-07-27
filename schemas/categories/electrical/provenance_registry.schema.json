@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registry_id", "version", "status", "runtime_import", "locale", "source_file", "claim_files", "review_event_file", "conflict_file", "audit_report_file", "fixture_file", "counts", "claim_types", "review_statuses", "reviewer_roles", "confidence_policy", "production_policy", "history_policy", "security_policy", "report_policy", "governance"],
+  "properties": {
+    "registry_id": {"const": "ARV-067G-ELECTRICAL-PROVENANCE"},
+    "version": {"type": "string"},
+    "status": {"type": "string"},
+    "runtime_import": {"const": false},
+    "locale": {"type": "string"},
+    "source_file": {"type": "string"},
+    "claim_files": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "review_event_file": {"type": "string"},
+    "conflict_file": {"type": "string"},
+    "audit_report_file": {"type": "string"},
+    "fixture_file": {"type": "string"},
+    "counts": {"type": "object"},
+    "claim_types": {"type": "array", "uniqueItems": true, "items": {"enum": ["category", "alias", "attribute", "allowed_value", "relation", "normative_requirement"]}},
+    "review_statuses": {"type": "array", "uniqueItems": true, "items": {"enum": ["machine_extracted", "human_verified", "rejected", "superseded"]}},
+    "reviewer_roles": {"type": "array", "items": {"type": "string"}},
+    "confidence_policy": {"type": "object"},
+    "production_policy": {"type": "object"},
+    "history_policy": {"type": "object"},
+    "security_policy": {"type": "object"},
+    "report_policy": {"type": "object"},
+    "governance": {"type": "object"}
+  }
+}

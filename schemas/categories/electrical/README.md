@@ -28,6 +28,8 @@ ARV-067E adds separate manufacturer, series, model, execution, supplier-offer an
 
 ARV-067F adds 22 clause/page-level requirements backed by two Rosseti registry snapshot hashes, explicit applicability conditions, source excerpts, priority/conflict gates and a fail-closed evaluator that never makes an automatic compliance decision.
 
+ARV-067G adds a content-addressed provenance claim registry for categories, aliases, attributes, allowed values, relations and normative requirements. It includes immutable hash-chained review events, explicit conflict gates and a deterministic report of unverified, low-confidence, stale and production-blocked assertions.
+
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
 ## Files
@@ -104,6 +106,17 @@ Clause-level normative requirements:
 - `normative_requirement_evaluator.py` — fail-closed offline evaluator;
 - `validate_normative_requirements.py` — source, cross-reference, conflict and fixture validator.
 
+Provenance and expert review:
+
+- `provenance_registry.v1.yaml` — ARV-067G manifest, confidence and production gates;
+- `provenance_sources.v1.yaml` — immutable content-addressed source revisions;
+- `provenance_claims/*.v1.yaml` — 24 audit claims across six assertion types;
+- `provenance_review_events.v1.yaml` — append-only hash-chained review history;
+- `provenance_conflicts.v1.yaml` — explicit unresolved/resolved conflict registry;
+- `provenance_audit_report.v1.yaml` — deterministic report of review and freshness gaps;
+- `generate_provenance_report.py` — report generator;
+- `validate_provenance.py` — source, claim, review-event, conflict and report validator.
+
 Fixtures live in `fixtures/ontology/electrical/`.
 
 ## Validation
@@ -117,6 +130,7 @@ python schemas/categories/electrical/validate_relations.py
 python schemas/categories/electrical/validate_wave1_profiles.py
 python schemas/categories/electrical/validate_product_catalog.py
 python schemas/categories/electrical/validate_normative_requirements.py
+python schemas/categories/electrical/validate_provenance.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
 python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 python -m pytest -q tests/test_arv067a_attribute_registry.py
@@ -125,6 +139,7 @@ python -m pytest -q tests/test_arv067c_relations.py
 python -m pytest -q tests/test_arv067d_wave1_profiles.py
 python -m pytest -q tests/test_arv067e_product_catalog.py
 python -m pytest -q tests/test_arv067f_normative_requirements.py
+python -m pytest -q tests/test_arv067g_provenance.py
 ```
 
 Successful validator markers:
@@ -138,6 +153,7 @@ ARV-067C relation graph: OK (types=9, components=3, assertions=25, fixtures=26, 
 ARV-067D wave1 profiles: OK (profiles=15, bindings=11, fixtures=180, attributes=..., runtime_import=false)
 ARV-067E product catalog: OK (manufacturers=3, series=4, models=5, executions=6, offers=5, evidence=8, contract_cases=15, runtime_import=false)
 ARV-067F normative requirements: OK (document_editions=2, requirements=22, fixture_cases=20, runtime_import=false)
+ARV-067G provenance: OK (sources=6, claims=24, review_events=24, conflicts=0, fixture_cases=24, production_ready=0, runtime_import=false)
 ```
 
 ## Safety boundary
@@ -147,6 +163,9 @@ ARV-067F normative requirements: OK (document_editions=2, requirements=22, fixtu
 - ARV-067D promotions are overlays and do not rewrite the source category snapshot;
 - ARV-067E records are synthetic fixtures and do not assert real products or approvals;
 - ARV-067F stores only hashes, locators and short excerpts; edition currency and compliance are never inferred automatically;
+- ARV-067G does not convert machine-extracted or legacy source-verified assertions into expert-verified claims;
+- provenance source revisions and review events are append-only; changed source content requires a new revision;
+- low-confidence claims and unresolved conflicts remain review-required and production-blocked;
 - manufacturers, series, models and supplier SKUs never become canonical categories;
 - series ranges are not proof of a concrete execution's parameters;
 - Rosseti registry rows map to operator-approval evidence, not categories or certificates;
@@ -156,6 +175,6 @@ ARV-067F normative requirements: OK (document_editions=2, requirements=22, fixtu
 - the ontology and normative registry are not certification or legal-compliance evidence;
 - operator registry inclusion is not universal product equivalence proof;
 - standards require scope, edition and amendment verification for each procurement;
-- unlicensed full texts are not committed;
+- unlicensed full texts, protected source content and secrets are not committed;
 - required unknowns remain uncertain rather than guessed;
 - live accuracy and compliance claims remain blocked until controlled truth packs and human review are accepted.

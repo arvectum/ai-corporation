@@ -1,0 +1,7 @@
+registry_id: ARV-067G-CONFLICTS
+version: 1.0.0
+conflicts: []
+policy:
+  unresolved_conflicts_require_review: true
+  hidden_reconciliation_forbidden: true
+  resolution_requires_review_event: true

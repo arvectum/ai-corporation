@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registry_id", "version", "events"],
+  "properties": {
+    "registry_id": {"const": "ARV-067G-REVIEW-EVENTS"},
+    "version": {"type": "string"},
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["event_id", "claim_id", "sequence", "from_status", "to_status", "actor_type", "reviewer_id", "reviewer_role", "event_at", "rationale", "previous_event_hash", "event_hash"],
+        "properties": {
+          "event_id": {"type": "string"},
+          "claim_id": {"type": "string"},
+          "sequence": {"type": "integer", "minimum": 1},
+          "from_status": {"type": ["string", "null"]},
+          "to_status": {"enum": ["machine_extracted", "human_verified", "rejected", "superseded"]},
+          "actor_type": {"enum": ["machine", "human", "system"]},
+          "reviewer_id": {"type": ["string", "null"]},
+          "reviewer_role": {"type": ["string", "null"]},
+          "event_at": {"type": "string"},
+          "rationale": {"type": "string", "minLength": 1},
+          "previous_event_hash": {"type": ["string", "null"]},
+          "event_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        }
+      }
+    }
+  }
+}

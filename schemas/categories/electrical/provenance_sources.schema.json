@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registry_id", "version", "sources"],
+  "properties": {
+    "registry_id": {"const": "ARV-067G-PROVENANCE-SOURCES"},
+    "version": {"type": "string"},
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "revision_id", "title", "source_kind", "location", "hash_algorithm", "content_hash", "captured_at", "source_status", "is_current", "supersedes_revision_id", "review_due_at", "full_text_stored", "secrets_stored", "protected_content_stored"],
+        "properties": {
+          "source_id": {"type": "string"},
+          "revision_id": {"type": "string"},
+          "title": {"type": "string"},
+          "source_kind": {"enum": ["repository_asset", "operator_registry_snapshot", "normative_document", "manufacturer_document", "contract_document"]},
+          "location": {"type": "string"},
+          "hash_algorithm": {"enum": ["git_blob_sha1", "sha256"]},
+          "content_hash": {"type": "string"},
+          "captured_at": {"type": "string"},
+          "source_status": {"enum": ["active", "snapshot_requires_recheck", "superseded", "expired"]},
+          "is_current": {"type": "boolean"},
+          "supersedes_revision_id": {"type": ["string", "null"]},
+          "review_due_at": {"type": ["string", "null"]},
+          "full_text_stored": {"const": false},
+          "secrets_stored": {"const": false},
+          "protected_content_stored": {"const": false}
+        }
+      }
+    }
+  }
+}

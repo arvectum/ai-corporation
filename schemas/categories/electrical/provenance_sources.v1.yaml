@@ -1,0 +1,93 @@
+registry_id: ARV-067G-PROVENANCE-SOURCES
+version: 1.0.0
+sources:
+- source_id: SRC-CATEGORY-SWITCHES
+  revision_id: SRC-CATEGORY-SWITCHES@1
+  title: ARV-067B switches category fragment
+  source_kind: repository_asset
+  location: schemas/categories/electrical/category_nodes/switches.v1.yaml
+  hash_algorithm: git_blob_sha1
+  content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+  captured_at: '2026-07-27T07:00:00Z'
+  source_status: active
+  is_current: true
+  supersedes_revision_id: null
+  review_due_at: null
+  full_text_stored: false
+  secrets_stored: false
+  protected_content_stored: false
+- source_id: SRC-ATTRIBUTE-SWITCHING
+  revision_id: SRC-ATTRIBUTE-SWITCHING@1
+  title: ARV-067A switching and insulation attributes
+  source_kind: repository_asset
+  location: schemas/categories/electrical/attributes/switching_insulation.v1.yaml
+  hash_algorithm: git_blob_sha1
+  content_hash: 1cb0a7261c1079166d878ff81c3c13d483318be5
+  captured_at: '2026-07-27T07:00:00Z'
+  source_status: active
+  is_current: true
+  supersedes_revision_id: null
+  review_due_at: null
+  full_text_stored: false
+  secrets_stored: false
+  protected_content_stored: false
+- source_id: SRC-ATTRIBUTE-REGISTRY
+  revision_id: SRC-ATTRIBUTE-REGISTRY@1
+  title: ARV-067A attribute registry and value sets
+  source_kind: repository_asset
+  location: schemas/categories/electrical/attribute_registry.v1.yaml
+  hash_algorithm: git_blob_sha1
+  content_hash: c4d266b740d3df8c4e1f4036bcafd34da2b3439d
+  captured_at: '2026-07-27T07:00:00Z'
+  source_status: active
+  is_current: true
+  supersedes_revision_id: null
+  review_due_at: null
+  full_text_stored: false
+  secrets_stored: false
+  protected_content_stored: false
+- source_id: SRC-RELATION-SWITCHING
+  revision_id: SRC-RELATION-SWITCHING@1
+  title: ARV-067C switching relation assertions
+  source_kind: repository_asset
+  location: schemas/categories/electrical/relation_assertions/switching.v1.yaml
+  hash_algorithm: git_blob_sha1
+  content_hash: b1709f038f108172dc79f4d7a1632cd8d157936e
+  captured_at: '2026-07-27T08:00:00Z'
+  source_status: active
+  is_current: true
+  supersedes_revision_id: null
+  review_due_at: null
+  full_text_stored: false
+  secrets_stored: false
+  protected_content_stored: false
+- source_id: SRC-NORMATIVE-PRIMARY-FRAGMENT
+  revision_id: SRC-NORMATIVE-PRIMARY-FRAGMENT@1
+  title: ARV-067F Rosseti primary requirement fragment
+  source_kind: repository_asset
+  location: schemas/categories/electrical/normative_requirement_fragments/rossetti_primary.v1.yaml
+  hash_algorithm: git_blob_sha1
+  content_hash: 86e5341ee0fdf5c5e28e50a8e7250cd02c625956
+  captured_at: '2026-07-27T11:00:00Z'
+  source_status: active
+  is_current: true
+  supersedes_revision_id: null
+  review_due_at: null
+  full_text_stored: false
+  secrets_stored: false
+  protected_content_stored: false
+- source_id: SRC-ROSSETTI-PRIMARY-PDF
+  revision_id: SRC-ROSSETTI-PRIMARY-PDF@2026-06-10
+  title: Rosseti approved equipment registry, primary section, snapshot 2026-06-10
+  source_kind: operator_registry_snapshot
+  location: user-supplied:Раздел I. Первичное оборудование материалы и системы допущенные к применению на объектах ПАО Россети на 10.06.2026.pdf
+  hash_algorithm: sha256
+  content_hash: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+  captured_at: '2026-07-27T10:30:00Z'
+  source_status: snapshot_requires_recheck
+  is_current: true
+  supersedes_revision_id: null
+  review_due_at: '2026-08-10T00:00:00Z'
+  full_text_stored: false
+  secrets_stored: false
+  protected_content_stored: false

@@ -1,0 +1,363 @@
+fragment_id: ARV-067G-RELATION-NORMATIVE-CLAIMS
+version: 1.0.0
+claims:
+- claim_id: CLM-REL-MCB-PART-OF@1
+  logical_claim_id: CLM-REL-MCB-PART-OF
+  claim_version: 1
+  claim_type: relation
+  subject:
+    kind: relation_assertion
+    id: REL-MCB-TRIP-UNIT-PART-OF
+  predicate: assertion_present
+  object_value: true
+  object_ref: null
+  assertion_hash: 78949df204400ac629f9306abbcc522aa0bdede36ac5b74d3879d39b073e34cc
+  source_links:
+  - source_revision_id: SRC-RELATION-SWITCHING@1
+    source_content_hash: b1709f038f108172dc79f4d7a1632cd8d157936e
+    locator:
+      path: schemas/categories/electrical/relation_assertions/switching.v1.yaml
+      page: null
+      row: null
+      clause: REL-MCB-TRIP-UNIT-PART-OF
+      json_pointer: /assertions/0
+    extraction_method: profile_semantic_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.9
+  confidence: 0.9
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Existing relation assertion is indexed for audit; source status does not equal independent expert verification.
+    current_event_id: EVT-017
+    current_event_hash: b85ea699e85152a265738f8809942d7320eb68124c56b25dd8858aba82b40078
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-REL-MCB-COMPATIBLE@1
+  logical_claim_id: CLM-REL-MCB-COMPATIBLE
+  claim_version: 1
+  claim_type: relation
+  subject:
+    kind: relation_assertion
+    id: REL-MCB-COMPATIBLE-TRIP-UNIT
+  predicate: assertion_present
+  object_value: true
+  object_ref: null
+  assertion_hash: ed7b25aafeebae136b5a7020adb7cb82be2aa671825f276a002631ee061d08a1
+  source_links:
+  - source_revision_id: SRC-RELATION-SWITCHING@1
+    source_content_hash: b1709f038f108172dc79f4d7a1632cd8d157936e
+    locator:
+      path: schemas/categories/electrical/relation_assertions/switching.v1.yaml
+      page: null
+      row: null
+      clause: REL-MCB-COMPATIBLE-TRIP-UNIT
+      json_pointer: /assertions/2
+    extraction_method: expert_modeling
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.65
+  confidence: 0.65
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Existing relation assertion is indexed for audit; source status does not equal independent expert verification.
+    current_event_id: EVT-018
+    current_event_hash: f1abe1b0689844c6d476824a088bf8e8b630b51941a58f4b85d8ddec6d6f9b66
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-REL-SF6-ALTERNATIVE@1
+  logical_claim_id: CLM-REL-SF6-ALTERNATIVE
+  claim_version: 1
+  claim_type: relation
+  subject:
+    kind: relation_assertion
+    id: REL-SF6-ALTERNATIVE-VACUUM-BREAKER
+  predicate: assertion_present
+  object_value: true
+  object_ref: null
+  assertion_hash: 93ad282259a254637de4cce41e5499bb08a3d5cc58e4d800848c1e26af92cb25
+  source_links:
+  - source_revision_id: SRC-RELATION-SWITCHING@1
+    source_content_hash: b1709f038f108172dc79f4d7a1632cd8d157936e
+    locator:
+      path: schemas/categories/electrical/relation_assertions/switching.v1.yaml
+      page: null
+      row: null
+      clause: REL-SF6-ALTERNATIVE-VACUUM-BREAKER
+      json_pointer: /assertions/4
+    extraction_method: expert_modeling
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.55
+  confidence: 0.55
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Existing relation assertion is indexed for audit; source status does not equal independent expert verification.
+    current_event_id: EVT-019
+    current_event_hash: b9659ad03ddc5ab8dcbd511e1ff6cd8184f8503512fc2b07414a7abc6aaaef8e
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-REL-MCB-GOVERNED@1
+  logical_claim_id: CLM-REL-MCB-GOVERNED
+  claim_version: 1
+  claim_type: relation
+  subject:
+    kind: relation_assertion
+    id: REL-MCB-GOVERNED-GOST-60898
+  predicate: assertion_present
+  object_value: true
+  object_ref: null
+  assertion_hash: 9844be52888b8e057427f2f4656afa2e48110f71c0e6e49b25885ef64564b956
+  source_links:
+  - source_revision_id: SRC-RELATION-SWITCHING@1
+    source_content_hash: b1709f038f108172dc79f4d7a1632cd8d157936e
+    locator:
+      path: schemas/categories/electrical/relation_assertions/switching.v1.yaml
+      page: null
+      row: null
+      clause: REL-MCB-GOVERNED-GOST-60898
+      json_pointer: /assertions/5
+    extraction_method: metadata_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.8
+  confidence: 0.8
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Existing relation assertion is indexed for audit; source status does not equal independent expert verification.
+    current_event_id: EVT-020
+    current_event_hash: dd9d9352268f296a701a6fc540b9b6b6eedcb7c42f808db93e5f7760c13b716c
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-NORM-ROW2-APPROVAL@1
+  logical_claim_id: CLM-NORM-ROW2-APPROVAL
+  claim_version: 1
+  claim_type: normative_requirement
+  subject:
+    kind: normative_requirement
+    id: NRF-PRI-ROW2-APPROVAL
+  predicate: operator_approval_required
+  object_value: IП-54/24
+  object_ref: null
+  assertion_hash: 8c13fc0e790056ca4ce5aaed7a5967629758dbee98b6df968836ccb50efab236
+  source_links:
+  - source_revision_id: SRC-NORMATIVE-PRIMARY-FRAGMENT@1
+    source_content_hash: 86e5341ee0fdf5c5e28e50a8e7250cd02c625956
+    locator:
+      path: schemas/categories/electrical/normative_requirement_fragments/rossetti_primary.v1.yaml
+      page: 1
+      row: 2
+      clause: table-row-2:approval-validity
+      json_pointer: /requirements/0
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  - source_revision_id: SRC-ROSSETTI-PRIMARY-PDF@2026-06-10
+    source_content_hash: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    locator:
+      path: null
+      page: 1
+      row: 2
+      clause: table-row-2:approval-validity
+      json_pointer: null
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  confidence: 0.96
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source row and excerpt were checked, but no domain-expert verification event exists.
+    current_event_id: EVT-021
+    current_event_hash: 65e47385de4a4b42a3b1c168c21083e68a0aa1790512889a77db8dd4dd341db0
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-NORM-ROW2-VOLTAGE@1
+  logical_claim_id: CLM-NORM-ROW2-VOLTAGE
+  claim_version: 1
+  claim_type: normative_requirement
+  subject:
+    kind: normative_requirement
+    id: NRF-PRI-ROW2-UHL-VOLTAGE
+  predicate: allowed_values
+  object_value:
+  - 330
+  - 500
+  object_ref: null
+  assertion_hash: 26f64f979d6ab3d4703d8a342286c849b756fd02327d6bd062decb59260b2506
+  source_links:
+  - source_revision_id: SRC-NORMATIVE-PRIMARY-FRAGMENT@1
+    source_content_hash: 86e5341ee0fdf5c5e28e50a8e7250cd02c625956
+    locator:
+      path: schemas/categories/electrical/normative_requirement_fragments/rossetti_primary.v1.yaml
+      page: 1
+      row: 2
+      clause: table-row-2:equipment-description:uhl-voltage
+      json_pointer: /requirements/1
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  - source_revision_id: SRC-ROSSETTI-PRIMARY-PDF@2026-06-10
+    source_content_hash: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    locator:
+      path: null
+      page: 1
+      row: 2
+      clause: table-row-2:equipment-description:uhl-voltage
+      json_pointer: null
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  confidence: 0.96
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source row and excerpt were checked, but no domain-expert verification event exists.
+    current_event_id: EVT-022
+    current_event_hash: 617969961f5d6357060dbb4ce9be716068a2321001eab598b2b905245b305946
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-NORM-ROW2-CURRENT@1
+  logical_claim_id: CLM-NORM-ROW2-CURRENT
+  claim_version: 1
+  claim_type: normative_requirement
+  subject:
+    kind: normative_requirement
+    id: NRF-PRI-ROW2-UHL-CURRENT
+  predicate: allowed_values
+  object_value:
+  - 3150
+  object_ref: null
+  assertion_hash: 3ba91f32fb2d9dcd8ac9cdeb1d836473180c6c10c68ab5cbf33fff9e8c06001c
+  source_links:
+  - source_revision_id: SRC-NORMATIVE-PRIMARY-FRAGMENT@1
+    source_content_hash: 86e5341ee0fdf5c5e28e50a8e7250cd02c625956
+    locator:
+      path: schemas/categories/electrical/normative_requirement_fragments/rossetti_primary.v1.yaml
+      page: 1
+      row: 2
+      clause: table-row-2:equipment-description:uhl-current
+      json_pointer: /requirements/2
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  - source_revision_id: SRC-ROSSETTI-PRIMARY-PDF@2026-06-10
+    source_content_hash: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    locator:
+      path: null
+      page: 1
+      row: 2
+      clause: table-row-2:equipment-description:uhl-current
+      json_pointer: null
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  confidence: 0.96
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source row and excerpt were checked, but no domain-expert verification event exists.
+    current_event_id: EVT-023
+    current_event_hash: e65ae5931289a25a879ff5e241e95355847487a0b86ecf8ef1cc68ac0ddf40f4
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-NORM-ROW2-BREAKING@1
+  logical_claim_id: CLM-NORM-ROW2-BREAKING
+  claim_version: 1
+  claim_type: normative_requirement
+  subject:
+    kind: normative_requirement
+    id: NRF-PRI-ROW2-UHL-BREAKING
+  predicate: allowed_values
+  object_value:
+  - 50
+  object_ref: null
+  assertion_hash: d300ab2668ddc53a17859d3290df3bc1d61e8ba59dac79cab1fbc138288b8d3e
+  source_links:
+  - source_revision_id: SRC-NORMATIVE-PRIMARY-FRAGMENT@1
+    source_content_hash: 86e5341ee0fdf5c5e28e50a8e7250cd02c625956
+    locator:
+      path: schemas/categories/electrical/normative_requirement_fragments/rossetti_primary.v1.yaml
+      page: 1
+      row: 2
+      clause: table-row-2:equipment-description:uhl-breaking-current
+      json_pointer: /requirements/3
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  - source_revision_id: SRC-ROSSETTI-PRIMARY-PDF@2026-06-10
+    source_content_hash: d767c09ed70bda8d530febc4c9e7347b5c91d90e3baca04b06e7f4999a76b411
+    locator:
+      path: null
+      page: 1
+      row: 2
+      clause: table-row-2:equipment-description:uhl-breaking-current
+      json_pointer: null
+    extraction_method: manual_page_review
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.96
+  confidence: 0.96
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source row and excerpt were checked, but no domain-expert verification event exists.
+    current_event_id: EVT-024
+    current_event_hash: 6284a83b23f1b498ebf260a676fed730c8c5a22f1301c26d9dfea2463711ef17
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false

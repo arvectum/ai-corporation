@@ -1,0 +1,315 @@
+fragment_id: ARV-067G-CLASSIFICATION-CLAIMS
+version: 1.0.0
+claims:
+- claim_id: CLM-CATEGORY-SWITCHES@1
+  logical_claim_id: CLM-CATEGORY-SWITCHES
+  claim_version: 1
+  claim_type: category
+  subject:
+    kind: category
+    id: electrical.primary.switches
+  predicate: category_exists
+  object_value: Выключатели
+  object_ref: null
+  assertion_hash: 44f478d4610b6d25a40f223e0f4e9328e73ac54af78b6106120df369549cdddb
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/0
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.98
+  confidence: 0.98
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-001
+    current_event_hash: 5e2bb8d7c4bc605aef87e01a10932a5eb478455902f287be51122b32ea3b13e6
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-CATEGORY-SF6@1
+  logical_claim_id: CLM-CATEGORY-SF6
+  claim_version: 1
+  claim_type: category
+  subject:
+    kind: category
+    id: electrical.primary.switches.sf6_circuit_breaker
+  predicate: category_exists
+  object_value: элегазовый выключатель
+  object_ref: null
+  assertion_hash: 6ec735c49864716a1084be61191908ac509238506aad11b0ba877f02689c0591
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/1
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.98
+  confidence: 0.98
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-002
+    current_event_hash: 11a39e4b6d040357986415726d4901867c6e2d6675a11fac745026d9956ca679
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-CATEGORY-VACUUM@1
+  logical_claim_id: CLM-CATEGORY-VACUUM
+  claim_version: 1
+  claim_type: category
+  subject:
+    kind: category
+    id: electrical.primary.switches.vacuum_circuit_breaker
+  predicate: category_exists
+  object_value: вакуумный выключатель
+  object_ref: null
+  assertion_hash: 8b2cfbfb82a0bee672a7b88685757b5d05c8d3650b0411e65477c517e0ecac49
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/2
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.98
+  confidence: 0.98
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-003
+    current_event_hash: f23ddb9c69f3424b3dda9ed7400220b1d53cee8298682a8e377926a3f9d4fd13
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-CATEGORY-RECLOSER@1
+  logical_claim_id: CLM-CATEGORY-RECLOSER
+  claim_version: 1
+  claim_type: category
+  subject:
+    kind: category
+    id: electrical.primary.switches.recloser
+  predicate: category_exists
+  object_value: реклоузер
+  object_ref: null
+  assertion_hash: e53cbcec2cb3198d9eeb67bcec41744bdf41ec2e2fcef54e88b972186110bd41
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/3
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.98
+  confidence: 0.98
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-004
+    current_event_hash: 0cd85fcc1837e24d1243486303320bb126402be3abd5154c24173e12b9b7e5c8
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ALIAS-SF6@1
+  logical_claim_id: CLM-ALIAS-SF6
+  claim_version: 1
+  claim_type: alias
+  subject:
+    kind: category
+    id: electrical.primary.switches.sf6_circuit_breaker
+  predicate: has_alias
+  object_value: SF6 выключатель
+  object_ref: null
+  assertion_hash: 0b02503866fbd21ce2d0a270940ca5c68e71223c015609cdacd0204e67219b51
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/1/routing/aliases/2
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.95
+  confidence: 0.95
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-005
+    current_event_hash: 057f4ec79a086e3b724ca9bc109fc3d8e9d1205f019e8b8885834d2a213d5e8e
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ALIAS-VACUUM@1
+  logical_claim_id: CLM-ALIAS-VACUUM
+  claim_version: 1
+  claim_type: alias
+  subject:
+    kind: category
+    id: electrical.primary.switches.vacuum_circuit_breaker
+  predicate: has_alias
+  object_value: выключатель вакуумный
+  object_ref: null
+  assertion_hash: 6c6ec642fcc525c6e89a1ac990f36bb424345cb5325a19f03b1829ac469e41f3
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/2/routing/aliases/1
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.95
+  confidence: 0.95
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-006
+    current_event_hash: 8360ed9ceba6208db4ba362e7329b99236b6c81ebfdd4ace77ea442aeb787748
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ALIAS-RECLOSER@1
+  logical_claim_id: CLM-ALIAS-RECLOSER
+  claim_version: 1
+  claim_type: alias
+  subject:
+    kind: category
+    id: electrical.primary.switches.recloser
+  predicate: has_alias
+  object_value: реклоузер
+  object_ref: null
+  assertion_hash: d29e8de3ba5fe7c163bb4f717fa98bde33a2c93ca901b8af0ff4f065e1ecb3fc
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/3/routing/aliases/0
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.95
+  confidence: 0.95
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-007
+    current_event_hash: e9e9cc0a73f6fb69a434eb81cd292469989e2192f6c24ba1ca8cbbc738c62e57
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ALIAS-PVR@1
+  logical_claim_id: CLM-ALIAS-PVR
+  claim_version: 1
+  claim_type: alias
+  subject:
+    kind: category
+    id: electrical.primary.switches.switch_fuse_disconnector
+  predicate: has_alias
+  object_value: ПВР
+  object_ref: null
+  assertion_hash: b984ec613547087444813caacf2dc8f443d8fe3a3f13ccf0278605d4680396c4
+  source_links:
+  - source_revision_id: SRC-CATEGORY-SWITCHES@1
+    source_content_hash: a5a7da950f4e0fee3639ef8e18074a41e705d33c
+    locator:
+      path: schemas/categories/electrical/category_nodes/switches.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /nodes/5/routing/aliases/1
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.95
+  confidence: 0.95
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-008
+    current_event_hash: cc6c3a07878473bfe712a1a328628c763099270b181a6c227416729eb781602b
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false

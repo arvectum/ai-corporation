@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registry_id", "version", "conflicts", "policy"],
+  "properties": {
+    "registry_id": {"const": "ARV-067G-CONFLICTS"},
+    "version": {"type": "string"},
+    "conflicts": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["conflict_id", "claim_ids", "status", "rationale", "resolution_event_id"], "properties": {"conflict_id": {"type": "string"}, "claim_ids": {"type": "array", "minItems": 2, "items": {"type": "string"}}, "status": {"enum": ["unresolved", "resolved"]}, "rationale": {"type": "string"}, "resolution_event_id": {"type": ["string", "null"]}}}},
+    "policy": {"type": "object"}
+  }
+}

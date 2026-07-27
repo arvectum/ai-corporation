@@ -1,0 +1,67 @@
+registry_id: ARV-067G-ELECTRICAL-PROVENANCE
+version: 1.0.0
+status: research_asset
+runtime_import: false
+locale: ru-RU
+source_file: provenance_sources.v1.yaml
+claim_files:
+- provenance_claims/classification.v1.yaml
+- provenance_claims/attributes_values.v1.yaml
+- provenance_claims/relations_norms.v1.yaml
+review_event_file: provenance_review_events.v1.yaml
+conflict_file: provenance_conflicts.v1.yaml
+audit_report_file: provenance_audit_report.v1.yaml
+fixture_file: fixtures/ontology/electrical/provenance_cases.yaml
+counts:
+  sources: 6
+  claims: 24
+  review_events: 24
+  conflict_groups: 0
+  fixture_cases: 24
+claim_types:
+- category
+- alias
+- attribute
+- allowed_value
+- relation
+- normative_requirement
+review_statuses:
+- machine_extracted
+- human_verified
+- rejected
+- superseded
+reviewer_roles:
+- electrical_domain_expert
+- electrical_normative_expert
+- ontology_curator
+confidence_policy:
+  low_below: 0.75
+  production_minimum: 0.9
+  low_confidence_requires_review: true
+production_policy:
+  status_required: human_verified
+  reviewer_roles_required:
+  - electrical_domain_expert
+  - electrical_normative_expert
+  no_unresolved_conflicts: true
+  current_source_revision_required: true
+  active_claim_required: true
+history_policy:
+  immutable_review_events: true
+  event_hash_algorithm: sha256
+  source_revision_rewrite_forbidden: true
+  claim_version_rewrite_forbidden: true
+security_policy:
+  secrets_stored: false
+  protected_full_text_stored: false
+  restricted_sources_metadata_only: true
+report_policy:
+  as_of: '2026-07-27T12:00:00Z'
+  include_unverified: true
+  include_stale: true
+  include_low_confidence: true
+  include_conflicts: true
+governance:
+  production_runtime_not_wired: true
+  human_review_required_before_activation: true
+  conflicts_must_be_explicit: true

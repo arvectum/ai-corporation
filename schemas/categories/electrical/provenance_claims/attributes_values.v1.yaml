@@ -1,0 +1,315 @@
+fragment_id: ARV-067G-ATTRIBUTE-VALUE-CLAIMS
+version: 1.0.0
+claims:
+- claim_id: CLM-ATTRIBUTE-BREAKING-CURRENT@1
+  logical_claim_id: CLM-ATTRIBUTE-BREAKING-CURRENT
+  claim_version: 1
+  claim_type: attribute
+  subject:
+    kind: attribute
+    id: breaking_current_ka
+  predicate: title_ru
+  object_value: Ток отключения
+  object_ref: null
+  assertion_hash: cb902e1e1624043c2d0ef386711a0b63ebadff6020030a42c239fa5791d693c3
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-SWITCHING@1
+    source_content_hash: 1cb0a7261c1079166d878ff81c3c13d483318be5
+    locator:
+      path: schemas/categories/electrical/attributes/switching_insulation.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /attributes/0
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.92
+  confidence: 0.92
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-009
+    current_event_hash: 43b15f5562d6d305880c3881d67d9e0b69eb4a9cf0ef7c5c74fdf4705cd1a219
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ATTRIBUTE-INSULATION-MEDIUM@1
+  logical_claim_id: CLM-ATTRIBUTE-INSULATION-MEDIUM
+  claim_version: 1
+  claim_type: attribute
+  subject:
+    kind: attribute
+    id: insulation_medium
+  predicate: title_ru
+  object_value: Изоляционная среда
+  object_ref: null
+  assertion_hash: 44ba4707458ee893b82845235f196f9d99fb292618b43943a90e924b0e62aad8
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-SWITCHING@1
+    source_content_hash: 1cb0a7261c1079166d878ff81c3c13d483318be5
+    locator:
+      path: schemas/categories/electrical/attributes/switching_insulation.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /attributes/1
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.92
+  confidence: 0.92
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-010
+    current_event_hash: 8c1fc53de7639dae2cd0e58634a0a704842407b6a6a04b8c6d676f25e389516d
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ATTRIBUTE-CLIMATE-VERSION@1
+  logical_claim_id: CLM-ATTRIBUTE-CLIMATE-VERSION
+  claim_version: 1
+  claim_type: attribute
+  subject:
+    kind: attribute
+    id: climate_version
+  predicate: title_ru
+  object_value: Климатическое исполнение
+  object_ref: null
+  assertion_hash: c1e6a5d224c6b8a50445943459b3c817635217d240085bc8776a01e5b0b176d5
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-SWITCHING@1
+    source_content_hash: 1cb0a7261c1079166d878ff81c3c13d483318be5
+    locator:
+      path: schemas/categories/electrical/attributes/switching_insulation.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /attributes/2
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.92
+  confidence: 0.92
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-011
+    current_event_hash: 7ca1f516550842ecc2ed9570b4ab7146ed4d04c2b42b94020bb353c4d5feb0d5
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-ATTRIBUTE-SWITCHING-DUTY@1
+  logical_claim_id: CLM-ATTRIBUTE-SWITCHING-DUTY
+  claim_version: 1
+  claim_type: attribute
+  subject:
+    kind: attribute
+    id: switching_duty
+  predicate: title_ru
+  object_value: Коммутационный цикл и режим работы
+  object_ref: null
+  assertion_hash: 407ee3011e81fb32e64691cdc6fee51719d9edd8311ec24851d7c2cd753201ca
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-SWITCHING@1
+    source_content_hash: 1cb0a7261c1079166d878ff81c3c13d483318be5
+    locator:
+      path: schemas/categories/electrical/attributes/switching_insulation.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /attributes/3
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.92
+  confidence: 0.92
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-012
+    current_event_hash: 355507d1e711de10bec033d9c9cab476370ae6ceb05afdd0b9aba08320431645
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-VALUE-CONDUCTOR-COPPER@1
+  logical_claim_id: CLM-VALUE-CONDUCTOR-COPPER
+  claim_version: 1
+  claim_type: allowed_value
+  subject:
+    kind: value_set
+    id: value_set:conductor_material
+  predicate: contains_allowed_value
+  object_value: copper
+  object_ref: null
+  assertion_hash: 9648e7a66a08125dfb0b8891153bdf19c2e01955b13566a05c9ebcab89699760
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-REGISTRY@1
+    source_content_hash: c4d266b740d3df8c4e1f4036bcafd34da2b3439d
+    locator:
+      path: schemas/categories/electrical/attribute_registry.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /value_sets/conductor_material/values/0
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.99
+  confidence: 0.99
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-013
+    current_event_hash: 2f7d25dc0d08f1470cf5c6cf758a93eb852d0bbc804d082d43061e8cd6033cce
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-VALUE-CONDUCTOR-ALUMINIUM@1
+  logical_claim_id: CLM-VALUE-CONDUCTOR-ALUMINIUM
+  claim_version: 1
+  claim_type: allowed_value
+  subject:
+    kind: value_set
+    id: value_set:conductor_material
+  predicate: contains_allowed_value
+  object_value: aluminium
+  object_ref: null
+  assertion_hash: 0d78dfb84fddb7cc6d03805c3e2945b4bdd13cbaf0706b44d2992ca6d9f6def1
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-REGISTRY@1
+    source_content_hash: c4d266b740d3df8c4e1f4036bcafd34da2b3439d
+    locator:
+      path: schemas/categories/electrical/attribute_registry.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /value_sets/conductor_material/values/1
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.99
+  confidence: 0.99
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-014
+    current_event_hash: 46f5b7be723c9ccdc3a3567a103c4b5bb7cebf6fadc208dbbefffba7e23cf55a
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-VALUE-BREAKER-CURVE-B@1
+  logical_claim_id: CLM-VALUE-BREAKER-CURVE-B
+  claim_version: 1
+  claim_type: allowed_value
+  subject:
+    kind: value_set
+    id: value_set:breaker_curve
+  predicate: contains_allowed_value
+  object_value: B
+  object_ref: null
+  assertion_hash: 2c6d1185a88fa4cf23ec0bee694cc78b1a311dfd296a7d3d4d7af14a1d1bf89c
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-REGISTRY@1
+    source_content_hash: c4d266b740d3df8c4e1f4036bcafd34da2b3439d
+    locator:
+      path: schemas/categories/electrical/attribute_registry.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /value_sets/breaker_curve/values/0
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.99
+  confidence: 0.99
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-015
+    current_event_hash: feaf3392a98f12aba17b5b56d7e53f3cfeef6b926af6b7b4e88ced1c4315d8de
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
+- claim_id: CLM-VALUE-UTILIZATION-AC3@1
+  logical_claim_id: CLM-VALUE-UTILIZATION-AC3
+  claim_version: 1
+  claim_type: allowed_value
+  subject:
+    kind: value_set
+    id: value_set:utilization_category
+  predicate: contains_allowed_value
+  object_value: AC-3
+  object_ref: null
+  assertion_hash: 2ee704e37cd948ff40347fa42265dd3fee291268775383105850dc82f0410257
+  source_links:
+  - source_revision_id: SRC-ATTRIBUTE-REGISTRY@1
+    source_content_hash: c4d266b740d3df8c4e1f4036bcafd34da2b3439d
+    locator:
+      path: schemas/categories/electrical/attribute_registry.v1.yaml
+      page: null
+      row: null
+      clause: null
+      json_pointer: /value_sets/utilization_category/values/1
+    extraction_method: structured_mapping
+    extracted_at: '2026-07-27T11:15:00Z'
+    confidence: 0.99
+  confidence: 0.99
+  review:
+    status: machine_extracted
+    reviewer_id: null
+    reviewer_role: null
+    reviewed_at: null
+    rationale: Source assertion imported for audit; expert review is still required.
+    current_event_id: EVT-016
+    current_event_hash: e18c1918208c0afa8c0093477894e48f953d3098037dfc35d3fd75e7bfd917e9
+  review_required: true
+  production_ready: false
+  conflict_group_ids: []
+  supersedes_claim_id: null
+  active: true
+  sensitive_content_stored: false
+  protected_full_text_stored: false
