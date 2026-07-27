@@ -46,6 +46,9 @@ def test_arv067a_registry_covers_detailed_taxonomy_and_wave1_attributes() -> Non
     wave1_manifest = yaml.safe_load(
         (DIRECTORY / "detailed_profiles_wave1.v1.yaml").read_text(encoding="utf-8")
     )
+    wave1_attribute_fragment = yaml.safe_load(
+        (DIRECTORY / "attributes" / "wave1_profiles.v1.yaml").read_text(encoding="utf-8")
+    )
 
     attributes = _load_attributes(registry)
     registered = {item["id"] for item in attributes}
@@ -67,6 +70,9 @@ def test_arv067a_registry_covers_detailed_taxonomy_and_wave1_attributes() -> Non
         )["profiles"]
         for rule in profile["attributes"]
     }
+    wave1_verified = {
+        attribute["id"] for attribute in wave1_attribute_fragment["attributes"]
+    }
     discriminators = {
         attribute_id
         for section in nomenclature["sections"]
@@ -74,7 +80,9 @@ def test_arv067a_registry_covers_detailed_taxonomy_and_wave1_attributes() -> Non
     }
 
     assert original_detailed <= verified
-    assert wave1_detailed <= verified
+    assert len(wave1_verified) == 30
+    assert wave1_verified <= verified
+    assert wave1_verified <= wave1_detailed
     assert original_detailed | wave1_detailed <= registered
     assert discriminators <= registered
     assert len(registered) == 156
