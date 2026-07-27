@@ -16,7 +16,7 @@ The expanded catalog adds section-level coverage of both PJSC Rosseti approved-e
 - 28 total families with aliases, subcategories and discriminator fields;
 - a 42-document metadata-only normative registry covering GOST/PUE, Rosseti, Rosatom and RusHydro sources.
 
-ARV-067A adds a shared registry of 125 attribute IDs, 21 units, five type-safe comparators and six verified value sets. Twenty-two attributes preserve the exact contract of the four detailed profiles; taxonomy-only discriminator definitions remain explicitly provisional.
+ARV-067A adds a shared registry of 126 attribute IDs, 21 units, five type-safe comparators and six verified value sets. Twenty-two attributes preserve the exact contract of the four detailed profiles; 104 taxonomy discriminator definitions remain explicitly provisional.
 
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
