@@ -18,6 +18,8 @@ The expanded catalog adds section-level coverage of both PJSC Rosseti approved-e
 
 ARV-067A adds a shared registry of 126 attribute IDs, 21 units, five type-safe comparators and six verified value sets. Twenty-two attributes preserve the exact contract of the four detailed profiles; 104 taxonomy discriminator definitions remain explicitly provisional.
 
+ARV-067B adds an explicit category hierarchy with 166 stable nodes: one root, two registry groups, 28 source families and 135 source subcategories. Parent paths, attribute inheritance, role-specific overrides, routing aliases, provenance and lifecycle gates are validated across all files.
+
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
 ## Files
@@ -47,6 +49,15 @@ Shared attribute registry:
 - `attributes/*.v1.yaml` — verified and provisional attribute definitions by domain;
 - `validate_attributes.py` — cross-file attribute, unit and profile-reference validator.
 
+Category hierarchy:
+
+- `category_tree.v1.yaml` — hierarchy, routing, lifecycle and fragment manifest;
+- `category_tree.schema.json` — closed hierarchy manifest contract;
+- `category_tree_fragment.schema.json` — closed node-fragment contract;
+- `category_nodes/*.v1.yaml` — 166 explicit category nodes split into 16 reviewable fragments;
+- `category_router.py` — deterministic offline routing for fixtures;
+- `validate_category_tree.py` — graph, inheritance, source-coverage and routing validator.
+
 Fixtures live in `fixtures/ontology/electrical/`.
 
 ## Validation
@@ -55,9 +66,11 @@ Fixtures live in `fixtures/ontology/electrical/`.
 python schemas/categories/electrical/validate.py
 python schemas/categories/electrical/validate_catalog.py
 python schemas/categories/electrical/validate_attributes.py
+python schemas/categories/electrical/validate_category_tree.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
 python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 python -m pytest -q tests/test_arv067a_attribute_registry.py
+python -m pytest -q tests/test_arv067b_category_tree.py
 ```
 
 Successful validator markers:
@@ -66,12 +79,14 @@ Successful validator markers:
 ARV-067 electrical ontology: OK (categories=4, synonyms=8, matches=13, runtime_import=false)
 ARV-067 expanded electrical catalog: OK (sections=28, normative_documents=42, runtime_import=false)
 ARV-067A attribute registry: OK (..., runtime_import=false)
+ARV-067B category tree: OK (nodes=166, families=28, subcategories=135, detailed_profiles=4, routing_cases=24, runtime_import=false)
 ```
 
 ## Safety boundary
 
 - no database model, migration or production resolver is changed;
-- taxonomy-only families and provisional attributes are not production matchers;
+- taxonomy-only families, provisional attributes and category nodes are not production matchers;
+- broad family matches and cross-branch ambiguity require review;
 - role-specific voltage and current fields are not merged automatically;
 - the ontology and normative registry are not certification or legal-compliance evidence;
 - operator registry inclusion is not universal product equivalence proof;
