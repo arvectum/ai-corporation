@@ -1,0 +1,357 @@
+fragment_id: ARV-067B-SURGE-TOWERS
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.surge_protection_fuses
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.surge_protection_fuses
+  node_kind: family
+  registry: primary
+  title_ru: ОПН, предохранители, разрядники
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - ОПН, предохранители, разрядники
+    - опн
+    - предохранитель
+    - разрядник
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - continuous_operating_voltage_kv
+    - nominal_discharge_current_ka
+    - energy_class
+    - application
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: surge_protection_fuses
+    source_label: ОПН, предохранители, разрядники
+- category_id: electrical.primary.surge_protection_fuses.surge_arrester
+  parent_id: electrical.primary.surge_protection_fuses
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.surge_protection_fuses
+  - electrical.primary.surge_protection_fuses.surge_arrester
+  node_kind: subcategory
+  registry: primary
+  title_ru: ограничитель перенапряжений
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - ограничитель перенапряжений
+    - ОПН
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: surge_protection_fuses
+    source_label: ограничитель перенапряжений
+- category_id: electrical.primary.surge_protection_fuses.high_voltage_fuse
+  parent_id: electrical.primary.surge_protection_fuses
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.surge_protection_fuses
+  - electrical.primary.surge_protection_fuses.high_voltage_fuse
+  node_kind: subcategory
+  registry: primary
+  title_ru: высоковольтный предохранитель
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - высоковольтный предохранитель
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: surge_protection_fuses
+    source_label: высоковольтный предохранитель
+- category_id: electrical.primary.surge_protection_fuses.valve_arrester
+  parent_id: electrical.primary.surge_protection_fuses
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.surge_protection_fuses
+  - electrical.primary.surge_protection_fuses.valve_arrester
+  node_kind: subcategory
+  registry: primary
+  title_ru: вентильный разрядник
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - вентильный разрядник
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: surge_protection_fuses
+    source_label: вентильный разрядник
+- category_id: electrical.primary.surge_protection_fuses.spark_gap
+  parent_id: electrical.primary.surge_protection_fuses
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.surge_protection_fuses
+  - electrical.primary.surge_protection_fuses.spark_gap
+  node_kind: subcategory
+  registry: primary
+  title_ru: искровой разрядник
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - искровой разрядник
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: surge_protection_fuses
+    source_label: искровой разрядник
+- category_id: electrical.primary.overhead_line_towers
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  node_kind: family
+  registry: primary
+  title_ru: Опоры ВЛ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Опоры ВЛ
+    - опора вл
+    - опора воздушной линии
+    - линейная опора
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - voltage_class_kv
+    - tower_function
+    - circuit_count
+    - height_m
+    - material
+    - climate_region
+    - corrosion_protection
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: overhead_line_towers
+    source_label: Опоры ВЛ
+- category_id: electrical.primary.overhead_line_towers.steel_tower
+  parent_id: electrical.primary.overhead_line_towers
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  - electrical.primary.overhead_line_towers.steel_tower
+  node_kind: subcategory
+  registry: primary
+  title_ru: металлическая опора
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - металлическая опора
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: overhead_line_towers
+    source_label: металлическая опора
+- category_id: electrical.primary.overhead_line_towers.reinforced_concrete_tower
+  parent_id: electrical.primary.overhead_line_towers
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  - electrical.primary.overhead_line_towers.reinforced_concrete_tower
+  node_kind: subcategory
+  registry: primary
+  title_ru: железобетонная опора
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - железобетонная опора
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: overhead_line_towers
+    source_label: железобетонная опора
+- category_id: electrical.primary.overhead_line_towers.wooden_tower
+  parent_id: electrical.primary.overhead_line_towers
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  - electrical.primary.overhead_line_towers.wooden_tower
+  node_kind: subcategory
+  registry: primary
+  title_ru: деревянная опора
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - деревянная опора
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: overhead_line_towers
+    source_label: деревянная опора
+- category_id: electrical.primary.overhead_line_towers.composite_tower
+  parent_id: electrical.primary.overhead_line_towers
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  - electrical.primary.overhead_line_towers.composite_tower
+  node_kind: subcategory
+  registry: primary
+  title_ru: композитная опора
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - композитная опора
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: overhead_line_towers
+    source_label: композитная опора
+- category_id: electrical.primary.overhead_line_towers.anchor_tower
+  parent_id: electrical.primary.overhead_line_towers
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  - electrical.primary.overhead_line_towers.anchor_tower
+  node_kind: subcategory
+  registry: primary
+  title_ru: анкерная опора
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - анкерная опора
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: overhead_line_towers
+    source_label: анкерная опора
+- category_id: electrical.primary.overhead_line_towers.suspension_tower
+  parent_id: electrical.primary.overhead_line_towers
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.overhead_line_towers
+  - electrical.primary.overhead_line_towers.suspension_tower
+  node_kind: subcategory
+  registry: primary
+  title_ru: промежуточная опора
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - промежуточная опора
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: overhead_line_towers
+    source_label: промежуточная опора
