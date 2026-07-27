@@ -1,0 +1,383 @@
+fragment_id: ARV-067B-BUSHINGS-INSULATORS
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.high_voltage_bushings
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.high_voltage_bushings
+  node_kind: family
+  registry: primary
+  title_ru: Высоковольтные вводы
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Высоковольтные вводы
+    - высоковольтный ввод
+    - ввод трансформаторный
+    - ввод линейный
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - highest_voltage_kv
+    - rated_current_a
+    - insulation_type
+    - external_insulation
+    - application
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: high_voltage_bushings
+    source_label: Высоковольтные вводы
+- category_id: electrical.primary.high_voltage_bushings.transformer_bushing
+  parent_id: electrical.primary.high_voltage_bushings
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.high_voltage_bushings
+  - electrical.primary.high_voltage_bushings.transformer_bushing
+  node_kind: subcategory
+  registry: primary
+  title_ru: трансформаторный ввод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - трансформаторный ввод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: high_voltage_bushings
+    source_label: трансформаторный ввод
+- category_id: electrical.primary.high_voltage_bushings.line_bushing
+  parent_id: electrical.primary.high_voltage_bushings
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.high_voltage_bushings
+  - electrical.primary.high_voltage_bushings.line_bushing
+  node_kind: subcategory
+  registry: primary
+  title_ru: линейный ввод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - линейный ввод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: high_voltage_bushings
+    source_label: линейный ввод
+- category_id: electrical.primary.high_voltage_bushings.circuit_breaker_bushing
+  parent_id: electrical.primary.high_voltage_bushings
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.high_voltage_bushings
+  - electrical.primary.high_voltage_bushings.circuit_breaker_bushing
+  node_kind: subcategory
+  registry: primary
+  title_ru: ввод для выключателя
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - ввод для выключателя
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: high_voltage_bushings
+    source_label: ввод для выключателя
+- category_id: electrical.primary.high_voltage_bushings.rip_bushing
+  parent_id: electrical.primary.high_voltage_bushings
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.high_voltage_bushings
+  - electrical.primary.high_voltage_bushings.rip_bushing
+  node_kind: subcategory
+  registry: primary
+  title_ru: RIP-ввод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - RIP-ввод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: high_voltage_bushings
+    source_label: RIP-ввод
+- category_id: electrical.primary.high_voltage_bushings.rin_bushing
+  parent_id: electrical.primary.high_voltage_bushings
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.high_voltage_bushings
+  - electrical.primary.high_voltage_bushings.rin_bushing
+  node_kind: subcategory
+  registry: primary
+  title_ru: RIN-ввод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - RIN-ввод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: high_voltage_bushings
+    source_label: RIN-ввод
+- category_id: electrical.primary.insulators
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  node_kind: family
+  registry: primary
+  title_ru: Изоляторы
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Изоляторы
+    - изолятор
+    - высоковольтный изолятор
+    - линейный изолятор
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - insulator_type
+    - material
+    - mechanical_failing_load_kn
+    - creepage_distance_mm
+    - pollution_level
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: insulators
+    source_label: Изоляторы
+- category_id: electrical.primary.insulators.suspension_insulator
+  parent_id: electrical.primary.insulators
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  - electrical.primary.insulators.suspension_insulator
+  node_kind: subcategory
+  registry: primary
+  title_ru: подвесной изолятор
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - подвесной изолятор
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: insulators
+    source_label: подвесной изолятор
+- category_id: electrical.primary.insulators.post_insulator
+  parent_id: electrical.primary.insulators
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  - electrical.primary.insulators.post_insulator
+  node_kind: subcategory
+  registry: primary
+  title_ru: опорный изолятор
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - опорный изолятор
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: insulators
+    source_label: опорный изолятор
+- category_id: electrical.primary.insulators.line_pin_insulator
+  parent_id: electrical.primary.insulators
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  - electrical.primary.insulators.line_pin_insulator
+  node_kind: subcategory
+  registry: primary
+  title_ru: линейный штыревой изолятор
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - линейный штыревой изолятор
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: insulators
+    source_label: линейный штыревой изолятор
+- category_id: electrical.primary.insulators.polymer_insulator
+  parent_id: electrical.primary.insulators
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  - electrical.primary.insulators.polymer_insulator
+  node_kind: subcategory
+  registry: primary
+  title_ru: полимерный изолятор
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - полимерный изолятор
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: insulators
+    source_label: полимерный изолятор
+- category_id: electrical.primary.insulators.porcelain_insulator
+  parent_id: electrical.primary.insulators
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  - electrical.primary.insulators.porcelain_insulator
+  node_kind: subcategory
+  registry: primary
+  title_ru: фарфоровый изолятор
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - фарфоровый изолятор
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: insulators
+    source_label: фарфоровый изолятор
+- category_id: electrical.primary.insulators.glass_insulator
+  parent_id: electrical.primary.insulators
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.insulators
+  - electrical.primary.insulators.glass_insulator
+  node_kind: subcategory
+  registry: primary
+  title_ru: стеклянный изолятор
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - стеклянный изолятор
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: insulators
+    source_label: стеклянный изолятор
