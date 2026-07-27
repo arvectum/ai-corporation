@@ -39,6 +39,12 @@ from src.modules.delivery_milestones.router import router as delivery_milestones
 from src.modules.document_store.router import router as artifacts_router
 from src.modules.document_ingestion.router import router as document_ingestion_router
 from src.modules.document_requirements.router import router as document_requirements_router
+from src.modules.electrical_ontology_shadow.middleware import (
+    install_electrical_ontology_shadow_middleware,
+)
+from src.modules.electrical_ontology_shadow.router import (
+    router as electrical_ontology_shadow_router,
+)
 from src.modules.event_log.router import router as event_log_router
 from src.modules.execution_command.router import router as execution_command_router
 from src.modules.execution_plans.router import router as execution_plans_router
@@ -116,6 +122,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, debug=settings.debug, lifespan=lifespan)
 install_runtime_middlewares(app, settings)
+install_electrical_ontology_shadow_middleware(app)
 register_exception_handlers(app)
 
 app.include_router(deals_router)
@@ -151,6 +158,7 @@ app.include_router(execution_plans_router)
 app.include_router(tender_import_router)
 app.include_router(tender_intake_router)
 app.include_router(tender_operator_agent_demo_router)
+app.include_router(electrical_ontology_shadow_router)
 app.include_router(tender_normalization_router)
 app.include_router(document_ingestion_router)
 app.include_router(requirement_extraction_router)

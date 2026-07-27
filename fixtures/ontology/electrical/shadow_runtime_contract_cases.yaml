@@ -1,0 +1,58 @@
+suite_id: ARV-067I-SHADOW-RUNTIME-CONTRACT-CASES
+version: 1.0.0
+base_policy_id: ARV-067I-ELECTRICAL-ONTOLOGY-SHADOW-RUNTIME
+cases:
+  - id: valid_baseline
+    mutation: none
+    expected_error_codes: []
+  - id: enabled_by_default
+    mutation: enabled_by_default
+    expected_error_codes: [SHADOW_DEFAULT_MUST_BE_DISABLED]
+  - id: kill_switch_off_by_default
+    mutation: kill_switch_off_by_default
+    expected_error_codes: [SHADOW_DEFAULT_KILL_SWITCH_REQUIRED]
+  - id: benchmark_gate_removed
+    mutation: benchmark_gate_removed
+    expected_error_codes: [SHADOW_ARV067H_GATE_REQUIRED]
+  - id: independent_acceptance_removed
+    mutation: independent_acceptance_removed
+    expected_error_codes: [SHADOW_INDEPENDENT_ACCEPTANCE_REQUIRED]
+  - id: operator_approval_removed
+    mutation: operator_approval_removed
+    expected_error_codes: [SHADOW_OPERATOR_APPROVAL_REQUIRED]
+  - id: allowlist_removed
+    mutation: allowlist_removed
+    expected_error_codes: [SHADOW_PROFILE_ALLOWLIST_REQUIRED]
+  - id: unpinned_ontology_version
+    mutation: unpinned_ontology_version
+    expected_error_codes: [SHADOW_VERSION_PIN_REQUIRED]
+  - id: raw_source_storage_enabled
+    mutation: raw_source_storage_enabled
+    expected_error_codes: [SHADOW_RAW_SOURCE_STORAGE_FORBIDDEN]
+  - id: tenant_partition_disabled
+    mutation: tenant_partition_disabled
+    expected_error_codes: [SHADOW_TENANT_PARTITION_REQUIRED]
+  - id: redaction_disabled
+    mutation: redaction_disabled
+    expected_error_codes: [SHADOW_REDACTION_REQUIRED]
+  - id: primary_mutation_enabled
+    mutation: primary_mutation_enabled
+    expected_error_codes: [SHADOW_PRIMARY_MUTATION_FORBIDDEN]
+  - id: external_actions_enabled
+    mutation: external_actions_enabled
+    expected_error_codes: [SHADOW_EXTERNAL_ACTIONS_FORBIDDEN]
+  - id: production_promotion_enabled
+    mutation: production_promotion_enabled
+    expected_error_codes: [SHADOW_PRODUCTION_ACTIVATION_FORBIDDEN]
+  - id: automatic_promotion_enabled
+    mutation: automatic_promotion_enabled
+    expected_error_codes: [SHADOW_AUTOMATIC_PROMOTION_FORBIDDEN]
+  - id: no_kill_switch_rollback
+    mutation: no_kill_switch_rollback
+    expected_error_codes: [SHADOW_ROLLBACK_KILL_SWITCH_REQUIRED]
+  - id: invalid_source_limit
+    mutation: invalid_source_limit
+    expected_error_codes: [SHADOW_LIMIT_OUT_OF_RANGE]
+  - id: current_state_claims_active
+    mutation: current_state_claims_active
+    expected_error_codes: [SHADOW_CURRENT_STATE_MUST_REMAIN_BLOCKED]

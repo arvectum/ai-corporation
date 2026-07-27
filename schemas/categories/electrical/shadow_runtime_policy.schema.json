@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "policy_id",
+    "version",
+    "status",
+    "purpose",
+    "pins",
+    "feature_flags",
+    "activation_gates",
+    "lifecycle",
+    "promotion",
+    "limits",
+    "audit",
+    "safety",
+    "rollback",
+    "current_state"
+  ],
+  "properties": {
+    "policy_id": {"const": "ARV-067I-ELECTRICAL-ONTOLOGY-SHADOW-RUNTIME"},
+    "version": {"const": "1.0.0"},
+    "status": {"enum": ["wired_but_inactive", "shadow_active", "deprecated"]},
+    "purpose": {"type": "string", "minLength": 1},
+    "pins": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ontology_registry_id",
+        "ontology_version",
+        "ontology_manifest_path",
+        "matcher_path",
+        "benchmark_id",
+        "benchmark_version",
+        "benchmark_release_report_path",
+        "benchmark_acceptance_path"
+      ],
+      "properties": {
+        "ontology_registry_id": {"type": "string", "minLength": 1},
+        "ontology_version": {"type": "string", "minLength": 1},
+        "ontology_manifest_path": {"type": "string", "minLength": 1},
+        "matcher_path": {"type": "string", "minLength": 1},
+        "benchmark_id": {"type": "string", "minLength": 1},
+        "benchmark_version": {"type": "string", "minLength": 1},
+        "benchmark_release_report_path": {"type": "string", "minLength": 1},
+        "benchmark_acceptance_path": {"type": "string", "minLength": 1}
+      }
+    },
+    "feature_flags": {"type": "object"},
+    "activation_gates": {"type": "object"},
+    "lifecycle": {
+      "type": "array",
+      "minItems": 5,
+      "uniqueItems": true,
+      "items": {"type": "string"}
+    },
+    "promotion": {"type": "object"},
+    "limits": {"type": "object"},
+    "audit": {"type": "object"},
+    "safety": {"type": "object"},
+    "rollback": {"type": "object"},
+    "current_state": {"type": "object"}
+  }
+}

@@ -1,0 +1,65 @@
+policy_id: ARV-067I-ELECTRICAL-ONTOLOGY-SHADOW-RUNTIME
+version: 1.0.0
+status: wired_but_inactive
+purpose: Safe version-pinned shadow execution of independently accepted ARV-067 electrical profiles without changing the primary tender analysis.
+pins:
+  ontology_registry_id: ARV-067D-ELECTRICAL-DETAILED-PROFILES-WAVE1
+  ontology_version: 1.0.0
+  ontology_manifest_path: schemas/categories/electrical/detailed_profiles_wave1.v1.yaml
+  matcher_path: schemas/categories/electrical/wave1_profile_matcher.py
+  benchmark_id: ARV-067H-ELECTRICAL-TRUTH-PACK-BENCHMARK
+  benchmark_version: 1.0.0
+  benchmark_release_report_path: schemas/categories/electrical/truth_pack_release_report.v1.yaml
+  benchmark_acceptance_path: schemas/categories/electrical/truth_pack_acceptance.v1.yaml
+feature_flags:
+  enabled_by_default: false
+  kill_switch_active_by_default: true
+  explicit_profile_allowlist_required: true
+activation_gates:
+  arv067h_release_gate_required: true
+  independent_acceptance_required: true
+  explicit_operator_approval_required: true
+  accepted_profile_allowlist_intersection_required: true
+  schema_and_version_compatibility_required: true
+lifecycle:
+  - disabled
+  - blocked
+  - shadow_runtime
+  - operator_approved
+  - production_active
+promotion:
+  shadow_to_operator_approved_requires_human_decision: true
+  production_activation_implemented: false
+  automatic_promotion_forbidden: true
+limits:
+  max_source_chars_default: 12000
+  max_items_default: 64
+  max_audit_bytes_default: 262144
+  latency_budget_ms_default: 250
+audit:
+  dedicated_storage_required: true
+  tenant_partition_required: true
+  content_hashes_required: true
+  ontology_and_benchmark_versions_required: true
+  raw_source_storage_forbidden: true
+  redaction_required: true
+  disagreement_requires_review: true
+safety:
+  primary_result_mutation_forbidden: true
+  pdf_or_export_mutation_forbidden: true
+  go_no_go_mutation_forbidden: true
+  platform_submission_forbidden: true
+  email_sending_forbidden: true
+  digital_signature_forbidden: true
+  external_actions_forbidden: true
+  shadow_failure_must_be_isolated: true
+  production_accuracy_claims_forbidden: true
+rollback:
+  kill_switch_required: true
+  version_pin_rollback_required: true
+  audit_history_preserved: true
+current_state:
+  arv067h_release_gate_passed: false
+  independently_accepted_profiles: 0
+  shadow_execution_allowed: false
+  production_effect: false

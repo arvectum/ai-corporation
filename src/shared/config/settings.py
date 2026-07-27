@@ -149,6 +149,86 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ARVECTUM_REDIS_RATE_LIMIT_DEFAULT_LIMIT", "AI_CORP_REDIS_RATE_LIMIT_DEFAULT_LIMIT"),
     )
 
+    # ARV-067I electrical ontology shadow runtime remains disabled and killed by default.
+    electrical_ontology_shadow_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_ENABLED",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_ENABLED",
+        ),
+    )
+    electrical_ontology_shadow_kill_switch: bool = Field(
+        default=True,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_KILL_SWITCH",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_KILL_SWITCH",
+        ),
+    )
+    electrical_ontology_shadow_approval_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_APPROVAL_ID",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_APPROVAL_ID",
+        ),
+    )
+    electrical_ontology_shadow_allowed_profiles: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_ALLOWED_PROFILES",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_ALLOWED_PROFILES",
+        ),
+    )
+    electrical_ontology_shadow_policy_path: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_POLICY_PATH",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_POLICY_PATH",
+        ),
+    )
+    electrical_ontology_shadow_audit_root: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_AUDIT_ROOT",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_AUDIT_ROOT",
+        ),
+    )
+    electrical_ontology_shadow_max_source_chars: int = Field(
+        default=12_000,
+        ge=1_000,
+        le=100_000,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_MAX_SOURCE_CHARS",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_MAX_SOURCE_CHARS",
+        ),
+    )
+    electrical_ontology_shadow_max_items: int = Field(
+        default=64,
+        ge=1,
+        le=256,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_MAX_ITEMS",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_MAX_ITEMS",
+        ),
+    )
+    electrical_ontology_shadow_max_audit_bytes: int = Field(
+        default=262_144,
+        ge=16_384,
+        le=1_048_576,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_MAX_AUDIT_BYTES",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_MAX_AUDIT_BYTES",
+        ),
+    )
+    electrical_ontology_shadow_timeout_ms: int = Field(
+        default=250,
+        ge=10,
+        le=5_000,
+        validation_alias=AliasChoices(
+            "ARVECTUM_ELECTRICAL_ONTOLOGY_SHADOW_TIMEOUT_MS",
+            "AI_CORP_ELECTRICAL_ONTOLOGY_SHADOW_TIMEOUT_MS",
+        ),
+    )
+
     # Storage capacity guardrails (ARV-010)
     # Canonical env: ARVECTUM_STORAGE_*; compatibility: AI_CORP_ARVECTUM_STORAGE_*
     # Canonical has priority via AliasChoices order.
