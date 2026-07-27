@@ -1,0 +1,355 @@
+fragment_id: ARV-067B-LINE-HARDWARE-BUSBARS
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.line_hardware
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  node_kind: family
+  registry: primary
+  title_ru: Линейная арматура
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Линейная арматура
+    - арматура вл
+    - сцепная арматура
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - conductor_or_insulator_type
+    - diameter_range_mm
+    - mechanical_load_kn
+    - material
+    - coating
+    - application
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: line_hardware
+    source_label: Линейная арматура
+- category_id: electrical.primary.line_hardware.suspension_hardware
+  parent_id: electrical.primary.line_hardware
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  - electrical.primary.line_hardware.suspension_hardware
+  node_kind: subcategory
+  registry: primary
+  title_ru: поддерживающая арматура
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - поддерживающая арматура
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: line_hardware
+    source_label: поддерживающая арматура
+- category_id: electrical.primary.line_hardware.tension_hardware
+  parent_id: electrical.primary.line_hardware
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  - electrical.primary.line_hardware.tension_hardware
+  node_kind: subcategory
+  registry: primary
+  title_ru: натяжная арматура
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - натяжная арматура
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: line_hardware
+    source_label: натяжная арматура
+- category_id: electrical.primary.line_hardware.connector_hardware
+  parent_id: electrical.primary.line_hardware
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  - electrical.primary.line_hardware.connector_hardware
+  node_kind: subcategory
+  registry: primary
+  title_ru: соединительная арматура
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - соединительная арматура
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: line_hardware
+    source_label: соединительная арматура
+- category_id: electrical.primary.line_hardware.protection_hardware
+  parent_id: electrical.primary.line_hardware
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  - electrical.primary.line_hardware.protection_hardware
+  node_kind: subcategory
+  registry: primary
+  title_ru: защитная арматура
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - защитная арматура
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: line_hardware
+    source_label: защитная арматура
+- category_id: electrical.primary.line_hardware.spacer_hardware
+  parent_id: electrical.primary.line_hardware
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  - electrical.primary.line_hardware.spacer_hardware
+  node_kind: subcategory
+  registry: primary
+  title_ru: дистанционная арматура
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - дистанционная арматура
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: line_hardware
+    source_label: дистанционная арматура
+- category_id: electrical.primary.line_hardware.vibration_damper
+  parent_id: electrical.primary.line_hardware
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.line_hardware
+  - electrical.primary.line_hardware.vibration_damper
+  node_kind: subcategory
+  registry: primary
+  title_ru: гаситель вибрации
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - гаситель вибрации
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: line_hardware
+    source_label: гаситель вибрации
+- category_id: electrical.primary.rigid_busbars_busducts
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.rigid_busbars_busducts
+  node_kind: family
+  registry: primary
+  title_ru: Ошиновка жесткая и токопроводы
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Ошиновка жесткая и токопроводы
+    - жесткая ошиновка
+    - токопровод
+    - шинопровод
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - rated_current_a
+    - conductor_material
+    - cross_section_mm2
+    - short_circuit_withstand_ka
+    - enclosure_type
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: rigid_busbars_busducts
+    source_label: Ошиновка жесткая и токопроводы
+- category_id: electrical.primary.rigid_busbars_busducts.rigid_busbar
+  parent_id: electrical.primary.rigid_busbars_busducts
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.rigid_busbars_busducts
+  - electrical.primary.rigid_busbars_busducts.rigid_busbar
+  node_kind: subcategory
+  registry: primary
+  title_ru: жесткая шина
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - жесткая шина
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: rigid_busbars_busducts
+    source_label: жесткая шина
+- category_id: electrical.primary.rigid_busbars_busducts.isolated_phase_busduct
+  parent_id: electrical.primary.rigid_busbars_busducts
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.rigid_busbars_busducts
+  - electrical.primary.rigid_busbars_busducts.isolated_phase_busduct
+  node_kind: subcategory
+  registry: primary
+  title_ru: экранированный токопровод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - экранированный токопровод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: rigid_busbars_busducts
+    source_label: экранированный токопровод
+- category_id: electrical.primary.rigid_busbars_busducts.busway
+  parent_id: electrical.primary.rigid_busbars_busducts
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.rigid_busbars_busducts
+  - electrical.primary.rigid_busbars_busducts.busway
+  node_kind: subcategory
+  registry: primary
+  title_ru: комплектный шинопровод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - комплектный шинопровод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: rigid_busbars_busducts
+    source_label: комплектный шинопровод
+- category_id: electrical.primary.rigid_busbars_busducts.flexible_busbar
+  parent_id: electrical.primary.rigid_busbars_busducts
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.rigid_busbars_busducts
+  - electrical.primary.rigid_busbars_busducts.flexible_busbar
+  node_kind: subcategory
+  registry: primary
+  title_ru: гибкая ошиновка
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - гибкая ошиновка
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: rigid_busbars_busducts
+    source_label: гибкая ошиновка
