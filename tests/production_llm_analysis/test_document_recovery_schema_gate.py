@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
+from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 
 from src.modules.production_llm_analysis.document_recovery import (
@@ -44,6 +47,13 @@ def graph(*, head: str = "097", minimum: str = "096", minimum_parent: str = "095
     )
 
 
+def repository_head() -> str:
+    config = AlembicConfig(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    heads = tuple(ScriptDirectory.from_config(config).get_heads())
+    assert len(heads) == 1
+    return heads[0]
+
+
 @pytest.mark.parametrize(
     ("heads", "revisions", "expected"),
     [
@@ -69,7 +79,7 @@ def test_schema_graph_gate_cases(heads, revisions, expected):
             MINIMUM_REQUIRED_ALEMBIC_REVISION, "095"
         ),
         "097": Revision("097", MINIMUM_REQUIRED_ALEMBIC_REVISION),
-        "098": Revision("098", MINIMUM_REQUIRED_ALEMBIC_REVISION),
+        "098": Revision("098", "097"),
         "side": Revision("side", "095"),
     }
     result = _schema_graph_state(
@@ -110,19 +120,19 @@ def test_schema_graph_rejects_revision_resolution_error():
 
 
 def test_real_repository_graph_accepts_current_head_and_rejects_minimum_only(tmp_path):
+    current_repository_head = repository_head()
     engine = create_engine(f"sqlite:///{tmp_path / 'schema.db'}")
     with engine.begin() as connection:
         connection.execute(
             text("CREATE TABLE alembic_version (version_num VARCHAR(255))")
         )
         connection.execute(
-            text(
-                "INSERT INTO alembic_version (version_num) VALUES ('097_add_arv052_expert_review')"
-            )
+            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+            {"revision": current_repository_head},
         )
     current = _schema_gate_details(engine)
     assert current["ready"] is True
-    assert current["alembic_repository_head"] == "097_add_arv052_expert_review"
+    assert current["alembic_repository_head"] == current_repository_head
     assert (
         current["alembic_minimum_required_revision"]
         == MINIMUM_REQUIRED_ALEMBIC_REVISION
@@ -130,15 +140,17 @@ def test_real_repository_graph_accepts_current_head_and_rejects_minimum_only(tmp
     assert current["alembic_minimum_present"] is True
     assert current["alembic_minimum_is_ancestor"] is True
     assert current["alembic_database_at_repository_head"] is True
-    with engine.begin() as connection:
-        connection.execute(text("DELETE FROM alembic_version"))
-        connection.execute(
-            text(
-                "INSERT INTO alembic_version (version_num) VALUES ('096_add_r8_canonical_snapshot_binding')"
+
+    if current_repository_head != MINIMUM_REQUIRED_ALEMBIC_REVISION:
+        with engine.begin() as connection:
+            connection.execute(text("DELETE FROM alembic_version"))
+            connection.execute(
+                text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+                {"revision": MINIMUM_REQUIRED_ALEMBIC_REVISION},
             )
-        )
-    stale = _schema_gate_details(engine)
-    assert stale["ready"] is False
+        stale = _schema_gate_details(engine)
+        assert stale["ready"] is False
+        assert stale["alembic_database_at_repository_head"] is False
     engine.dispose()
 
 
