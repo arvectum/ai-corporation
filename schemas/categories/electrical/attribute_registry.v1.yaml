@@ -1,0 +1,203 @@
+registry_id: ARV-067A-ELECTRICAL-ATTRIBUTE-REGISTRY
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+purpose: Canonical cross-category unit, comparator, value-set and attribute-fragment manifest for the ARV-067 electrical
+  ontology. Provisional definitions are not production equivalence rules.
+source_assets:
+- id: electrical_v1
+  path: schemas/categories/electrical/electrical.v1.yaml
+  role: verified_detailed_profiles
+- id: nomenclature_v1
+  path: schemas/categories/electrical/nomenclature.v1.yaml
+  role: taxonomy_discriminator_inventory
+profile_id_aliases:
+  electromechanical_contactor: electromagnetic_contactor
+attribute_files:
+- attributes/core_verified.v1.yaml
+- attributes/switching_insulation.v1.yaml
+- attributes/cables_lines_civil.v1.yaml
+- attributes/transformers_power.v1.yaml
+- attributes/measurement_batteries.v1.yaml
+- attributes/automation_protection.v1.yaml
+- attributes/communications_power_supply.v1.yaml
+units:
+- id: dimensionless
+  title_ru: Безразмерная величина
+  symbol: ''
+  dimension: dimensionless
+  base_unit: dimensionless
+  factor_to_base: 1
+- id: boolean
+  title_ru: Логическое значение
+  symbol: ''
+  dimension: boolean
+  base_unit: boolean
+  factor_to_base: 1
+- id: text
+  title_ru: Текстовое значение
+  symbol: ''
+  dimension: text
+  base_unit: text
+  factor_to_base: 1
+- id: V
+  title_ru: Вольт
+  symbol: В
+  dimension: voltage
+  base_unit: V
+  factor_to_base: 1
+  aliases: [в, v, вольт, вольта, вольтов]
+- id: kV
+  title_ru: Киловольт
+  symbol: кВ
+  dimension: voltage
+  base_unit: V
+  factor_to_base: 1000
+  aliases: [кв, kv, кВ]
+- id: A
+  title_ru: Ампер
+  symbol: А
+  dimension: current
+  base_unit: A
+  factor_to_base: 1
+  aliases: [а, a, ампер, ампера, амперов]
+- id: kA
+  title_ru: Килоампер
+  symbol: кА
+  dimension: current
+  base_unit: A
+  factor_to_base: 1000
+  aliases: [ка, ka, кА]
+- id: mm2
+  title_ru: Квадратный миллиметр
+  symbol: мм²
+  dimension: area
+  base_unit: mm2
+  factor_to_base: 1
+  aliases: [мм2, мм², mm2, mm², кв мм, кв.мм]
+- id: mm
+  title_ru: Миллиметр
+  symbol: мм
+  dimension: length
+  base_unit: mm
+  factor_to_base: 1
+  aliases: [мм, mm]
+- id: m
+  title_ru: Метр
+  symbol: м
+  dimension: length
+  base_unit: mm
+  factor_to_base: 1000
+  aliases: [м, m, метр, метра, метров]
+- id: kN
+  title_ru: Килоньютон
+  symbol: кН
+  dimension: force
+  base_unit: kN
+  factor_to_base: 1
+  aliases: [кн, kn, кН]
+- id: kVA
+  title_ru: Киловольт-ампер
+  symbol: кВА
+  dimension: apparent_power
+  base_unit: kVA
+  factor_to_base: 1
+  aliases: [ква, kva, кВА]
+- id: MVA
+  title_ru: Мегавольт-ампер
+  symbol: МВА
+  dimension: apparent_power
+  base_unit: kVA
+  factor_to_base: 1000
+  aliases: [мва, mva, МВА]
+- id: Mvar
+  title_ru: Мегавар
+  symbol: Мвар
+  dimension: reactive_power
+  base_unit: Mvar
+  factor_to_base: 1
+  aliases: [мвар, mvar, Мвар]
+- id: VA
+  title_ru: Вольт-ампер
+  symbol: ВА
+  dimension: apparent_power
+  base_unit: VA
+  factor_to_base: 1
+  aliases: [ва, va, ВА]
+- id: Ah
+  title_ru: Ампер-час
+  symbol: А·ч
+  dimension: electric_charge_capacity
+  base_unit: Ah
+  factor_to_base: 1
+  aliases: [ач, ah, а·ч, Ач]
+- id: C
+  title_ru: Градус Цельсия
+  symbol: °C
+  dimension: temperature
+  base_unit: C
+  factor_to_base: 1
+  aliases: [°c, с, c, градусов цельсия]
+- id: percent
+  title_ru: Процент
+  symbol: '%'
+  dimension: ratio
+  base_unit: percent
+  factor_to_base: 1
+  aliases: ['%', процент, процентов]
+- id: kW
+  title_ru: Киловатт
+  symbol: кВт
+  dimension: active_power
+  base_unit: kW
+  factor_to_base: 1
+  aliases: [квт, kw, кВт]
+- id: Mbps
+  title_ru: Мегабит в секунду
+  symbol: Мбит/с
+  dimension: data_rate
+  base_unit: Mbps
+  factor_to_base: 1
+  aliases: [мбит/с, mbps, Мбит/с]
+- id: year
+  title_ru: Год
+  symbol: лет
+  dimension: time
+  base_unit: year
+  factor_to_base: 1
+  aliases: [год, года, лет, year]
+comparators:
+- id: exact
+  title_ru: Точное совпадение
+  description: Нормализованные значения должны совпадать.
+  allowed_value_types: [number, integer, enum, boolean, text]
+- id: minimum
+  title_ru: Минимальная требуемая способность
+  description: Значение кандидата должно быть не меньше требования.
+  allowed_value_types: [number, integer]
+- id: maximum
+  title_ru: Максимально допустимое значение
+  description: Значение кандидата должно быть не больше требования.
+  allowed_value_types: [number, integer]
+- id: contains
+  title_ru: Содержит требуемый набор
+  description: Множество кандидата должно содержать все требуемые элементы.
+  allowed_value_types: [set]
+- id: range_overlap
+  title_ru: Пересечение диапазонов
+  description: Диапазон кандидата должен пересекаться с требуемым диапазоном.
+  allowed_value_types: [range]
+value_sets:
+  conductor_material: {source: electrical.v1.yaml, values: [copper, aluminium, aluminium_alloy]}
+  insulation_material: {source: electrical.v1.yaml, values: [pvc, xlpe, halogen_free_polymer]}
+  fire_performance: {source: electrical.v1.yaml, values: [standard, ng_a, ng_a_ls, ng_a_hf, frls]}
+  current_type: {source: electrical.v1.yaml, values: [AC, DC]}
+  breaker_curve: {source: electrical.v1.yaml, values: [B, C, D]}
+  utilization_category: {source: electrical.v1.yaml, values: [AC-1, AC-3, AC-4]}
+governance:
+  provisional_attributes_are_not_match_rules: true
+  role_specific_voltage_attributes_must_not_be_auto_merged: true
+  unit_conversion_requires_same_dimension: true
+  human_review_required_before_profile_activation: true
+  full_text_normative_sources_not_stored: true
