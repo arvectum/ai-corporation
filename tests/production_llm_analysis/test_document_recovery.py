@@ -119,8 +119,16 @@ def _recovery_fixture(
     monkeypatch.setattr(recovery, "get_zakupki_soap_settings", lambda: object())
     monkeypatch.setattr(
         recovery,
-        "_schema_revision",
-        lambda _engine: ("096_add_r8_canonical_snapshot_binding", True),
+        "_schema_gate_details",
+        lambda _engine: {
+            "revision": "097_add_arv052_expert_review",
+            "ready": True,
+            "alembic_repository_head": "097_add_arv052_expert_review",
+            "alembic_minimum_required_revision": "096_add_r8_canonical_snapshot_binding",
+            "alembic_minimum_present": True,
+            "alembic_minimum_is_ancestor": True,
+            "alembic_database_at_repository_head": True,
+        },
     )
     env_file = tmp_path / "env"
     env_file.write_text("AI_CORP_DATABASE_URL=ignored\n", encoding="utf-8")
@@ -566,8 +574,16 @@ def test_recovery_rejects_schema_revision_mismatch_before_soap(
     )
     monkeypatch.setattr(
         recovery,
-        "_schema_revision",
-        lambda _engine: ("095_old_revision", False),
+        "_schema_gate_details",
+        lambda _engine: {
+            "revision": "095_old_revision",
+            "ready": False,
+            "alembic_repository_head": "097_add_arv052_expert_review",
+            "alembic_minimum_required_revision": "096_add_r8_canonical_snapshot_binding",
+            "alembic_minimum_present": True,
+            "alembic_minimum_is_ancestor": False,
+            "alembic_database_at_repository_head": False,
+        },
     )
 
     report = recovery.recover_procurement_documents(
@@ -796,6 +812,7 @@ def test_same_filesystem_compares_target_device(monkeypatch, tmp_path: Path) -> 
         ("ALREADY_RECOVERED_AND_CHUNKED", 0),
         ("DOCUMENT_RECOVERY_REJECTED", 2),
         ("DOCUMENT_RECOVERY_STAGING_CLEANUP_FAILED", 2),
+        ("DOCUMENT_RECOVERY_SCHEMA_MISMATCH", 2),
     ],
 )
 def test_cli_exit_code_matches_final_status(
