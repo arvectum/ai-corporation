@@ -55,7 +55,7 @@ MAX_TOTAL_UNCOMPRESSED = 1 << 30
 MAX_ENTRY_UNCOMPRESSED = 200 << 20
 MAX_RATIO = 200
 HASH_RE = re.compile(r"^[0-9a-fA-F]{64}$")
-REQUIRED_ALEMBIC_HEAD = "096_add_r8_canonical_snapshot_binding"
+MINIMUM_REQUIRED_ALEMBIC_REVISION = "096_add_r8_canonical_snapshot_binding"
 
 
 @dataclass(frozen=True)
@@ -307,6 +307,11 @@ def _report(**values: Any) -> dict[str, Any]:
         "mode": "dry-run",
         "database_ready": False,
         "alembic_revision": None,
+        "alembic_repository_head": None,
+        "alembic_minimum_required_revision": MINIMUM_REQUIRED_ALEMBIC_REVISION,
+        "alembic_minimum_present": False,
+        "alembic_minimum_is_ancestor": False,
+        "alembic_database_at_repository_head": False,
         "soap_status": None,
         "zip_safety_passed": False,
         "expected_document_count": 0,
@@ -398,9 +403,68 @@ def _validate_recovery_endpoint(
     return None
 
 
-def _schema_revision(engine) -> tuple[str | None, bool]:
+def _schema_graph_state(
+    script: ScriptDirectory, revisions: tuple[str, ...]
+) -> dict[str, Any]:
+    heads = tuple(script.get_heads())
+    repository_head = heads[0] if len(heads) == 1 else None
+    current_revision = revisions[0] if len(revisions) == 1 else None
+    minimum_present = False
+    minimum_is_ancestor = False
+    database_at_repository_head = False
+    if repository_head is not None:
+        try:
+            minimum_present = (
+                script.get_revision(MINIMUM_REQUIRED_ALEMBIC_REVISION) is not None
+            )
+            database_script = (
+                script.get_revision(current_revision)
+                if current_revision is not None
+                else None
+            )
+            if database_script is not None and minimum_present:
+                cursor = database_script
+                seen: set[str] = set()
+                while cursor.revision != MINIMUM_REQUIRED_ALEMBIC_REVISION:
+                    if cursor.revision in seen:
+                        break
+                    seen.add(cursor.revision)
+                    down_revision = cursor.down_revision
+                    if isinstance(down_revision, tuple) or down_revision is None:
+                        break
+                    cursor = script.get_revision(down_revision)
+                    if cursor is None:
+                        break
+                minimum_is_ancestor = (
+                    cursor.revision == MINIMUM_REQUIRED_ALEMBIC_REVISION
+                )
+            database_at_repository_head = current_revision == repository_head
+        except Exception:  # noqa: BLE001
+            minimum_present = False
+            minimum_is_ancestor = False
+            database_at_repository_head = False
+    return {
+        "revision": current_revision,
+        "ready": (
+            len(heads) == 1
+            and len(revisions) == 1
+            and repository_head is not None
+            and current_revision == repository_head
+            and minimum_present
+            and minimum_is_ancestor
+            and database_at_repository_head
+        ),
+        "alembic_repository_head": repository_head,
+        "alembic_minimum_required_revision": MINIMUM_REQUIRED_ALEMBIC_REVISION,
+        "alembic_minimum_present": minimum_present,
+        "alembic_minimum_is_ancestor": minimum_is_ancestor,
+        "alembic_database_at_repository_head": database_at_repository_head,
+    }
+
+
+def _schema_gate_details(engine) -> dict[str, Any]:
     config = AlembicConfig(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
-    heads = tuple(ScriptDirectory.from_config(config).get_heads())
+    script = ScriptDirectory.from_config(config)
     with engine.connect() as connection:
         revisions = tuple(
             str(value)
@@ -408,9 +472,12 @@ def _schema_revision(engine) -> tuple[str | None, bool]:
                 text("SELECT version_num FROM alembic_version")
             ).scalars()
         )
-    return (revisions[0] if len(revisions) == 1 else None), revisions == heads == (
-        REQUIRED_ALEMBIC_HEAD,
-    )
+    return _schema_graph_state(script, revisions)
+
+
+def _schema_revision(engine) -> tuple[str | None, bool]:
+    details = _schema_gate_details(engine)
+    return details["revision"], details["ready"]
 
 
 def _valid_hashes(documents: list[ProcurementTenderDocument]) -> list[str] | None:
@@ -782,7 +849,9 @@ def _recover_procurement_documents_impl(
     try:
         with session_factory() as session:
             try:
-                revision, schema_ready = _schema_revision(engine)
+                schema_details = _schema_gate_details(engine)
+                revision = schema_details["revision"]
+                schema_ready = schema_details["ready"]
             except (SQLAlchemyError, OSError, RuntimeError):
                 return _report(
                     mode="apply" if request.apply else "dry-run",
@@ -793,6 +862,7 @@ def _recover_procurement_documents_impl(
                 "mode": "apply" if request.apply else "dry-run",
                 "database_ready": True,
                 "alembic_revision": revision,
+                **schema_details,
                 **transport_base,
             }
             if not schema_ready:
