@@ -1,0 +1,183 @@
+fragment_id: ARV-067B-SWITCHES
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.switches
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.switches
+  node_kind: family
+  registry: primary
+  title_ru: Выключатели
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Выключатели
+    - выключатель
+    - высоковольтный выключатель
+    - коммутационный аппарат
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - rated_current_a
+    - breaking_current_ka
+    - insulation_medium
+    - climate_version
+    - switching_duty
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: switches
+    source_label: Выключатели
+- category_id: electrical.primary.switches.sf6_circuit_breaker
+  parent_id: electrical.primary.switches
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.switches
+  - electrical.primary.switches.sf6_circuit_breaker
+  node_kind: subcategory
+  registry: primary
+  title_ru: элегазовый выключатель
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - элегазовый выключатель
+    - выключатель элегазовый
+    - SF6 выключатель
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: switches
+    source_label: элегазовый выключатель
+- category_id: electrical.primary.switches.vacuum_circuit_breaker
+  parent_id: electrical.primary.switches
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.switches
+  - electrical.primary.switches.vacuum_circuit_breaker
+  node_kind: subcategory
+  registry: primary
+  title_ru: вакуумный выключатель
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - вакуумный выключатель
+    - выключатель вакуумный
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: switches
+    source_label: вакуумный выключатель
+- category_id: electrical.primary.switches.recloser
+  parent_id: electrical.primary.switches
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.switches
+  - electrical.primary.switches.recloser
+  node_kind: subcategory
+  registry: primary
+  title_ru: реклоузер
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - реклоузер
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: switches
+    source_label: реклоузер
+- category_id: electrical.primary.switches.load_break_switch
+  parent_id: electrical.primary.switches
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.switches
+  - electrical.primary.switches.load_break_switch
+  node_kind: subcategory
+  registry: primary
+  title_ru: выключатель нагрузки
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - выключатель нагрузки
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: switches
+    source_label: выключатель нагрузки
+- category_id: electrical.primary.switches.switch_fuse_disconnector
+  parent_id: electrical.primary.switches
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.switches
+  - electrical.primary.switches.switch_fuse_disconnector
+  node_kind: subcategory
+  registry: primary
+  title_ru: предохранитель-выключатель-разъединитель
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - предохранитель-выключатель-разъединитель
+    - ПВР
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: switches
+    source_label: предохранитель-выключатель-разъединитель
