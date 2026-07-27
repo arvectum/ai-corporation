@@ -1,0 +1,381 @@
+benchmark_id: ARV-067D-WAVE1-FIXTURE-BENCHMARK
+version: 1.0.0
+status: fixture_gate_only
+profile_registry_id: ARV-067D-ELECTRICAL-DETAILED-PROFILES-WAVE1
+minimum_cases_per_profile: 12
+profiles:
+- profile_id: cable_joint
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - cable_joint__exact_all
+  - cable_joint__exact_capability_surplus
+  - cable_joint__likely_optional_missing
+  - cable_joint__likely_optional_mismatch
+  - cable_joint__partial_required_missing
+  - cable_joint__partial_required_mismatch
+  - cable_joint__uncertain_critical_missing
+  - cable_joint__uncertain_evidence_missing
+  - cable_joint__no_match_critical_first
+  - cable_joint__no_match_critical_second
+  - cable_joint__partial_multiple_required
+  - cable_joint__likely_all_optional_missing
+- profile_id: cable_lug_connector
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - cable_lug_connector__exact_all
+  - cable_lug_connector__exact_capability_surplus
+  - cable_lug_connector__likely_optional_missing
+  - cable_lug_connector__likely_optional_mismatch
+  - cable_lug_connector__partial_required_missing
+  - cable_lug_connector__partial_required_mismatch
+  - cable_lug_connector__uncertain_critical_missing
+  - cable_lug_connector__uncertain_evidence_missing
+  - cable_lug_connector__no_match_critical_first
+  - cable_lug_connector__no_match_critical_second
+  - cable_lug_connector__partial_multiple_required
+  - cable_lug_connector__likely_all_optional_missing
+- profile_id: cable_pipe_system
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - cable_pipe_system__exact_all
+  - cable_pipe_system__exact_capability_surplus
+  - cable_pipe_system__likely_optional_missing
+  - cable_pipe_system__likely_optional_mismatch
+  - cable_pipe_system__partial_required_missing
+  - cable_pipe_system__partial_required_mismatch
+  - cable_pipe_system__uncertain_critical_missing
+  - cable_pipe_system__uncertain_evidence_missing
+  - cable_pipe_system__no_match_critical_first
+  - cable_pipe_system__no_match_critical_second
+  - cable_pipe_system__partial_multiple_required
+  - cable_pipe_system__likely_all_optional_missing
+- profile_id: surge_arrester
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - surge_arrester__exact_all
+  - surge_arrester__exact_capability_surplus
+  - surge_arrester__likely_optional_missing
+  - surge_arrester__likely_optional_mismatch
+  - surge_arrester__partial_required_missing
+  - surge_arrester__partial_required_mismatch
+  - surge_arrester__uncertain_critical_missing
+  - surge_arrester__uncertain_evidence_missing
+  - surge_arrester__no_match_critical_first
+  - surge_arrester__no_match_critical_second
+  - surge_arrester__partial_multiple_required
+  - surge_arrester__likely_all_optional_missing
+- profile_id: high_voltage_fuse
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - high_voltage_fuse__exact_all
+  - high_voltage_fuse__exact_capability_surplus
+  - high_voltage_fuse__likely_optional_missing
+  - high_voltage_fuse__likely_optional_mismatch
+  - high_voltage_fuse__partial_required_missing
+  - high_voltage_fuse__partial_required_mismatch
+  - high_voltage_fuse__uncertain_critical_missing
+  - high_voltage_fuse__uncertain_evidence_missing
+  - high_voltage_fuse__no_match_critical_first
+  - high_voltage_fuse__no_match_critical_second
+  - high_voltage_fuse__partial_multiple_required
+  - high_voltage_fuse__likely_all_optional_missing
+- profile_id: high_voltage_disconnector
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - high_voltage_disconnector__exact_all
+  - high_voltage_disconnector__exact_capability_surplus
+  - high_voltage_disconnector__likely_optional_missing
+  - high_voltage_disconnector__likely_optional_mismatch
+  - high_voltage_disconnector__partial_required_missing
+  - high_voltage_disconnector__partial_required_mismatch
+  - high_voltage_disconnector__uncertain_critical_missing
+  - high_voltage_disconnector__uncertain_evidence_missing
+  - high_voltage_disconnector__no_match_critical_first
+  - high_voltage_disconnector__no_match_critical_second
+  - high_voltage_disconnector__partial_multiple_required
+  - high_voltage_disconnector__likely_all_optional_missing
+- profile_id: load_break_switch
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - load_break_switch__exact_all
+  - load_break_switch__exact_capability_surplus
+  - load_break_switch__likely_optional_missing
+  - load_break_switch__likely_optional_mismatch
+  - load_break_switch__partial_required_missing
+  - load_break_switch__partial_required_mismatch
+  - load_break_switch__uncertain_critical_missing
+  - load_break_switch__uncertain_evidence_missing
+  - load_break_switch__no_match_critical_first
+  - load_break_switch__no_match_critical_second
+  - load_break_switch__partial_multiple_required
+  - load_break_switch__likely_all_optional_missing
+- profile_id: recloser
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - recloser__exact_all
+  - recloser__exact_capability_surplus
+  - recloser__likely_optional_missing
+  - recloser__likely_optional_mismatch
+  - recloser__partial_required_missing
+  - recloser__partial_required_mismatch
+  - recloser__uncertain_critical_missing
+  - recloser__uncertain_evidence_missing
+  - recloser__no_match_critical_first
+  - recloser__no_match_critical_second
+  - recloser__partial_multiple_required
+  - recloser__likely_all_optional_missing
+- profile_id: line_hardware
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - line_hardware__exact_all
+  - line_hardware__exact_capability_surplus
+  - line_hardware__likely_optional_missing
+  - line_hardware__likely_optional_mismatch
+  - line_hardware__partial_required_missing
+  - line_hardware__partial_required_mismatch
+  - line_hardware__uncertain_critical_missing
+  - line_hardware__uncertain_evidence_missing
+  - line_hardware__no_match_critical_first
+  - line_hardware__no_match_critical_second
+  - line_hardware__partial_multiple_required
+  - line_hardware__likely_all_optional_missing
+- profile_id: insulator
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - insulator__exact_all
+  - insulator__exact_capability_surplus
+  - insulator__likely_optional_missing
+  - insulator__likely_optional_mismatch
+  - insulator__partial_required_missing
+  - insulator__partial_required_mismatch
+  - insulator__uncertain_critical_missing
+  - insulator__uncertain_evidence_missing
+  - insulator__no_match_critical_first
+  - insulator__no_match_critical_second
+  - insulator__partial_multiple_required
+  - insulator__likely_all_optional_missing
+- profile_id: residual_current_device
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - residual_current_device__exact_all
+  - residual_current_device__exact_capability_surplus
+  - residual_current_device__likely_optional_missing
+  - residual_current_device__likely_optional_mismatch
+  - residual_current_device__partial_required_missing
+  - residual_current_device__partial_required_mismatch
+  - residual_current_device__uncertain_critical_missing
+  - residual_current_device__uncertain_evidence_missing
+  - residual_current_device__no_match_critical_first
+  - residual_current_device__no_match_critical_second
+  - residual_current_device__partial_multiple_required
+  - residual_current_device__likely_all_optional_missing
+- profile_id: residual_current_breaker
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - residual_current_breaker__exact_all
+  - residual_current_breaker__exact_capability_surplus
+  - residual_current_breaker__likely_optional_missing
+  - residual_current_breaker__likely_optional_mismatch
+  - residual_current_breaker__partial_required_missing
+  - residual_current_breaker__partial_required_mismatch
+  - residual_current_breaker__uncertain_critical_missing
+  - residual_current_breaker__uncertain_evidence_missing
+  - residual_current_breaker__no_match_critical_first
+  - residual_current_breaker__no_match_critical_second
+  - residual_current_breaker__partial_multiple_required
+  - residual_current_breaker__likely_all_optional_missing
+- profile_id: switch_disconnector
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - switch_disconnector__exact_all
+  - switch_disconnector__exact_capability_surplus
+  - switch_disconnector__likely_optional_missing
+  - switch_disconnector__likely_optional_mismatch
+  - switch_disconnector__partial_required_missing
+  - switch_disconnector__partial_required_mismatch
+  - switch_disconnector__uncertain_critical_missing
+  - switch_disconnector__uncertain_evidence_missing
+  - switch_disconnector__no_match_critical_first
+  - switch_disconnector__no_match_critical_second
+  - switch_disconnector__partial_multiple_required
+  - switch_disconnector__likely_all_optional_missing
+- profile_id: control_relay
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - control_relay__exact_all
+  - control_relay__exact_capability_surplus
+  - control_relay__likely_optional_missing
+  - control_relay__likely_optional_mismatch
+  - control_relay__partial_required_missing
+  - control_relay__partial_required_mismatch
+  - control_relay__uncertain_critical_missing
+  - control_relay__uncertain_evidence_missing
+  - control_relay__no_match_critical_first
+  - control_relay__no_match_critical_second
+  - control_relay__partial_multiple_required
+  - control_relay__likely_all_optional_missing
+- profile_id: motor_starter
+  case_count: 12
+  status_distribution:
+    EXACT: 2
+    LIKELY_ANALOG: 3
+    PARTIAL: 3
+    UNCERTAIN: 2
+    NO_MATCH: 2
+  positive_cases: 5
+  negative_cases: 2
+  review_cases: 12
+  fixture_ids:
+  - motor_starter__exact_all
+  - motor_starter__exact_capability_surplus
+  - motor_starter__likely_optional_missing
+  - motor_starter__likely_optional_mismatch
+  - motor_starter__partial_required_missing
+  - motor_starter__partial_required_mismatch
+  - motor_starter__uncertain_critical_missing
+  - motor_starter__uncertain_evidence_missing
+  - motor_starter__no_match_critical_first
+  - motor_starter__no_match_critical_second
+  - motor_starter__partial_multiple_required
+  - motor_starter__likely_all_optional_missing
+release_gates:
+  schema_valid: true
+  cross_references_valid: true
+  minimum_fixture_count_met: true
+  all_outcomes_require_review: true
+  truth_pack_required_before_accuracy_claims: true
+  arv067h_required_before_benchmark_passed: true
+  arv067i_required_before_shadow_runtime: true
+  production_activation_allowed: false
+governance:
+  fixtures_are_not_truth_pack: true
+  no_accuracy_claims: true
+  manufacturer_diversity_not_yet_measured: true
+  ocr_robustness_not_yet_measured: true
+  human_acceptance_pending: true

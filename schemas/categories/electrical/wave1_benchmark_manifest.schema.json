@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/wave1_benchmark_manifest.schema.json",
+  "title": "ARV-067D fixture benchmark manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "benchmark_id",
+    "version",
+    "status",
+    "profile_registry_id",
+    "minimum_cases_per_profile",
+    "profiles",
+    "release_gates",
+    "governance"
+  ],
+  "properties": {
+    "benchmark_id": {
+      "const": "ARV-067D-WAVE1-FIXTURE-BENCHMARK"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "status": {
+      "const": "fixture_gate_only"
+    },
+    "profile_registry_id": {
+      "const": "ARV-067D-ELECTRICAL-DETAILED-PROFILES-WAVE1"
+    },
+    "minimum_cases_per_profile": {
+      "const": 12
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "case_count",
+          "status_distribution",
+          "positive_cases",
+          "negative_cases",
+          "review_cases",
+          "fixture_ids"
+        ],
+        "properties": {
+          "profile_id": {
+            "type": "string"
+          },
+          "case_count": {
+            "const": 12
+          },
+          "status_distribution": {
+            "type": "object"
+          },
+          "positive_cases": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "negative_cases": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "review_cases": {
+            "const": 12
+          },
+          "fixture_ids": {
+            "type": "array",
+            "minItems": 12,
+            "maxItems": 12,
+            "uniqueItems": true
+          }
+        }
+      }
+    },
+    "release_gates": {
+      "type": "object"
+    },
+    "governance": {
+      "type": "object"
+    }
+  }
+}

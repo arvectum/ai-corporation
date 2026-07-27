@@ -4,10 +4,20 @@
   "title": "ARV-067A electrical attribute fragment",
   "type": "object",
   "additionalProperties": false,
-  "required": ["fragment_id", "version", "attributes"],
+  "required": [
+    "fragment_id",
+    "version",
+    "attributes"
+  ],
   "properties": {
-    "fragment_id": {"type": "string", "pattern": "^ARV-067A-[A-Z0-9-]+$"},
-    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "fragment_id": {
+      "type": "string",
+      "pattern": "^ARV-067A-[A-Z0-9-]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
     "attributes": {
       "type": "array",
       "minItems": 1,
@@ -15,34 +25,110 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
-          "id", "title_ru", "value_type", "default_comparator", "semantic_role",
-          "maturity", "aliases", "provenance"
+          "id",
+          "title_ru",
+          "value_type",
+          "default_comparator",
+          "semantic_role",
+          "maturity",
+          "aliases",
+          "provenance"
         ],
         "properties": {
-          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
-          "title_ru": {"type": "string", "minLength": 3},
-          "value_type": {"enum": ["number", "integer", "enum", "boolean", "text", "set", "range"]},
-          "canonical_unit": {"type": "string"},
-          "default_comparator": {"enum": ["exact", "minimum", "maximum", "contains", "range_overlap"]},
-          "semantic_role": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "title_ru": {
+            "type": "string",
+            "minLength": 3
+          },
+          "value_type": {
             "enum": [
-              "identity", "capability", "constraint", "compatibility", "applicability",
-              "construction", "environment", "configuration", "safety", "efficiency",
-              "reliability", "lifecycle", "evidence"
+              "number",
+              "integer",
+              "enum",
+              "boolean",
+              "text",
+              "set",
+              "range"
             ]
           },
-          "maturity": {"enum": ["verified_detailed_profile", "provisional_taxonomy", "deprecated"]},
-          "aliases": {"type": "array", "items": {"type": "string"}},
-          "value_set_ref": {"type": "string"},
-          "allowed_values": {"type": "array", "items": {"type": "string"}},
-          "notes": {"type": "string"},
+          "canonical_unit": {
+            "type": "string"
+          },
+          "default_comparator": {
+            "enum": [
+              "exact",
+              "minimum",
+              "maximum",
+              "contains",
+              "range_overlap"
+            ]
+          },
+          "semantic_role": {
+            "enum": [
+              "identity",
+              "capability",
+              "constraint",
+              "compatibility",
+              "applicability",
+              "construction",
+              "environment",
+              "configuration",
+              "safety",
+              "efficiency",
+              "reliability",
+              "lifecycle",
+              "evidence"
+            ]
+          },
+          "maturity": {
+            "enum": [
+              "verified_detailed_profile",
+              "provisional_taxonomy",
+              "deprecated"
+            ]
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "value_set_ref": {
+            "type": "string"
+          },
+          "allowed_values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": "string"
+          },
           "provenance": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["source_asset", "basis"],
+            "required": [
+              "source_asset",
+              "basis"
+            ],
             "properties": {
-              "source_asset": {"enum": ["electrical.v1.yaml", "nomenclature.v1.yaml"]},
-              "basis": {"enum": ["explicit_attribute_definition", "discriminator_id_and_engineering_inference"]}
+              "source_asset": {
+                "enum": [
+                  "electrical.v1.yaml",
+                  "nomenclature.v1.yaml",
+                  "detailed_profiles_wave1.v1.yaml"
+                ]
+              },
+              "basis": {
+                "enum": [
+                  "explicit_attribute_definition",
+                  "discriminator_id_and_engineering_inference"
+                ]
+              }
             }
           }
         }

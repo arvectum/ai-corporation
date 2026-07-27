@@ -33,7 +33,7 @@ def test_arv067a_attribute_registry_validates() -> None:
     assert module.main() == 0
 
 
-def test_arv067a_registry_covers_detailed_and_taxonomy_attributes() -> None:
+def test_arv067a_registry_covers_detailed_taxonomy_and_wave1_attributes() -> None:
     registry = yaml.safe_load(
         (DIRECTORY / "attribute_registry.v1.yaml").read_text(encoding="utf-8")
     )
@@ -43,6 +43,9 @@ def test_arv067a_registry_covers_detailed_and_taxonomy_attributes() -> None:
     nomenclature = yaml.safe_load(
         (DIRECTORY / "nomenclature.v1.yaml").read_text(encoding="utf-8")
     )
+    wave1_manifest = yaml.safe_load(
+        (DIRECTORY / "detailed_profiles_wave1.v1.yaml").read_text(encoding="utf-8")
+    )
 
     attributes = _load_attributes(registry)
     registered = {item["id"] for item in attributes}
@@ -51,10 +54,18 @@ def test_arv067a_registry_covers_detailed_and_taxonomy_attributes() -> None:
         for item in attributes
         if item["maturity"] == "verified_detailed_profile"
     }
-    detailed = {
+    original_detailed = {
         attribute["id"]
         for category in ontology["categories"]
         for attribute in category["attributes"]
+    }
+    wave1_detailed = {
+        rule["id"]
+        for relative_path in wave1_manifest["profile_files"]
+        for profile in yaml.safe_load(
+            (DIRECTORY / relative_path).read_text(encoding="utf-8")
+        )["profiles"]
+        for rule in profile["attributes"]
     }
     discriminators = {
         attribute_id
@@ -62,8 +73,12 @@ def test_arv067a_registry_covers_detailed_and_taxonomy_attributes() -> None:
         for attribute_id in section["discriminator_attributes"]
     }
 
-    assert detailed == verified
+    assert original_detailed <= verified
+    assert wave1_detailed <= verified
+    assert original_detailed | wave1_detailed <= registered
     assert discriminators <= registered
+    assert len(registered) == 156
+    assert len(verified) == 52
     assert registry["profile_id_aliases"] == {
         "electromechanical_contactor": "electromagnetic_contactor"
     }

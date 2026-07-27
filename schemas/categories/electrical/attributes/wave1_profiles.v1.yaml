@@ -1,0 +1,464 @@
+fragment_id: ARV-067A-WAVE1-PROFILES
+version: 1.0.0
+attributes:
+- id: joint_type
+  title_ru: Тип кабельной муфты
+  value_type: enum
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - тип муфты
+  - концевая муфта
+  - соединительная муфта
+  - ответвительная муфта
+  allowed_values:
+  - termination
+  - straight_through
+  - branch
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: supported_cross_section_range_mm2
+  title_ru: Поддерживаемый диапазон сечений проводника
+  value_type: range
+  canonical_unit: mm2
+  default_comparator: range_overlap
+  semantic_role: compatibility
+  maturity: verified_detailed_profile
+  aliases:
+  - диапазон сечений
+  - сечение кабеля
+  - поддерживаемое сечение
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: supported_core_count_range
+  title_ru: Поддерживаемый диапазон количества жил
+  value_type: range
+  canonical_unit: dimensionless
+  default_comparator: range_overlap
+  semantic_role: compatibility
+  maturity: verified_detailed_profile
+  aliases:
+  - диапазон числа жил
+  - количество жил кабеля
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: installation_environment
+  title_ru: Среда и способ установки
+  value_type: set
+  default_comparator: contains
+  semantic_role: environment
+  maturity: verified_detailed_profile
+  aliases:
+  - место установки
+  - способ прокладки
+  - среда монтажа
+  allowed_values:
+  - indoor
+  - outdoor
+  - buried
+  - duct
+  - tray
+  - overhead
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: cable_insulation_compatibility
+  title_ru: Совместимые типы изоляции кабеля
+  value_type: set
+  default_comparator: contains
+  semantic_role: compatibility
+  maturity: verified_detailed_profile
+  aliases:
+  - совместимая изоляция
+  - тип изоляции кабеля
+  allowed_values:
+  - pvc
+  - xlpe
+  - paper
+  - elastomer
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: connection_method
+  title_ru: Способ электрического соединения
+  value_type: enum
+  default_comparator: exact
+  semantic_role: construction
+  maturity: verified_detailed_profile
+  aliases:
+  - способ соединения
+  - опрессовка
+  - болтовое соединение
+  allowed_values:
+  - crimp
+  - bolted
+  - shear_bolt
+  - soldered
+  - spring
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: stud_size
+  title_ru: Размер присоединительного отверстия или шпильки
+  value_type: text
+  default_comparator: exact
+  semantic_role: compatibility
+  maturity: verified_detailed_profile
+  aliases:
+  - размер шпильки
+  - отверстие под болт
+  - размер отверстия
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: palm_material
+  title_ru: Материал контактной лопатки
+  value_type: enum
+  default_comparator: exact
+  semantic_role: construction
+  maturity: verified_detailed_profile
+  aliases:
+  - материал лопатки
+  - контактная лопатка
+  - биметалл
+  allowed_values:
+  - copper
+  - aluminium
+  - bimetal
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: tin_plated
+  title_ru: Лужёное исполнение
+  value_type: boolean
+  canonical_unit: boolean
+  default_comparator: exact
+  semantic_role: construction
+  maturity: verified_detailed_profile
+  aliases:
+  - луженый
+  - лужение
+  - оловянное покрытие
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: pipe_material
+  title_ru: Материал кабельной трубы
+  value_type: enum
+  default_comparator: exact
+  semantic_role: construction
+  maturity: verified_detailed_profile
+  aliases:
+  - материал трубы
+  - пнд труба
+  - пвх труба
+  allowed_values:
+  - hdpe
+  - pvc
+  - polypropylene
+  - steel
+  - composite
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: outer_diameter_mm
+  title_ru: Наружный диаметр
+  value_type: number
+  canonical_unit: mm
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - наружный диаметр
+  - внешний диаметр
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: inner_diameter_mm
+  title_ru: Внутренний диаметр
+  value_type: number
+  canonical_unit: mm
+  default_comparator: minimum
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - внутренний диаметр
+  - полезный диаметр
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: wall_thickness_mm
+  title_ru: Толщина стенки
+  value_type: number
+  canonical_unit: mm
+  default_comparator: minimum
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - толщина стенки
+  - стенка трубы
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: minimum_bend_radius_mm
+  title_ru: Минимальный радиус изгиба
+  value_type: number
+  canonical_unit: mm
+  default_comparator: maximum
+  semantic_role: constraint
+  maturity: verified_detailed_profile
+  aliases:
+  - радиус изгиба
+  - минимальный радиус
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: compression_strength_kn
+  title_ru: Стойкость к сжатию
+  value_type: number
+  canonical_unit: kN
+  default_comparator: minimum
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - прочность на сжатие
+  - стойкость к сжатию
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: flame_retardant
+  title_ru: Нераспространение горения
+  value_type: boolean
+  canonical_unit: boolean
+  default_comparator: exact
+  semantic_role: safety
+  maturity: verified_detailed_profile
+  aliases:
+  - негорючая
+  - не распространяет горение
+  - огнестойкость трубы
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: residual_voltage_kv
+  title_ru: Остающееся напряжение
+  value_type: number
+  canonical_unit: kV
+  default_comparator: maximum
+  semantic_role: safety
+  maturity: verified_detailed_profile
+  aliases:
+  - остаточное напряжение
+  - остающееся напряжение
+  - уровень защиты
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: fuse_characteristic
+  title_ru: Время-токовая характеристика предохранителя
+  value_type: enum
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - характеристика предохранителя
+  - время токовая характеристика
+  allowed_values:
+  - general_purpose
+  - transformer_protection
+  - motor_protection
+  - capacitor_protection
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: striker_present
+  title_ru: Наличие бойка
+  value_type: boolean
+  canonical_unit: boolean
+  default_comparator: exact
+  semantic_role: configuration
+  maturity: verified_detailed_profile
+  aliases:
+  - боек
+  - ударник
+  - индикатор срабатывания
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: control_supply_voltage_v
+  title_ru: Напряжение питания цепей управления
+  value_type: number
+  canonical_unit: V
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - питание управления
+  - напряжение оперативного питания
+  - питание контроллера
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: hardware_type
+  title_ru: Функциональный тип линейной арматуры
+  value_type: enum
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - тип арматуры
+  - назначение арматуры
+  allowed_values:
+  - suspension
+  - tension
+  - connector
+  - protection
+  - spacer
+  - vibration_damper
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: rated_residual_current_a
+  title_ru: Номинальный отключающий дифференциальный ток
+  value_type: number
+  canonical_unit: A
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - дифференциальный ток
+  - ток утечки
+  - i delta n
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: residual_current_type
+  title_ru: Тип чувствительности к дифференциальному току
+  value_type: enum
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - тип узо
+  - тип дифференциального тока
+  - ac a b f
+  allowed_values:
+  - AC
+  - A
+  - F
+  - B
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: relay_function
+  title_ru: Функции реле
+  value_type: set
+  default_comparator: contains
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - назначение реле
+  - функция реле
+  allowed_values:
+  - intermediate
+  - time_delay
+  - voltage_monitoring
+  - current_monitoring
+  - phase_monitoring
+  - temperature_monitoring
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: contact_current_a
+  title_ru: Допустимый ток контактов
+  value_type: number
+  canonical_unit: A
+  default_comparator: minimum
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - ток контактов
+  - коммутируемый ток
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: contact_voltage_v
+  title_ru: Допустимое напряжение контактов
+  value_type: number
+  canonical_unit: V
+  default_comparator: minimum
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - напряжение контактов
+  - коммутируемое напряжение
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: mounting_type
+  title_ru: Способ монтажа
+  value_type: enum
+  default_comparator: exact
+  semantic_role: construction
+  maturity: verified_detailed_profile
+  aliases:
+  - монтаж
+  - крепление
+  - установка
+  allowed_values:
+  - din_rail
+  - panel
+  - plug_in
+  - busbar
+  - surface
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: overload_relay_range_a
+  title_ru: Диапазон уставки реле перегрузки
+  value_type: range
+  canonical_unit: A
+  default_comparator: range_overlap
+  semantic_role: compatibility
+  maturity: verified_detailed_profile
+  aliases:
+  - диапазон теплового реле
+  - уставка перегрузки
+  - токовый диапазон реле
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: operating_mode
+  title_ru: Коммутационное назначение и режим
+  value_type: text
+  default_comparator: exact
+  semantic_role: capability
+  maturity: verified_detailed_profile
+  aliases:
+  - режим работы
+  - коммутационное назначение
+  - категория коммутации
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition
+- id: connection_kind
+  title_ru: Вид кабельного наконечника или соединителя
+  value_type: enum
+  default_comparator: exact
+  semantic_role: identity
+  maturity: verified_detailed_profile
+  aliases:
+  - вид наконечника
+  - тип соединителя
+  - гильза
+  allowed_values:
+  - lug
+  - inline_connector
+  - branch_connector
+  provenance:
+    source_asset: detailed_profiles_wave1.v1.yaml
+    basis: explicit_attribute_definition

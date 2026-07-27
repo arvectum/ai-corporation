@@ -1,0 +1,430 @@
+fragment_id: ARV-067D-PROTECTION-SWITCHING
+version: 1.0.0
+profiles:
+- id: surge_arrester
+  title_ru: Ограничитель перенапряжений
+  target_category_id: electrical.primary.surge_protection_fuses.surge_arrester
+  category_scope: subcategory
+  domain: protection_switching
+  lifecycle_status: fixtures_ready
+  aliases:
+  - ограничитель перенапряжений
+  - опн
+  - нелинейный ограничитель перенапряжений
+  - surge arrester
+  canonical_marks:
+  - ОПН
+  - УХЛ1
+  - 10 кА
+  attributes:
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: SURGE_ARRESTER_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: continuous_operating_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: SURGE_ARRESTER_CONTINUOUS_OPERATING_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: nominal_discharge_current_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: SURGE_ARRESTER_NOMINAL_DISCHARGE_CURRENT_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: residual_voltage_kv
+    requirement: required
+    critical: true
+    comparator: maximum
+    mismatch_reason_code: SURGE_ARRESTER_RESIDUAL_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: energy_class
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SURGE_ARRESTER_ENERGY_CLASS_MISMATCH
+    comparator_basis: canonical_default
+  - id: application
+    requirement: required
+    critical: false
+    comparator: contains
+    mismatch_reason_code: SURGE_ARRESTER_APPLICATION_MISMATCH
+    comparator_basis: canonical_default
+  - id: climate_version
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SURGE_ARRESTER_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_type
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SURGE_ARRESTER_ENCLOSURE_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: &id001
+  - GOST-1516-3-96
+  - GOST-8024-90
+  - PUE-7
+  - STO-34.01-22-002-2023
+  - ROSSETI-TECHNICAL-POLICY
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: high_voltage_fuse
+  title_ru: Высоковольтный предохранитель
+  target_category_id: electrical.primary.surge_protection_fuses.high_voltage_fuse
+  category_scope: subcategory
+  domain: protection_switching
+  lifecycle_status: fixtures_ready
+  aliases:
+  - высоковольтный предохранитель
+  - предохранитель высокого напряжения
+  - плавкая вставка высокого напряжения
+  - hv fuse
+  canonical_marks:
+  - ПКТ
+  - ПКН
+  - ПТ
+  attributes:
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_RATED_CURRENT_A_MISMATCH
+    comparator_basis: canonical_default
+  - id: breaking_current_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_BREAKING_CURRENT_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: fuse_characteristic
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_FUSE_CHARACTERISTIC_MISMATCH
+    comparator_basis: canonical_default
+  - id: application
+    requirement: required
+    critical: false
+    comparator: contains
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_APPLICATION_MISMATCH
+    comparator_basis: canonical_default
+  - id: climate_version
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  - id: striker_present
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_STRIKER_PRESENT_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_type
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_FUSE_ENCLOSURE_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: high_voltage_disconnector
+  title_ru: Высоковольтный разъединитель
+  target_category_id: electrical.primary.disconnectors_earthing_switches.high_voltage_disconnector
+  category_scope: subcategory
+  domain: protection_switching
+  lifecycle_status: fixtures_ready
+  aliases:
+  - высоковольтный разъединитель
+  - разъединитель наружной установки
+  - разъединитель внутренней установки
+  - hv disconnector
+  canonical_marks:
+  - РЛНД
+  - РВЗ
+  - РДЗ
+  attributes:
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_RATED_CURRENT_A_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: short_circuit_withstand_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_SHORT_CIRCUIT_WITHSTAND_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: pole_count
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_POLE_COUNT_MISMATCH
+    comparator_basis: canonical_default
+  - id: drive_type
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_DRIVE_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: earthing_switch_count
+    requirement: required
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_EARTHING_SWITCH_COUNT_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: climate_version
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  - id: insulation_medium
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: HIGH_VOLTAGE_DISCONNECTOR_INSULATION_MEDIUM_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: load_break_switch
+  title_ru: Выключатель нагрузки
+  target_category_id: electrical.primary.switches.load_break_switch
+  category_scope: subcategory
+  domain: protection_switching
+  lifecycle_status: fixtures_ready
+  aliases:
+  - выключатель нагрузки
+  - высоковольтный выключатель нагрузки
+  - load break switch
+  - вн
+  canonical_marks:
+  - ВНА
+  - ВНП
+  - ВНР
+  attributes:
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: LOAD_BREAK_SWITCH_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: LOAD_BREAK_SWITCH_RATED_CURRENT_A_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: breaking_current_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: LOAD_BREAK_SWITCH_BREAKING_CURRENT_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: pole_count
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: LOAD_BREAK_SWITCH_POLE_COUNT_MISMATCH
+    comparator_basis: canonical_default
+  - id: insulation_medium
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LOAD_BREAK_SWITCH_INSULATION_MEDIUM_MISMATCH
+    comparator_basis: canonical_default
+  - id: drive_type
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LOAD_BREAK_SWITCH_DRIVE_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: switching_duty
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LOAD_BREAK_SWITCH_SWITCHING_DUTY_MISMATCH
+    comparator_basis: canonical_default
+  - id: climate_version
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LOAD_BREAK_SWITCH_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: recloser
+  title_ru: Реклоузер
+  target_category_id: electrical.primary.switches.recloser
+  category_scope: subcategory
+  domain: protection_switching
+  lifecycle_status: fixtures_ready
+  aliases:
+  - реклоузер
+  - автоматический пункт секционирования
+  - вакуумный реклоузер
+  - recloser
+  canonical_marks:
+  - РВА
+  - ПСС
+  - АПС
+  attributes:
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RECLOSER_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RECLOSER_RATED_CURRENT_A_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: breaking_current_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RECLOSER_BREAKING_CURRENT_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: pole_count
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RECLOSER_POLE_COUNT_MISMATCH
+    comparator_basis: canonical_default
+  - id: protection_functions
+    requirement: required
+    critical: false
+    comparator: contains
+    mismatch_reason_code: RECLOSER_PROTECTION_FUNCTIONS_MISMATCH
+    comparator_basis: canonical_default
+  - id: control_supply_voltage_v
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RECLOSER_CONTROL_SUPPLY_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: communication_interfaces
+    requirement: optional
+    critical: false
+    comparator: contains
+    mismatch_reason_code: RECLOSER_COMMUNICATION_INTERFACES_MISMATCH
+    comparator_basis: canonical_default
+  - id: climate_version
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RECLOSER_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RECLOSER_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates:
+  - GOST-1516-3-96
+  - GOST-8024-90
+  - PUE-7
+  - STO-34.01-22-002-2023
+  - ROSSETI-TECHNICAL-POLICY
+  - GOST-R-IEC-61850-5-2011
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract

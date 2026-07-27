@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/detailed_profiles_wave1.schema.json",
+  "title": "ARV-067D wave-1 detailed profile registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registry_id",
+    "version",
+    "status",
+    "locale",
+    "runtime_import",
+    "purpose",
+    "source_assets",
+    "profile_files",
+    "category_binding_file",
+    "matcher_policy",
+    "reason_codes",
+    "benchmark_manifest",
+    "fixture_file",
+    "governance"
+  ],
+  "properties": {
+    "registry_id": {
+      "const": "ARV-067D-ELECTRICAL-DETAILED-PROFILES-WAVE1"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "status": {
+      "const": "research_asset"
+    },
+    "locale": {
+      "const": "ru-RU"
+    },
+    "runtime_import": {
+      "const": false
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 100
+    },
+    "source_assets": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 5
+          },
+          "role": {
+            "type": "string",
+            "minLength": 5
+          }
+        }
+      }
+    },
+    "profile_files": {
+      "type": "array",
+      "minItems": 4,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^profile_fragments/[a-z0-9_]+\\.v1\\.yaml$"
+      }
+    },
+    "category_binding_file": {
+      "const": "wave1_category_bindings.v1.yaml"
+    },
+    "matcher_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "statuses",
+        "critical_mismatch_outcome",
+        "critical_missing_outcome",
+        "required_noncritical_issue_outcome",
+        "optional_issue_outcome",
+        "all_checks_pass_outcome",
+        "human_review_required_for_all_outcomes"
+      ],
+      "properties": {
+        "statuses": {
+          "const": [
+            "EXACT",
+            "LIKELY_ANALOG",
+            "PARTIAL",
+            "UNCERTAIN",
+            "NO_MATCH"
+          ]
+        },
+        "critical_mismatch_outcome": {
+          "const": "NO_MATCH"
+        },
+        "critical_missing_outcome": {
+          "const": "UNCERTAIN"
+        },
+        "required_noncritical_issue_outcome": {
+          "const": "PARTIAL"
+        },
+        "optional_issue_outcome": {
+          "const": "LIKELY_ANALOG"
+        },
+        "all_checks_pass_outcome": {
+          "const": "EXACT"
+        },
+        "human_review_required_for_all_outcomes": {
+          "const": true
+        }
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]+$"
+      }
+    },
+    "benchmark_manifest": {
+      "const": "fixtures/ontology/electrical/wave1_benchmark_manifest.yaml"
+    },
+    "fixture_file": {
+      "const": "fixtures/ontology/electrical/wave1_profile_cases.yaml"
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category_bindings_are_overlays",
+        "base_arv067b_tree_remains_source_snapshot",
+        "normative_references_are_candidates_only",
+        "automatic_compliance_decision_disabled",
+        "manufacturer_model_equivalence_requires_arv067e",
+        "truth_pack_promotion_requires_arv067h",
+        "shadow_runtime_requires_arv067i",
+        "production_runtime_not_wired"
+      ],
+      "properties": {
+        "category_bindings_are_overlays": {
+          "const": true
+        },
+        "base_arv067b_tree_remains_source_snapshot": {
+          "const": true
+        },
+        "normative_references_are_candidates_only": {
+          "const": true
+        },
+        "automatic_compliance_decision_disabled": {
+          "const": true
+        },
+        "manufacturer_model_equivalence_requires_arv067e": {
+          "const": true
+        },
+        "truth_pack_promotion_requires_arv067h": {
+          "const": true
+        },
+        "shadow_runtime_requires_arv067i": {
+          "const": true
+        },
+        "production_runtime_not_wired": {
+          "const": true
+        }
+      }
+    }
+  }
+}

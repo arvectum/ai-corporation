@@ -1,0 +1,463 @@
+fragment_id: ARV-067D-LOW-VOLTAGE-CONTROLS
+version: 1.0.0
+profiles:
+- id: residual_current_device
+  title_ru: Устройство защитного отключения
+  target_category_id: electrical.primary.other_primary
+  category_scope: family
+  domain: low_voltage_controls
+  lifecycle_status: fixtures_ready
+  aliases:
+  - устройство защитного отключения
+  - узо
+  - выключатель дифференциального тока
+  - rcd
+  canonical_marks:
+  - ВД
+  - УЗО
+  - RCCB
+  attributes:
+  - id: rated_voltage_v
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_RATED_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_RATED_CURRENT_A_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: poles
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_POLES_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_residual_current_a
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_RATED_RESIDUAL_CURRENT_A_MISMATCH
+    comparator_basis: canonical_default
+  - id: residual_current_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_RESIDUAL_CURRENT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: current_type
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_CURRENT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: breaking_capacity_ka
+    requirement: required
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_BREAKING_CAPACITY_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: din_modules
+    requirement: optional
+    critical: false
+    comparator: maximum
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_DIN_MODULES_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_DEVICE_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: &id001
+  - TR-CU-004-2011
+  - TR-CU-020-2011
+  - PUE-7
+  - ROSSETI-TECHNICAL-POLICY
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: residual_current_breaker
+  title_ru: Автоматический выключатель дифференциального тока
+  target_category_id: electrical.primary.other_primary
+  category_scope: family
+  domain: low_voltage_controls
+  lifecycle_status: fixtures_ready
+  aliases:
+  - автоматический выключатель дифференциального тока
+  - авдт
+  - дифференциальный автомат
+  - rcbo
+  canonical_marks:
+  - АВДТ
+  - ДИФ
+  - RCBO
+  attributes:
+  - id: rated_voltage_v
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_RATED_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_RATED_CURRENT_A_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: poles
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_POLES_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_residual_current_a
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_RATED_RESIDUAL_CURRENT_A_MISMATCH
+    comparator_basis: canonical_default
+  - id: residual_current_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_RESIDUAL_CURRENT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: trip_curve
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_TRIP_CURVE_MISMATCH
+    comparator_basis: canonical_default
+  - id: breaking_capacity_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_BREAKING_CAPACITY_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: current_type
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_CURRENT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: din_modules
+    requirement: optional
+    critical: false
+    comparator: maximum
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_DIN_MODULES_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  - id: mounting_type
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: RESIDUAL_CURRENT_BREAKER_MOUNTING_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates:
+  - TR-CU-004-2011
+  - TR-CU-020-2011
+  - PUE-7
+  - ROSSETI-TECHNICAL-POLICY
+  - GOST-IEC-60898-1-2020
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: switch_disconnector
+  title_ru: Низковольтный выключатель-разъединитель
+  target_category_id: electrical.primary.other_primary
+  category_scope: family
+  domain: low_voltage_controls
+  lifecycle_status: fixtures_ready
+  aliases:
+  - выключатель-разъединитель
+  - рубильник
+  - разъединитель низковольтный
+  - switch disconnector
+  canonical_marks:
+  - ВР
+  - РЕ19
+  - QS
+  attributes:
+  - id: rated_voltage_v
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: SWITCH_DISCONNECTOR_RATED_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: SWITCH_DISCONNECTOR_RATED_CURRENT_A_MISMATCH
+    comparator_basis: profile_requirement_semantics
+  - id: poles
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: SWITCH_DISCONNECTOR_POLES_MISMATCH
+    comparator_basis: canonical_default
+  - id: short_circuit_withstand_ka
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: SWITCH_DISCONNECTOR_SHORT_CIRCUIT_WITHSTAND_KA_MISMATCH
+    comparator_basis: canonical_default
+  - id: operating_mode
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SWITCH_DISCONNECTOR_OPERATING_MODE_MISMATCH
+    comparator_basis: canonical_default
+  - id: drive_type
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SWITCH_DISCONNECTOR_DRIVE_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SWITCH_DISCONNECTOR_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  - id: mounting_type
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: SWITCH_DISCONNECTOR_MOUNTING_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: control_relay
+  title_ru: Реле управления и контроля
+  target_category_id: electrical.primary.other_primary
+  category_scope: family
+  domain: low_voltage_controls
+  lifecycle_status: fixtures_ready
+  aliases:
+  - реле управления
+  - промежуточное реле
+  - реле контроля
+  - control relay
+  canonical_marks:
+  - РЭК
+  - РП
+  - РН
+  attributes:
+  - id: coil_voltage_v
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CONTROL_RELAY_COIL_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: coil_current_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CONTROL_RELAY_COIL_CURRENT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: relay_function
+    requirement: required
+    critical: true
+    comparator: contains
+    mismatch_reason_code: CONTROL_RELAY_RELAY_FUNCTION_MISMATCH
+    comparator_basis: canonical_default
+  - id: auxiliary_contacts
+    requirement: required
+    critical: true
+    comparator: contains
+    mismatch_reason_code: CONTROL_RELAY_AUXILIARY_CONTACTS_MISMATCH
+    comparator_basis: canonical_default
+  - id: contact_current_a
+    requirement: required
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: CONTROL_RELAY_CONTACT_CURRENT_A_MISMATCH
+    comparator_basis: canonical_default
+  - id: contact_voltage_v
+    requirement: required
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: CONTROL_RELAY_CONTACT_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: mounting_type
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CONTROL_RELAY_MOUNTING_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CONTROL_RELAY_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: motor_starter
+  title_ru: Электромагнитный пускатель
+  target_category_id: electrical.primary.other_primary
+  category_scope: family
+  domain: low_voltage_controls
+  lifecycle_status: fixtures_ready
+  aliases:
+  - электромагнитный пускатель
+  - магнитный пускатель
+  - пускатель двигателя
+  - motor starter
+  canonical_marks:
+  - ПМЛ
+  - ПМЕ
+  - КМИ
+  attributes:
+  - id: rated_operational_current_a
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: MOTOR_STARTER_RATED_OPERATIONAL_CURRENT_A_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_operational_voltage_v
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: MOTOR_STARTER_RATED_OPERATIONAL_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: coil_voltage_v
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: MOTOR_STARTER_COIL_VOLTAGE_V_MISMATCH
+    comparator_basis: canonical_default
+  - id: coil_current_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: MOTOR_STARTER_COIL_CURRENT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: utilization_category
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: MOTOR_STARTER_UTILIZATION_CATEGORY_MISMATCH
+    comparator_basis: canonical_default
+  - id: overload_relay_range_a
+    requirement: required
+    critical: false
+    comparator: range_overlap
+    mismatch_reason_code: MOTOR_STARTER_OVERLOAD_RELAY_RANGE_A_MISMATCH
+    comparator_basis: canonical_default
+  - id: poles
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: MOTOR_STARTER_POLES_MISMATCH
+    comparator_basis: canonical_default
+  - id: auxiliary_contacts
+    requirement: optional
+    critical: false
+    comparator: contains
+    mismatch_reason_code: MOTOR_STARTER_AUXILIARY_CONTACTS_MISMATCH
+    comparator_basis: canonical_default
+  - id: mounting_type
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: MOTOR_STARTER_MOUNTING_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: MOTOR_STARTER_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates:
+  - TR-CU-004-2011
+  - TR-CU-020-2011
+  - PUE-7
+  - ROSSETI-TECHNICAL-POLICY
+  - GOST-IEC-60947-4-1-2021
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract

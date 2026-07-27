@@ -1,0 +1,179 @@
+fragment_id: ARV-067D-LINES-INSULATION
+version: 1.0.0
+profiles:
+- id: line_hardware
+  title_ru: Линейная арматура
+  target_category_id: electrical.primary.line_hardware
+  category_scope: family
+  domain: lines_insulation
+  lifecycle_status: fixtures_ready
+  aliases:
+  - линейная арматура
+  - арматура вл
+  - натяжная арматура
+  - поддерживающая арматура
+  - соединительная арматура
+  canonical_marks:
+  - ПА
+  - НА
+  - САС
+  - ГВ
+  attributes:
+  - id: hardware_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: LINE_HARDWARE_HARDWARE_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: conductor_or_insulator_type
+    requirement: required
+    critical: true
+    comparator: contains
+    mismatch_reason_code: LINE_HARDWARE_CONDUCTOR_OR_INSULATOR_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: diameter_range_mm
+    requirement: required
+    critical: true
+    comparator: range_overlap
+    mismatch_reason_code: LINE_HARDWARE_DIAMETER_RANGE_MM_MISMATCH
+    comparator_basis: canonical_default
+  - id: mechanical_load_kn
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: LINE_HARDWARE_MECHANICAL_LOAD_KN_MISMATCH
+    comparator_basis: canonical_default
+  - id: material
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LINE_HARDWARE_MATERIAL_MISMATCH
+    comparator_basis: canonical_default
+  - id: application
+    requirement: required
+    critical: false
+    comparator: contains
+    mismatch_reason_code: LINE_HARDWARE_APPLICATION_MISMATCH
+    comparator_basis: canonical_default
+  - id: coating
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LINE_HARDWARE_COATING_MISMATCH
+    comparator_basis: canonical_default
+  - id: climate_version
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: LINE_HARDWARE_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates:
+  - PUE-7
+  - STO-34.01-22-002-2023
+  - ROSSETI-TECHNICAL-POLICY
+  - ROSSETI-REGISTRY-PRIMARY-2026-06-10
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: insulator
+  title_ru: Высоковольтный изолятор
+  target_category_id: electrical.primary.insulators
+  category_scope: family
+  domain: lines_insulation
+  lifecycle_status: fixtures_ready
+  aliases:
+  - высоковольтный изолятор
+  - линейный изолятор
+  - опорный изолятор
+  - подвесной изолятор
+  canonical_marks:
+  - ПС
+  - ЛК
+  - ИО
+  - ШФ
+  attributes:
+  - id: insulator_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: INSULATOR_INSULATOR_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: material
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: INSULATOR_MATERIAL_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: INSULATOR_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: mechanical_failing_load_kn
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: INSULATOR_MECHANICAL_FAILING_LOAD_KN_MISMATCH
+    comparator_basis: canonical_default
+  - id: creepage_distance_mm
+    requirement: required
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: INSULATOR_CREEPAGE_DISTANCE_MM_MISMATCH
+    comparator_basis: canonical_default
+  - id: pollution_level
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: INSULATOR_POLLUTION_LEVEL_MISMATCH
+    comparator_basis: canonical_default
+  - id: climate_version
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: INSULATOR_CLIMATE_VERSION_MISMATCH
+    comparator_basis: canonical_default
+  - id: application
+    requirement: optional
+    critical: false
+    comparator: contains
+    mismatch_reason_code: INSULATOR_APPLICATION_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates:
+  - GOST-1516-3-96
+  - GOST-9920-89
+  - PUE-7
+  - STO-34.01-22-002-2023
+  - ROSSETI-TECHNICAL-POLICY
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
