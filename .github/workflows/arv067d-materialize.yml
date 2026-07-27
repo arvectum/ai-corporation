@@ -1,0 +1,37 @@
+name: ARV-067D Materialize
+
+on:
+  push:
+    branches:
+      - feature/arv-067d-wave1-detailed-profiles
+    paths:
+      - scripts/materialize_arv067d.py
+      - scripts/arv067d_payload/**
+      - .github/workflows/arv067d-materialize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Materialize ARV-067D assets
+        run: python scripts/materialize_arv067d.py
+      - name: Remove one-shot materializer
+        run: rm -rf scripts/materialize_arv067d.py scripts/arv067d_payload .github/workflows/arv067d-materialize.yml
+      - name: Commit generated assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "ARV-067D: materialize wave-1 detailed profiles"
+          git push origin HEAD:feature/arv-067d-wave1-detailed-profiles
