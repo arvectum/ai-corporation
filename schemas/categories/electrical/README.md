@@ -16,11 +16,13 @@ The expanded catalog adds section-level coverage of both PJSC Rosseti approved-e
 - 28 total families with aliases, subcategories and discriminator fields;
 - a 42-document metadata-only normative registry covering GOST/PUE, Rosseti, Rosatom and RusHydro sources.
 
-ARV-067A adds a shared registry of 126 attribute IDs, 21 units, five type-safe comparators and six verified value sets. Twenty-two attributes preserve the exact contract of the four detailed profiles; 104 taxonomy discriminator definitions remain explicitly provisional.
+ARV-067A adds a shared registry of 156 attribute IDs, 21 units, five type-safe comparators and six verified value sets. Fifty-two attributes are verified by detailed profile contracts; 104 taxonomy discriminator definitions remain explicitly provisional.
 
 ARV-067B adds an explicit category hierarchy with 166 stable nodes: one root, two registry groups, 28 source families and 135 source subcategories. Parent paths, attribute inheritance, role-specific overrides, routing aliases, provenance and lifecycle gates are validated across all files.
 
-ARV-067C adds a separate typed relation graph with nine relation types, three abstract component roles, 25 explainable assertions and 26 evaluation fixtures. Compatibility, completeness, replacement, approval and normative applicability remain separate semantics; missing evidence returns `UNCERTAIN`.
+ARV-067C adds nine typed relations, three component roles, 25 explainable assertions and 26 relation fixtures for compatibility, completeness, replacement, approval and normative applicability.
+
+ARV-067D adds 15 wave-1 detailed profiles, 11 category-promotion overlays and 180 fixture cases for cable accessories, surge protection, switching equipment, line hardware, insulators and low-voltage control/protection products.
 
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
@@ -28,12 +30,12 @@ The package is an offline research contract and is intentionally not imported by
 
 Detailed ontology:
 
-- `electrical.v1.yaml` — four detailed profiles and matching policy;
-- `ontology.schema.json` — JSON Schema contract for the detailed ontology;
+- `electrical.v1.yaml` — four original detailed profiles and matching policy;
+- `ontology.schema.json` — JSON Schema contract for the original ontology;
 - `contract.py` — structural and cross-reference checks;
 - `resolver.py` — deterministic synonym fixture resolver;
-- `matcher.py` — explainable fixture matching policy;
-- `validate.py` — detailed-profile validation entrypoint.
+- `matcher.py` — explainable original fixture matching policy;
+- `validate.py` — original detailed-profile validation entrypoint.
 
 Expanded nomenclature and norms:
 
@@ -49,6 +51,7 @@ Shared attribute registry:
 - `attribute_registry.schema.json` — closed manifest contract;
 - `attribute_fragment.schema.json` — closed fragment contract;
 - `attributes/*.v1.yaml` — verified and provisional attribute definitions by domain;
+- `attributes/wave1_profiles.v1.yaml` — 30 verified ARV-067D profile attributes;
 - `validate_attributes.py` — cross-file attribute, unit and profile-reference validator.
 
 Category hierarchy:
@@ -62,17 +65,23 @@ Category hierarchy:
 
 Relation graph:
 
-- `relation_graph.v1.yaml` — relation manifest, evaluation policy and safety governance;
-- `relation_graph.schema.json` — closed graph manifest contract;
-- `relation_types.v1.yaml` — nine non-equivalence relation semantics;
-- `relation_type_registry.schema.json` — direction, symmetry, transitivity and cardinality contract;
-- `component_roles.v1.yaml` — abstract component roles, not manufacturer models;
-- `component_role_registry.schema.json` — component-role contract;
-- `relation_assertions/*.v1.yaml` — cable, overhead-line, switching and RZA/measurement assertions;
-- `relation_assertion_fragment.schema.json` — assertion/evidence/provenance contract;
-- `relation_evaluator.py` — deterministic offline evaluation;
-- `relation_validation_contract.py`, `relation_validation_assertions.py` — validation helpers;
-- `validate_relations.py` — relation graph validation entrypoint.
+- `relation_graph.v1.yaml` — relation manifest and evaluation policy;
+- `relation_types.v1.yaml` — nine typed relation contracts;
+- `component_roles.v1.yaml` — abstract component-role endpoints;
+- `relation_assertions/*.v1.yaml` — explainable relation assertions;
+- `relation_evaluator.py` — deterministic offline relation evaluator;
+- `validate_relations.py` — relation, evidence, conflict and cycle validator.
+
+Wave-1 detailed profiles:
+
+- `detailed_profiles_wave1.v1.yaml` — ARV-067D manifest;
+- `detailed_profiles_wave1.schema.json` — closed profile manifest contract;
+- `detailed_profile_fragment.schema.json` — closed profile-fragment contract;
+- `profile_fragments/*.v1.yaml` — 15 detailed profiles in four reviewable domains;
+- `wave1_category_bindings.v1.yaml` — offline `taxonomy_only → fixtures_ready` overlays;
+- `wave1_category_bindings.schema.json` — closed binding contract;
+- `wave1_profile_matcher.py` — deterministic five-outcome matcher;
+- `validate_wave1_profiles.py` — schema, cross-reference, fixture and benchmark validator.
 
 Fixtures live in `fixtures/ontology/electrical/`.
 
@@ -84,11 +93,13 @@ python schemas/categories/electrical/validate_catalog.py
 python schemas/categories/electrical/validate_attributes.py
 python schemas/categories/electrical/validate_category_tree.py
 python schemas/categories/electrical/validate_relations.py
+python schemas/categories/electrical/validate_wave1_profiles.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
 python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 python -m pytest -q tests/test_arv067a_attribute_registry.py
 python -m pytest -q tests/test_arv067b_category_tree.py
 python -m pytest -q tests/test_arv067c_relations.py
+python -m pytest -q tests/test_arv067d_wave1_profiles.py
 ```
 
 Successful validator markers:
@@ -99,20 +110,20 @@ ARV-067 expanded electrical catalog: OK (sections=28, normative_documents=42, ru
 ARV-067A attribute registry: OK (..., runtime_import=false)
 ARV-067B category tree: OK (nodes=166, families=28, subcategories=135, detailed_profiles=4, routing_cases=24, runtime_import=false)
 ARV-067C relation graph: OK (types=9, components=3, assertions=25, fixtures=26, runtime_import=false)
+ARV-067D wave1 profiles: OK (profiles=15, bindings=11, fixtures=180, attributes=..., runtime_import=false)
 ```
 
 ## Safety boundary
 
 - no database model, migration or production resolver is changed;
-- taxonomy-only families, provisional attributes, category nodes and relation templates are not production matchers;
+- taxonomy-only families, provisional attributes and category nodes are not production matchers;
+- ARV-067D promotions are overlays and do not rewrite the source category snapshot;
 - broad family matches and cross-branch ambiguity require review;
-- compatibility is not equivalence, and completeness is not compatibility;
-- category-level compatibility never rises above `CONDITIONAL`;
-- missing relation evidence returns `UNCERTAIN` rather than a guess;
-- `replaces` and `approved_for` instances remain blocked until ARV-067E provides catalog entities;
+- compatibility, completeness and equivalence remain separate concepts;
 - role-specific voltage and current fields are not merged automatically;
 - the ontology and normative registry are not certification or legal-compliance evidence;
 - operator registry inclusion is not universal product equivalence proof;
 - standards require scope, edition and amendment verification for each procurement;
 - unlicensed full texts are not committed;
+- required unknowns remain uncertain rather than guessed;
 - live accuracy and compliance claims remain blocked until controlled truth packs and human review are accepted.

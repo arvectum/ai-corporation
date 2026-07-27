@@ -1,0 +1,275 @@
+fragment_id: ARV-067D-CABLE-ACCESSORIES
+version: 1.0.0
+profiles:
+- id: cable_joint
+  title_ru: Кабельная муфта
+  target_category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  category_scope: subcategory
+  domain: cable_accessories
+  lifecycle_status: fixtures_ready
+  aliases:
+  - кабельная муфта
+  - муфта кабельная
+  - концевая муфта
+  - соединительная муфта
+  canonical_marks:
+  - КНТ
+  - КВТ
+  - СТп
+  - 3КВТп
+  attributes:
+  - id: joint_type
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CABLE_JOINT_JOINT_TYPE_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_voltage_kv
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: CABLE_JOINT_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  - id: conductor_material
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CABLE_JOINT_CONDUCTOR_MATERIAL_MISMATCH
+    comparator_basis: canonical_default
+  - id: supported_cross_section_range_mm2
+    requirement: required
+    critical: true
+    comparator: range_overlap
+    mismatch_reason_code: CABLE_JOINT_SUPPORTED_CROSS_SECTION_RANGE_MM2_MISMATCH
+    comparator_basis: canonical_default
+  - id: cable_insulation_compatibility
+    requirement: required
+    critical: true
+    comparator: contains
+    mismatch_reason_code: CABLE_JOINT_CABLE_INSULATION_COMPATIBILITY_MISMATCH
+    comparator_basis: canonical_default
+  - id: installation_environment
+    requirement: required
+    critical: false
+    comparator: contains
+    mismatch_reason_code: CABLE_JOINT_INSTALLATION_ENVIRONMENT_MISMATCH
+    comparator_basis: canonical_default
+  - id: supported_core_count_range
+    requirement: optional
+    critical: false
+    comparator: range_overlap
+    mismatch_reason_code: CABLE_JOINT_SUPPORTED_CORE_COUNT_RANGE_MISMATCH
+    comparator_basis: canonical_default
+  - id: armour_or_screen
+    requirement: optional
+    critical: false
+    comparator: contains
+    mismatch_reason_code: CABLE_JOINT_ARMOUR_OR_SCREEN_MISMATCH
+    comparator_basis: canonical_default
+  - id: fire_performance
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_JOINT_FIRE_PERFORMANCE_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: &id001
+  - GOST-31996-2012
+  - GOST-31565-2012
+  - PUE-7
+  - STO-34.01-22-002-2023
+  - ROSSETI-TECHNICAL-POLICY
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: cable_lug_connector
+  title_ru: Кабельный наконечник или соединитель
+  target_category_id: electrical.primary.cables_fittings_pipes.cable_lug
+  category_scope: subcategory
+  domain: cable_accessories
+  lifecycle_status: fixtures_ready
+  aliases:
+  - кабельный наконечник
+  - наконечник кабельный
+  - кабельный соединитель
+  - соединительная гильза
+  canonical_marks:
+  - ТМЛ
+  - ТАМ
+  - ГМЛ
+  - СБ
+  attributes:
+  - id: connection_kind
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_CONNECTION_KIND_MISMATCH
+    comparator_basis: canonical_default
+  - id: conductor_material
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_CONDUCTOR_MATERIAL_MISMATCH
+    comparator_basis: canonical_default
+  - id: supported_cross_section_range_mm2
+    requirement: required
+    critical: true
+    comparator: range_overlap
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_SUPPORTED_CROSS_SECTION_RANGE_MM2_MISMATCH
+    comparator_basis: canonical_default
+  - id: connection_method
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_CONNECTION_METHOD_MISMATCH
+    comparator_basis: canonical_default
+  - id: stud_size
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_STUD_SIZE_MISMATCH
+    comparator_basis: canonical_default
+  - id: palm_material
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_PALM_MATERIAL_MISMATCH
+    comparator_basis: canonical_default
+  - id: tin_plated
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_TIN_PLATED_MISMATCH
+    comparator_basis: canonical_default
+  - id: installation_environment
+    requirement: optional
+    critical: false
+    comparator: contains
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_INSTALLATION_ENVIRONMENT_MISMATCH
+    comparator_basis: canonical_default
+  - id: rated_voltage_kv
+    requirement: optional
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: CABLE_LUG_CONNECTOR_RATED_VOLTAGE_KV_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract
+- id: cable_pipe_system
+  title_ru: Кабельная труба и система прокладки
+  target_category_id: electrical.primary.cables_fittings_pipes.cable_pipe
+  category_scope: subcategory
+  domain: cable_accessories
+  lifecycle_status: fixtures_ready
+  aliases:
+  - кабельная труба
+  - труба для прокладки кабеля
+  - система кабельной прокладки
+  - двустенная труба
+  canonical_marks:
+  - ПНД
+  - ПВХ
+  - DKC
+  - двустенная
+  attributes:
+  - id: pipe_material
+    requirement: required
+    critical: true
+    comparator: exact
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_PIPE_MATERIAL_MISMATCH
+    comparator_basis: canonical_default
+  - id: inner_diameter_mm
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_INNER_DIAMETER_MM_MISMATCH
+    comparator_basis: canonical_default
+  - id: compression_strength_kn
+    requirement: required
+    critical: true
+    comparator: minimum
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_COMPRESSION_STRENGTH_KN_MISMATCH
+    comparator_basis: canonical_default
+  - id: installation_environment
+    requirement: required
+    critical: true
+    comparator: contains
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_INSTALLATION_ENVIRONMENT_MISMATCH
+    comparator_basis: canonical_default
+  - id: outer_diameter_mm
+    requirement: required
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_OUTER_DIAMETER_MM_MISMATCH
+    comparator_basis: canonical_default
+  - id: minimum_bend_radius_mm
+    requirement: required
+    critical: false
+    comparator: maximum
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_MINIMUM_BEND_RADIUS_MM_MISMATCH
+    comparator_basis: canonical_default
+  - id: wall_thickness_mm
+    requirement: optional
+    critical: false
+    comparator: minimum
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_WALL_THICKNESS_MM_MISMATCH
+    comparator_basis: canonical_default
+  - id: flame_retardant
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_FLAME_RETARDANT_MISMATCH
+    comparator_basis: canonical_default
+  - id: enclosure_ip
+    requirement: optional
+    critical: false
+    comparator: exact
+    mismatch_reason_code: CABLE_PIPE_SYSTEM_ENCLOSURE_IP_MISMATCH
+    comparator_basis: canonical_default
+  normative_candidates: *id001
+  source_basis:
+  - source_id: category_tree_v1
+    role: category_identity_and_scope
+    status: source_verified
+  - source_id: attribute_registry_v1
+    role: canonical_attribute_contract
+    status: source_verified
+  - source_id: normative_registry_v1
+    role: applicability_candidates_only
+    status: metadata_candidate
+  fixture_minimum: 12
+  human_review_required: true
+  production_active: false
+  provenance:
+    source_asset: ARV-067D
+    review_status: human_review_required
+    basis: engineering_profile_contract

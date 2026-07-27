@@ -1,0 +1,283 @@
+binding_id: ARV-067D-WAVE1-CATEGORY-BINDINGS
+version: 1.0.0
+base_tree_version: 1.0.0
+overlay_semantics: Bindings promote the effective offline profile lifecycle without mutating the ARV-067B source taxonomy snapshot.
+bindings:
+- category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - cable_joint
+  additional_routing_aliases:
+  - кабельная муфта
+  - концевая муфта
+  - муфта кабельная
+  - соединительная муфта
+  effective_attribute_refs:
+  - armour_or_screen
+  - cable_insulation_compatibility
+  - conductor_material
+  - fire_performance
+  - installation_environment
+  - joint_type
+  - rated_voltage_kv
+  - supported_core_count_range
+  - supported_cross_section_range_mm2
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.cables_fittings_pipes.cable_lug
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - cable_lug_connector
+  additional_routing_aliases:
+  - кабельный наконечник
+  - кабельный соединитель
+  - наконечник кабельный
+  - соединительная гильза
+  effective_attribute_refs:
+  - conductor_material
+  - connection_kind
+  - connection_method
+  - installation_environment
+  - palm_material
+  - rated_voltage_kv
+  - stud_size
+  - supported_cross_section_range_mm2
+  - tin_plated
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.cables_fittings_pipes.cable_pipe
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - cable_pipe_system
+  additional_routing_aliases:
+  - двустенная труба
+  - кабельная труба
+  - система кабельной прокладки
+  - труба для прокладки кабеля
+  effective_attribute_refs:
+  - compression_strength_kn
+  - enclosure_ip
+  - flame_retardant
+  - inner_diameter_mm
+  - installation_environment
+  - minimum_bend_radius_mm
+  - outer_diameter_mm
+  - pipe_material
+  - wall_thickness_mm
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.disconnectors_earthing_switches.high_voltage_disconnector
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - high_voltage_disconnector
+  additional_routing_aliases:
+  - hv disconnector
+  - высоковольтный разъединитель
+  - разъединитель внутренней установки
+  - разъединитель наружной установки
+  effective_attribute_refs:
+  - climate_version
+  - drive_type
+  - earthing_switch_count
+  - insulation_medium
+  - pole_count
+  - rated_current_a
+  - rated_voltage_kv
+  - short_circuit_withstand_ka
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.insulators
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - insulator
+  additional_routing_aliases:
+  - высоковольтный изолятор
+  - линейный изолятор
+  - опорный изолятор
+  - подвесной изолятор
+  effective_attribute_refs:
+  - application
+  - climate_version
+  - creepage_distance_mm
+  - insulator_type
+  - material
+  - mechanical_failing_load_kn
+  - pollution_level
+  - rated_voltage_kv
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.line_hardware
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - line_hardware
+  additional_routing_aliases:
+  - арматура вл
+  - линейная арматура
+  - натяжная арматура
+  - поддерживающая арматура
+  - соединительная арматура
+  effective_attribute_refs:
+  - application
+  - climate_version
+  - coating
+  - conductor_or_insulator_type
+  - diameter_range_mm
+  - hardware_type
+  - material
+  - mechanical_load_kn
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.other_primary
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - residual_current_device
+  - residual_current_breaker
+  - switch_disconnector
+  - control_relay
+  - motor_starter
+  additional_routing_aliases:
+  - control relay
+  - motor starter
+  - rcbo
+  - rcd
+  - switch disconnector
+  - авдт
+  - автоматический выключатель дифференциального тока
+  - выключатель дифференциального тока
+  - выключатель-разъединитель
+  - дифференциальный автомат
+  - магнитный пускатель
+  - промежуточное реле
+  - пускатель двигателя
+  - разъединитель низковольтный
+  - реле контроля
+  - реле управления
+  - рубильник
+  - узо
+  - устройство защитного отключения
+  - электромагнитный пускатель
+  effective_attribute_refs:
+  - auxiliary_contacts
+  - breaking_capacity_ka
+  - coil_current_type
+  - coil_voltage_v
+  - contact_current_a
+  - contact_voltage_v
+  - current_type
+  - din_modules
+  - drive_type
+  - enclosure_ip
+  - mounting_type
+  - operating_mode
+  - overload_relay_range_a
+  - poles
+  - rated_current_a
+  - rated_operational_current_a
+  - rated_operational_voltage_v
+  - rated_residual_current_a
+  - rated_voltage_v
+  - relay_function
+  - residual_current_type
+  - short_circuit_withstand_ka
+  - trip_curve
+  - utilization_category
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.surge_protection_fuses.high_voltage_fuse
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - high_voltage_fuse
+  additional_routing_aliases:
+  - hv fuse
+  - высоковольтный предохранитель
+  - плавкая вставка высокого напряжения
+  - предохранитель высокого напряжения
+  effective_attribute_refs:
+  - application
+  - breaking_current_ka
+  - climate_version
+  - enclosure_type
+  - fuse_characteristic
+  - rated_current_a
+  - rated_voltage_kv
+  - striker_present
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.surge_protection_fuses.surge_arrester
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - surge_arrester
+  additional_routing_aliases:
+  - surge arrester
+  - нелинейный ограничитель перенапряжений
+  - ограничитель перенапряжений
+  - опн
+  effective_attribute_refs:
+  - application
+  - climate_version
+  - continuous_operating_voltage_kv
+  - enclosure_type
+  - energy_class
+  - nominal_discharge_current_ka
+  - rated_voltage_kv
+  - residual_voltage_kv
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.switches.load_break_switch
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - load_break_switch
+  additional_routing_aliases:
+  - load break switch
+  - вн
+  - выключатель нагрузки
+  - высоковольтный выключатель нагрузки
+  effective_attribute_refs:
+  - breaking_current_ka
+  - climate_version
+  - drive_type
+  - insulation_medium
+  - pole_count
+  - rated_current_a
+  - rated_voltage_kv
+  - switching_duty
+  human_review_gate: true
+  production_active: false
+- category_id: electrical.primary.switches.recloser
+  base_lifecycle_status: taxonomy_only
+  effective_lifecycle_status: fixtures_ready
+  profile_refs:
+  - recloser
+  additional_routing_aliases:
+  - recloser
+  - автоматический пункт секционирования
+  - вакуумный реклоузер
+  - реклоузер
+  effective_attribute_refs:
+  - breaking_current_ka
+  - climate_version
+  - communication_interfaces
+  - control_supply_voltage_v
+  - enclosure_ip
+  - pole_count
+  - protection_functions
+  - rated_current_a
+  - rated_voltage_kv
+  human_review_gate: true
+  production_active: false
+governance:
+  base_tree_is_immutable_snapshot: true
+  effective_status_is_offline_only: true
+  family_bindings_require_profile_discriminator: true
+  human_review_required: true
+  production_runtime_not_wired: true

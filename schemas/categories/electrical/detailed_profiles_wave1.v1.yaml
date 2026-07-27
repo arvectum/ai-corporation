@@ -1,0 +1,65 @@
+registry_id: ARV-067D-ELECTRICAL-DETAILED-PROFILES-WAVE1
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+purpose: Versioned offline detailed profile registry for the first wave of high-frequency electrical procurement categories, with explicit attributes,
+  comparators, fixtures, normative applicability candidates and mandatory human review.
+source_assets:
+- id: category_tree_v1
+  path: schemas/categories/electrical/category_tree.v1.yaml
+  role: stable_category_targets
+- id: attribute_registry_v1
+  path: schemas/categories/electrical/attribute_registry.v1.yaml
+  role: canonical_attribute_contract
+- id: normative_registry_v1
+  path: schemas/categories/electrical/normative_registry.v1.yaml
+  role: metadata_only_applicability_candidates
+- id: relation_graph_v1
+  path: schemas/categories/electrical/relation_graph.v1.yaml
+  role: compatibility_and_completeness_context
+profile_files:
+- profile_fragments/cable_accessories.v1.yaml
+- profile_fragments/protection_switching.v1.yaml
+- profile_fragments/lines_insulation.v1.yaml
+- profile_fragments/low_voltage_controls.v1.yaml
+category_binding_file: wave1_category_bindings.v1.yaml
+matcher_policy:
+  statuses:
+  - EXACT
+  - LIKELY_ANALOG
+  - PARTIAL
+  - UNCERTAIN
+  - NO_MATCH
+  critical_mismatch_outcome: NO_MATCH
+  critical_missing_outcome: UNCERTAIN
+  required_noncritical_issue_outcome: PARTIAL
+  optional_issue_outcome: LIKELY_ANALOG
+  all_checks_pass_outcome: EXACT
+  human_review_required_for_all_outcomes: true
+reason_codes:
+- PROFILE_EXACT
+- PROFILE_LIKELY_ANALOG
+- PROFILE_PARTIAL
+- PROFILE_UNCERTAIN
+- PROFILE_NO_MATCH
+- MISSING_CRITICAL_ATTRIBUTE
+- MISSING_REQUIRED_ATTRIBUTE
+- MISSING_OPTIONAL_ATTRIBUTE
+- CRITICAL_ATTRIBUTE_MISMATCH
+- REQUIRED_ATTRIBUTE_MISMATCH
+- OPTIONAL_ATTRIBUTE_MISMATCH
+- PROFILE_EVIDENCE_MISSING
+- HUMAN_REVIEW_REQUIRED
+- NORMATIVE_APPLICABILITY_NOT_VERIFIED
+benchmark_manifest: fixtures/ontology/electrical/wave1_benchmark_manifest.yaml
+fixture_file: fixtures/ontology/electrical/wave1_profile_cases.yaml
+governance:
+  category_bindings_are_overlays: true
+  base_arv067b_tree_remains_source_snapshot: true
+  normative_references_are_candidates_only: true
+  automatic_compliance_decision_disabled: true
+  manufacturer_model_equivalence_requires_arv067e: true
+  truth_pack_promotion_requires_arv067h: true
+  shadow_runtime_requires_arv067i: true
+  production_runtime_not_wired: true

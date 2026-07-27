@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/wave1_profile_cases.schema.json",
+  "title": "ARV-067D profile fixture cases",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fixture_id",
+    "profile_registry_version",
+    "case_count",
+    "case_templates",
+    "profiles"
+  ],
+  "properties": {
+    "fixture_id": {
+      "const": "ARV-067D-WAVE1-PROFILE-CASES"
+    },
+    "profile_registry_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "case_count": {
+      "const": 180
+    },
+    "case_templates": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "candidate_template",
+          "operation",
+          "selector",
+          "evidence_confirmed",
+          "expected_status",
+          "expected_generic_reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "candidate_template": {
+            "enum": [
+              "exact",
+              "capability_surplus"
+            ]
+          },
+          "operation": {
+            "enum": [
+              "none",
+              "remove",
+              "mismatch",
+              "mismatch_all",
+              "remove_all"
+            ]
+          },
+          "selector": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "pattern": "^(critical|required_noncritical|optional)(:[0-9]+)?$"
+              }
+            ]
+          },
+          "evidence_confirmed": {
+            "type": "boolean"
+          },
+          "expected_status": {
+            "enum": [
+              "EXACT",
+              "LIKELY_ANALOG",
+              "PARTIAL",
+              "UNCERTAIN",
+              "NO_MATCH"
+            ]
+          },
+          "expected_generic_reason": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]+$"
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 15,
+      "maxItems": 15,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "profile_id",
+          "requested",
+          "candidate_templates",
+          "mismatch_values",
+          "cases"
+        ],
+        "properties": {
+          "profile_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "requested": {
+            "type": "object"
+          },
+          "candidate_templates": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "exact",
+              "capability_surplus"
+            ],
+            "properties": {
+              "exact": {
+                "type": "object"
+              },
+              "capability_surplus": {
+                "type": "object"
+              }
+            }
+          },
+          "mismatch_values": {
+            "type": "object"
+          },
+          "cases": {
+            "type": "array",
+            "minItems": 12,
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "template_id"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9_]+__[a-z0-9_]+$"
+                },
+                "template_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]+$"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

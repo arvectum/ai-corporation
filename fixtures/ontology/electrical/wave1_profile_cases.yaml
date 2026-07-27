@@ -1,0 +1,1198 @@
+fixture_id: ARV-067D-WAVE1-PROFILE-CASES
+profile_registry_version: 1.0.0
+case_count: 180
+case_templates:
+- id: exact_all
+  candidate_template: exact
+  operation: none
+  selector: null
+  evidence_confirmed: true
+  expected_status: EXACT
+  expected_generic_reason: PROFILE_EXACT
+- id: exact_capability_surplus
+  candidate_template: capability_surplus
+  operation: none
+  selector: null
+  evidence_confirmed: true
+  expected_status: EXACT
+  expected_generic_reason: PROFILE_EXACT
+- id: likely_optional_missing
+  candidate_template: exact
+  operation: remove
+  selector: optional:0
+  evidence_confirmed: true
+  expected_status: LIKELY_ANALOG
+  expected_generic_reason: MISSING_OPTIONAL_ATTRIBUTE
+- id: likely_optional_mismatch
+  candidate_template: exact
+  operation: mismatch
+  selector: optional:1
+  evidence_confirmed: true
+  expected_status: LIKELY_ANALOG
+  expected_generic_reason: OPTIONAL_ATTRIBUTE_MISMATCH
+- id: partial_required_missing
+  candidate_template: exact
+  operation: remove
+  selector: required_noncritical:0
+  evidence_confirmed: true
+  expected_status: PARTIAL
+  expected_generic_reason: MISSING_REQUIRED_ATTRIBUTE
+- id: partial_required_mismatch
+  candidate_template: exact
+  operation: mismatch
+  selector: required_noncritical:1
+  evidence_confirmed: true
+  expected_status: PARTIAL
+  expected_generic_reason: REQUIRED_ATTRIBUTE_MISMATCH
+- id: uncertain_critical_missing
+  candidate_template: exact
+  operation: remove
+  selector: critical:0
+  evidence_confirmed: true
+  expected_status: UNCERTAIN
+  expected_generic_reason: MISSING_CRITICAL_ATTRIBUTE
+- id: uncertain_evidence_missing
+  candidate_template: exact
+  operation: none
+  selector: null
+  evidence_confirmed: false
+  expected_status: UNCERTAIN
+  expected_generic_reason: PROFILE_EVIDENCE_MISSING
+- id: no_match_critical_first
+  candidate_template: exact
+  operation: mismatch
+  selector: critical:0
+  evidence_confirmed: true
+  expected_status: NO_MATCH
+  expected_generic_reason: CRITICAL_ATTRIBUTE_MISMATCH
+- id: no_match_critical_second
+  candidate_template: exact
+  operation: mismatch
+  selector: critical:1
+  evidence_confirmed: true
+  expected_status: NO_MATCH
+  expected_generic_reason: CRITICAL_ATTRIBUTE_MISMATCH
+- id: partial_multiple_required
+  candidate_template: exact
+  operation: mismatch_all
+  selector: required_noncritical
+  evidence_confirmed: true
+  expected_status: PARTIAL
+  expected_generic_reason: REQUIRED_ATTRIBUTE_MISMATCH
+- id: likely_all_optional_missing
+  candidate_template: exact
+  operation: remove_all
+  selector: optional
+  evidence_confirmed: true
+  expected_status: LIKELY_ANALOG
+  expected_generic_reason: MISSING_OPTIONAL_ATTRIBUTE
+profiles:
+- profile_id: cable_joint
+  requested:
+    joint_type: termination
+    rated_voltage_kv: 10.0
+    conductor_material: copper
+    supported_cross_section_range_mm2:
+    - 70.0
+    - 240.0
+    cable_insulation_compatibility:
+    - xlpe
+    installation_environment:
+    - outdoor
+    supported_core_count_range:
+    - 3
+    - 4
+    armour_or_screen:
+    - screen
+    fire_performance: ng_a_ls
+  candidate_templates:
+    exact:
+      joint_type: termination
+      rated_voltage_kv: 10.0
+      conductor_material: copper
+      supported_cross_section_range_mm2:
+      - 70.0
+      - 240.0
+      cable_insulation_compatibility:
+      - xlpe
+      installation_environment:
+      - outdoor
+      supported_core_count_range:
+      - 3
+      - 4
+      armour_or_screen:
+      - screen
+      fire_performance: ng_a_ls
+    capability_surplus:
+      joint_type: termination
+      rated_voltage_kv: 20.0
+      conductor_material: copper
+      supported_cross_section_range_mm2:
+      - 35.0
+      - 300.0
+      cable_insulation_compatibility:
+      - xlpe
+      - pvc
+      installation_environment:
+      - outdoor
+      - buried
+      supported_core_count_range:
+      - 1
+      - 5
+      armour_or_screen:
+      - screen
+      - armour
+      fire_performance: ng_a_ls
+  mismatch_values:
+    joint_type: straight_through
+    rated_voltage_kv: 6.0
+    conductor_material: aluminium
+    supported_cross_section_range_mm2:
+    - 300.0
+    - 400.0
+    cable_insulation_compatibility:
+    - paper
+    installation_environment:
+    - indoor
+    supported_core_count_range:
+    - 1
+    - 2
+    armour_or_screen:
+    - none
+    fire_performance: standard
+  cases:
+  - id: cable_joint__exact_all
+    template_id: exact_all
+  - id: cable_joint__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: cable_joint__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: cable_joint__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: cable_joint__partial_required_missing
+    template_id: partial_required_missing
+  - id: cable_joint__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: cable_joint__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: cable_joint__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: cable_joint__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: cable_joint__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: cable_joint__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: cable_joint__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: cable_lug_connector
+  requested:
+    connection_kind: lug
+    conductor_material: copper
+    supported_cross_section_range_mm2:
+    - 70.0
+    - 240.0
+    connection_method: crimp
+    stud_size: M12
+    palm_material: copper
+    tin_plated: true
+    installation_environment:
+    - outdoor
+    rated_voltage_kv: 10.0
+  candidate_templates:
+    exact:
+      connection_kind: lug
+      conductor_material: copper
+      supported_cross_section_range_mm2:
+      - 70.0
+      - 240.0
+      connection_method: crimp
+      stud_size: M12
+      palm_material: copper
+      tin_plated: true
+      installation_environment:
+      - outdoor
+      rated_voltage_kv: 10.0
+    capability_surplus:
+      connection_kind: lug
+      conductor_material: copper
+      supported_cross_section_range_mm2:
+      - 35.0
+      - 300.0
+      connection_method: crimp
+      stud_size: M12
+      palm_material: copper
+      tin_plated: true
+      installation_environment:
+      - outdoor
+      - buried
+      rated_voltage_kv: 20.0
+  mismatch_values:
+    connection_kind: inline_connector
+    conductor_material: aluminium
+    supported_cross_section_range_mm2:
+    - 300.0
+    - 400.0
+    connection_method: bolted
+    stud_size: M16
+    palm_material: aluminium
+    tin_plated: false
+    installation_environment:
+    - indoor
+    rated_voltage_kv: 6.0
+  cases:
+  - id: cable_lug_connector__exact_all
+    template_id: exact_all
+  - id: cable_lug_connector__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: cable_lug_connector__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: cable_lug_connector__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: cable_lug_connector__partial_required_missing
+    template_id: partial_required_missing
+  - id: cable_lug_connector__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: cable_lug_connector__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: cable_lug_connector__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: cable_lug_connector__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: cable_lug_connector__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: cable_lug_connector__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: cable_lug_connector__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: cable_pipe_system
+  requested:
+    pipe_material: hdpe
+    inner_diameter_mm: 90.0
+    compression_strength_kn: 0.75
+    installation_environment:
+    - outdoor
+    outer_diameter_mm: 110.0
+    minimum_bend_radius_mm: 800.0
+    wall_thickness_mm: 5.0
+    flame_retardant: true
+    enclosure_ip: IP54
+  candidate_templates:
+    exact:
+      pipe_material: hdpe
+      inner_diameter_mm: 90.0
+      compression_strength_kn: 0.75
+      installation_environment:
+      - outdoor
+      outer_diameter_mm: 110.0
+      minimum_bend_radius_mm: 800.0
+      wall_thickness_mm: 5.0
+      flame_retardant: true
+      enclosure_ip: IP54
+    capability_surplus:
+      pipe_material: hdpe
+      inner_diameter_mm: 110.0
+      compression_strength_kn: 1.0
+      installation_environment:
+      - outdoor
+      - buried
+      outer_diameter_mm: 110.0
+      minimum_bend_radius_mm: 700.0
+      wall_thickness_mm: 6.0
+      flame_retardant: true
+      enclosure_ip: IP54
+  mismatch_values:
+    pipe_material: pvc
+    inner_diameter_mm: 75.0
+    compression_strength_kn: 0.5
+    installation_environment:
+    - indoor
+    outer_diameter_mm: 125.0
+    minimum_bend_radius_mm: 1000.0
+    wall_thickness_mm: 4.0
+    flame_retardant: false
+    enclosure_ip: IP20
+  cases:
+  - id: cable_pipe_system__exact_all
+    template_id: exact_all
+  - id: cable_pipe_system__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: cable_pipe_system__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: cable_pipe_system__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: cable_pipe_system__partial_required_missing
+    template_id: partial_required_missing
+  - id: cable_pipe_system__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: cable_pipe_system__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: cable_pipe_system__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: cable_pipe_system__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: cable_pipe_system__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: cable_pipe_system__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: cable_pipe_system__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: surge_arrester
+  requested:
+    rated_voltage_kv: 10.0
+    continuous_operating_voltage_kv: 8.0
+    nominal_discharge_current_ka: 10.0
+    residual_voltage_kv: 30.0
+    energy_class: class_2
+    application:
+    - distribution_network
+    climate_version: UHL1
+    enclosure_type: outdoor_polymer
+  candidate_templates:
+    exact:
+      rated_voltage_kv: 10.0
+      continuous_operating_voltage_kv: 8.0
+      nominal_discharge_current_ka: 10.0
+      residual_voltage_kv: 30.0
+      energy_class: class_2
+      application:
+      - distribution_network
+      climate_version: UHL1
+      enclosure_type: outdoor_polymer
+    capability_surplus:
+      rated_voltage_kv: 20.0
+      continuous_operating_voltage_kv: 9.0
+      nominal_discharge_current_ka: 20.0
+      residual_voltage_kv: 25.0
+      energy_class: class_2
+      application:
+      - distribution_network
+      - substation
+      climate_version: UHL1
+      enclosure_type: outdoor_polymer
+  mismatch_values:
+    rated_voltage_kv: 6.0
+    continuous_operating_voltage_kv: 6.0
+    nominal_discharge_current_ka: 5.0
+    residual_voltage_kv: 40.0
+    energy_class: class_1
+    application:
+    - traction
+    climate_version: U3
+    enclosure_type: indoor_metal
+  cases:
+  - id: surge_arrester__exact_all
+    template_id: exact_all
+  - id: surge_arrester__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: surge_arrester__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: surge_arrester__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: surge_arrester__partial_required_missing
+    template_id: partial_required_missing
+  - id: surge_arrester__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: surge_arrester__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: surge_arrester__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: surge_arrester__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: surge_arrester__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: surge_arrester__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: surge_arrester__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: high_voltage_fuse
+  requested:
+    rated_voltage_kv: 10.0
+    rated_current_a: 100.0
+    breaking_current_ka: 20.0
+    fuse_characteristic: transformer_protection
+    application:
+    - distribution_network
+    climate_version: UHL1
+    striker_present: true
+    enclosure_type: outdoor_polymer
+  candidate_templates:
+    exact:
+      rated_voltage_kv: 10.0
+      rated_current_a: 100.0
+      breaking_current_ka: 20.0
+      fuse_characteristic: transformer_protection
+      application:
+      - distribution_network
+      climate_version: UHL1
+      striker_present: true
+      enclosure_type: outdoor_polymer
+    capability_surplus:
+      rated_voltage_kv: 20.0
+      rated_current_a: 100.0
+      breaking_current_ka: 25.0
+      fuse_characteristic: transformer_protection
+      application:
+      - distribution_network
+      - substation
+      climate_version: UHL1
+      striker_present: true
+      enclosure_type: outdoor_polymer
+  mismatch_values:
+    rated_voltage_kv: 6.0
+    rated_current_a: 80.0
+    breaking_current_ka: 16.0
+    fuse_characteristic: motor_protection
+    application:
+    - traction
+    climate_version: U3
+    striker_present: false
+    enclosure_type: indoor_metal
+  cases:
+  - id: high_voltage_fuse__exact_all
+    template_id: exact_all
+  - id: high_voltage_fuse__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: high_voltage_fuse__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: high_voltage_fuse__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: high_voltage_fuse__partial_required_missing
+    template_id: partial_required_missing
+  - id: high_voltage_fuse__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: high_voltage_fuse__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: high_voltage_fuse__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: high_voltage_fuse__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: high_voltage_fuse__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: high_voltage_fuse__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: high_voltage_fuse__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: high_voltage_disconnector
+  requested:
+    rated_voltage_kv: 10.0
+    rated_current_a: 100.0
+    short_circuit_withstand_ka: 20.0
+    pole_count: 3
+    drive_type: motor
+    earthing_switch_count: 1
+    climate_version: UHL1
+    insulation_medium: vacuum
+  candidate_templates:
+    exact:
+      rated_voltage_kv: 10.0
+      rated_current_a: 100.0
+      short_circuit_withstand_ka: 20.0
+      pole_count: 3
+      drive_type: motor
+      earthing_switch_count: 1
+      climate_version: UHL1
+      insulation_medium: vacuum
+    capability_surplus:
+      rated_voltage_kv: 20.0
+      rated_current_a: 125.0
+      short_circuit_withstand_ka: 25.0
+      pole_count: 3
+      drive_type: motor
+      earthing_switch_count: 2
+      climate_version: UHL1
+      insulation_medium: vacuum
+  mismatch_values:
+    rated_voltage_kv: 6.0
+    rated_current_a: 80.0
+    short_circuit_withstand_ka: 16.0
+    pole_count: 1
+    drive_type: manual
+    earthing_switch_count: 0
+    climate_version: U3
+    insulation_medium: air
+  cases:
+  - id: high_voltage_disconnector__exact_all
+    template_id: exact_all
+  - id: high_voltage_disconnector__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: high_voltage_disconnector__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: high_voltage_disconnector__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: high_voltage_disconnector__partial_required_missing
+    template_id: partial_required_missing
+  - id: high_voltage_disconnector__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: high_voltage_disconnector__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: high_voltage_disconnector__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: high_voltage_disconnector__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: high_voltage_disconnector__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: high_voltage_disconnector__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: high_voltage_disconnector__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: load_break_switch
+  requested:
+    rated_voltage_kv: 10.0
+    rated_current_a: 100.0
+    breaking_current_ka: 20.0
+    pole_count: 3
+    insulation_medium: vacuum
+    drive_type: motor
+    switching_duty: O-0.3s-CO-3min-CO
+    climate_version: UHL1
+  candidate_templates:
+    exact:
+      rated_voltage_kv: 10.0
+      rated_current_a: 100.0
+      breaking_current_ka: 20.0
+      pole_count: 3
+      insulation_medium: vacuum
+      drive_type: motor
+      switching_duty: O-0.3s-CO-3min-CO
+      climate_version: UHL1
+    capability_surplus:
+      rated_voltage_kv: 20.0
+      rated_current_a: 125.0
+      breaking_current_ka: 25.0
+      pole_count: 3
+      insulation_medium: vacuum
+      drive_type: motor
+      switching_duty: O-0.3s-CO-3min-CO
+      climate_version: UHL1
+  mismatch_values:
+    rated_voltage_kv: 6.0
+    rated_current_a: 80.0
+    breaking_current_ka: 16.0
+    pole_count: 1
+    insulation_medium: air
+    drive_type: manual
+    switching_duty: O-CO
+    climate_version: U3
+  cases:
+  - id: load_break_switch__exact_all
+    template_id: exact_all
+  - id: load_break_switch__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: load_break_switch__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: load_break_switch__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: load_break_switch__partial_required_missing
+    template_id: partial_required_missing
+  - id: load_break_switch__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: load_break_switch__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: load_break_switch__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: load_break_switch__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: load_break_switch__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: load_break_switch__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: load_break_switch__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: recloser
+  requested:
+    rated_voltage_kv: 10.0
+    rated_current_a: 100.0
+    breaking_current_ka: 20.0
+    pole_count: 3
+    protection_functions:
+    - overcurrent
+    - earth_fault
+    control_supply_voltage_v: 220.0
+    communication_interfaces:
+    - ethernet
+    climate_version: UHL1
+    enclosure_ip: IP54
+  candidate_templates:
+    exact:
+      rated_voltage_kv: 10.0
+      rated_current_a: 100.0
+      breaking_current_ka: 20.0
+      pole_count: 3
+      protection_functions:
+      - overcurrent
+      - earth_fault
+      control_supply_voltage_v: 220.0
+      communication_interfaces:
+      - ethernet
+      climate_version: UHL1
+      enclosure_ip: IP54
+    capability_surplus:
+      rated_voltage_kv: 20.0
+      rated_current_a: 125.0
+      breaking_current_ka: 25.0
+      pole_count: 3
+      protection_functions:
+      - overcurrent
+      - earth_fault
+      - autoreclose
+      control_supply_voltage_v: 220.0
+      communication_interfaces:
+      - ethernet
+      - rs485
+      climate_version: UHL1
+      enclosure_ip: IP54
+  mismatch_values:
+    rated_voltage_kv: 6.0
+    rated_current_a: 80.0
+    breaking_current_ka: 16.0
+    pole_count: 1
+    protection_functions:
+    - overcurrent
+    control_supply_voltage_v: 110.0
+    communication_interfaces:
+    - rs485
+    climate_version: U3
+    enclosure_ip: IP20
+  cases:
+  - id: recloser__exact_all
+    template_id: exact_all
+  - id: recloser__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: recloser__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: recloser__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: recloser__partial_required_missing
+    template_id: partial_required_missing
+  - id: recloser__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: recloser__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: recloser__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: recloser__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: recloser__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: recloser__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: recloser__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: line_hardware
+  requested:
+    hardware_type: tension
+    conductor_or_insulator_type:
+    - SIP-3
+    diameter_range_mm:
+    - 12.0
+    - 18.0
+    mechanical_load_kn: 40.0
+    material: steel
+    application:
+    - distribution_network
+    coating: hot_dip_galvanized
+    climate_version: UHL1
+  candidate_templates:
+    exact:
+      hardware_type: tension
+      conductor_or_insulator_type:
+      - SIP-3
+      diameter_range_mm:
+      - 12.0
+      - 18.0
+      mechanical_load_kn: 40.0
+      material: steel
+      application:
+      - distribution_network
+      coating: hot_dip_galvanized
+      climate_version: UHL1
+    capability_surplus:
+      hardware_type: tension
+      conductor_or_insulator_type:
+      - SIP-3
+      - SIP-4
+      diameter_range_mm:
+      - 10.0
+      - 20.0
+      mechanical_load_kn: 50.0
+      material: steel
+      application:
+      - distribution_network
+      - substation
+      coating: hot_dip_galvanized
+      climate_version: UHL1
+  mismatch_values:
+    hardware_type: suspension
+    conductor_or_insulator_type:
+    - ACSR
+    diameter_range_mm:
+    - 25.0
+    - 30.0
+    mechanical_load_kn: 30.0
+    material: polymer
+    application:
+    - traction
+    coating: painted
+    climate_version: U3
+  cases:
+  - id: line_hardware__exact_all
+    template_id: exact_all
+  - id: line_hardware__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: line_hardware__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: line_hardware__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: line_hardware__partial_required_missing
+    template_id: partial_required_missing
+  - id: line_hardware__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: line_hardware__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: line_hardware__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: line_hardware__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: line_hardware__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: line_hardware__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: line_hardware__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: insulator
+  requested:
+    insulator_type: suspension
+    material: steel
+    rated_voltage_kv: 10.0
+    mechanical_failing_load_kn: 120.0
+    creepage_distance_mm: 3200.0
+    pollution_level: III
+    climate_version: UHL1
+    application:
+    - distribution_network
+  candidate_templates:
+    exact:
+      insulator_type: suspension
+      material: steel
+      rated_voltage_kv: 10.0
+      mechanical_failing_load_kn: 120.0
+      creepage_distance_mm: 3200.0
+      pollution_level: III
+      climate_version: UHL1
+      application:
+      - distribution_network
+    capability_surplus:
+      insulator_type: suspension
+      material: steel
+      rated_voltage_kv: 20.0
+      mechanical_failing_load_kn: 160.0
+      creepage_distance_mm: 3500.0
+      pollution_level: III
+      climate_version: UHL1
+      application:
+      - distribution_network
+      - substation
+  mismatch_values:
+    insulator_type: post
+    material: polymer
+    rated_voltage_kv: 6.0
+    mechanical_failing_load_kn: 70.0
+    creepage_distance_mm: 2500.0
+    pollution_level: II
+    climate_version: U3
+    application:
+    - traction
+  cases:
+  - id: insulator__exact_all
+    template_id: exact_all
+  - id: insulator__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: insulator__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: insulator__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: insulator__partial_required_missing
+    template_id: partial_required_missing
+  - id: insulator__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: insulator__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: insulator__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: insulator__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: insulator__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: insulator__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: insulator__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: residual_current_device
+  requested:
+    rated_voltage_v: 400.0
+    rated_current_a: 100.0
+    poles: 2
+    rated_residual_current_a: 0.03
+    residual_current_type: A
+    current_type: AC
+    breaking_capacity_ka: 6.0
+    din_modules: 2.0
+    enclosure_ip: IP54
+  candidate_templates:
+    exact:
+      rated_voltage_v: 400.0
+      rated_current_a: 100.0
+      poles: 2
+      rated_residual_current_a: 0.03
+      residual_current_type: A
+      current_type: AC
+      breaking_capacity_ka: 6.0
+      din_modules: 2.0
+      enclosure_ip: IP54
+    capability_surplus:
+      rated_voltage_v: 440.0
+      rated_current_a: 125.0
+      poles: 2
+      rated_residual_current_a: 0.03
+      residual_current_type: A
+      current_type: AC
+      breaking_capacity_ka: 10.0
+      din_modules: 1.0
+      enclosure_ip: IP54
+  mismatch_values:
+    rated_voltage_v: 230.0
+    rated_current_a: 80.0
+    poles: 1
+    rated_residual_current_a: 0.1
+    residual_current_type: AC
+    current_type: DC
+    breaking_capacity_ka: 4.5
+    din_modules: 3.0
+    enclosure_ip: IP20
+  cases:
+  - id: residual_current_device__exact_all
+    template_id: exact_all
+  - id: residual_current_device__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: residual_current_device__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: residual_current_device__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: residual_current_device__partial_required_missing
+    template_id: partial_required_missing
+  - id: residual_current_device__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: residual_current_device__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: residual_current_device__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: residual_current_device__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: residual_current_device__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: residual_current_device__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: residual_current_device__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: residual_current_breaker
+  requested:
+    rated_voltage_v: 400.0
+    rated_current_a: 100.0
+    poles: 2
+    rated_residual_current_a: 0.03
+    residual_current_type: A
+    trip_curve: C
+    breaking_capacity_ka: 6.0
+    current_type: AC
+    din_modules: 2.0
+    enclosure_ip: IP54
+    mounting_type: din_rail
+  candidate_templates:
+    exact:
+      rated_voltage_v: 400.0
+      rated_current_a: 100.0
+      poles: 2
+      rated_residual_current_a: 0.03
+      residual_current_type: A
+      trip_curve: C
+      breaking_capacity_ka: 6.0
+      current_type: AC
+      din_modules: 2.0
+      enclosure_ip: IP54
+      mounting_type: din_rail
+    capability_surplus:
+      rated_voltage_v: 440.0
+      rated_current_a: 125.0
+      poles: 2
+      rated_residual_current_a: 0.03
+      residual_current_type: A
+      trip_curve: C
+      breaking_capacity_ka: 10.0
+      current_type: AC
+      din_modules: 1.0
+      enclosure_ip: IP54
+      mounting_type: din_rail
+  mismatch_values:
+    rated_voltage_v: 230.0
+    rated_current_a: 80.0
+    poles: 1
+    rated_residual_current_a: 0.1
+    residual_current_type: AC
+    trip_curve: B
+    breaking_capacity_ka: 4.5
+    current_type: DC
+    din_modules: 3.0
+    enclosure_ip: IP20
+    mounting_type: panel
+  cases:
+  - id: residual_current_breaker__exact_all
+    template_id: exact_all
+  - id: residual_current_breaker__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: residual_current_breaker__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: residual_current_breaker__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: residual_current_breaker__partial_required_missing
+    template_id: partial_required_missing
+  - id: residual_current_breaker__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: residual_current_breaker__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: residual_current_breaker__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: residual_current_breaker__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: residual_current_breaker__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: residual_current_breaker__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: residual_current_breaker__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: switch_disconnector
+  requested:
+    rated_voltage_v: 400.0
+    rated_current_a: 100.0
+    poles: 2
+    short_circuit_withstand_ka: 20.0
+    operating_mode: AC-23A
+    drive_type: motor
+    enclosure_ip: IP54
+    mounting_type: din_rail
+  candidate_templates:
+    exact:
+      rated_voltage_v: 400.0
+      rated_current_a: 100.0
+      poles: 2
+      short_circuit_withstand_ka: 20.0
+      operating_mode: AC-23A
+      drive_type: motor
+      enclosure_ip: IP54
+      mounting_type: din_rail
+    capability_surplus:
+      rated_voltage_v: 440.0
+      rated_current_a: 125.0
+      poles: 2
+      short_circuit_withstand_ka: 25.0
+      operating_mode: AC-23A
+      drive_type: motor
+      enclosure_ip: IP54
+      mounting_type: din_rail
+  mismatch_values:
+    rated_voltage_v: 230.0
+    rated_current_a: 80.0
+    poles: 1
+    short_circuit_withstand_ka: 16.0
+    operating_mode: AC-20A
+    drive_type: manual
+    enclosure_ip: IP20
+    mounting_type: panel
+  cases:
+  - id: switch_disconnector__exact_all
+    template_id: exact_all
+  - id: switch_disconnector__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: switch_disconnector__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: switch_disconnector__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: switch_disconnector__partial_required_missing
+    template_id: partial_required_missing
+  - id: switch_disconnector__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: switch_disconnector__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: switch_disconnector__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: switch_disconnector__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: switch_disconnector__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: switch_disconnector__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: switch_disconnector__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: control_relay
+  requested:
+    coil_voltage_v: 220.0
+    coil_current_type: AC
+    relay_function:
+    - intermediate
+    auxiliary_contacts:
+    - 1NO
+    - 1NC
+    contact_current_a: 5.0
+    contact_voltage_v: 250.0
+    mounting_type: din_rail
+    enclosure_ip: IP54
+  candidate_templates:
+    exact:
+      coil_voltage_v: 220.0
+      coil_current_type: AC
+      relay_function:
+      - intermediate
+      auxiliary_contacts:
+      - 1NO
+      - 1NC
+      contact_current_a: 5.0
+      contact_voltage_v: 250.0
+      mounting_type: din_rail
+      enclosure_ip: IP54
+    capability_surplus:
+      coil_voltage_v: 220.0
+      coil_current_type: AC
+      relay_function:
+      - intermediate
+      - time_delay
+      auxiliary_contacts:
+      - 1NO
+      - 1NC
+      - 2NO
+      contact_current_a: 10.0
+      contact_voltage_v: 400.0
+      mounting_type: din_rail
+      enclosure_ip: IP54
+  mismatch_values:
+    coil_voltage_v: 24.0
+    coil_current_type: DC
+    relay_function:
+    - voltage_monitoring
+    auxiliary_contacts:
+    - 1NO
+    contact_current_a: 3.0
+    contact_voltage_v: 110.0
+    mounting_type: panel
+    enclosure_ip: IP20
+  cases:
+  - id: control_relay__exact_all
+    template_id: exact_all
+  - id: control_relay__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: control_relay__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: control_relay__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: control_relay__partial_required_missing
+    template_id: partial_required_missing
+  - id: control_relay__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: control_relay__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: control_relay__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: control_relay__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: control_relay__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: control_relay__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: control_relay__likely_all_optional_missing
+    template_id: likely_all_optional_missing
+- profile_id: motor_starter
+  requested:
+    rated_operational_current_a: 25.0
+    rated_operational_voltage_v: 400.0
+    coil_voltage_v: 220.0
+    coil_current_type: AC
+    utilization_category: AC-3
+    overload_relay_range_a:
+    - 18.0
+    - 25.0
+    poles: 2
+    auxiliary_contacts:
+    - 1NO
+    - 1NC
+    mounting_type: din_rail
+    enclosure_ip: IP54
+  candidate_templates:
+    exact:
+      rated_operational_current_a: 25.0
+      rated_operational_voltage_v: 400.0
+      coil_voltage_v: 220.0
+      coil_current_type: AC
+      utilization_category: AC-3
+      overload_relay_range_a:
+      - 18.0
+      - 25.0
+      poles: 2
+      auxiliary_contacts:
+      - 1NO
+      - 1NC
+      mounting_type: din_rail
+      enclosure_ip: IP54
+    capability_surplus:
+      rated_operational_current_a: 32.0
+      rated_operational_voltage_v: 690.0
+      coil_voltage_v: 220.0
+      coil_current_type: AC
+      utilization_category: AC-3
+      overload_relay_range_a:
+      - 16.0
+      - 32.0
+      poles: 2
+      auxiliary_contacts:
+      - 1NO
+      - 1NC
+      - 2NO
+      mounting_type: din_rail
+      enclosure_ip: IP54
+  mismatch_values:
+    rated_operational_current_a: 18.0
+    rated_operational_voltage_v: 230.0
+    coil_voltage_v: 24.0
+    coil_current_type: DC
+    utilization_category: AC-1
+    overload_relay_range_a:
+    - 4.0
+    - 10.0
+    poles: 1
+    auxiliary_contacts:
+    - 1NO
+    mounting_type: panel
+    enclosure_ip: IP20
+  cases:
+  - id: motor_starter__exact_all
+    template_id: exact_all
+  - id: motor_starter__exact_capability_surplus
+    template_id: exact_capability_surplus
+  - id: motor_starter__likely_optional_missing
+    template_id: likely_optional_missing
+  - id: motor_starter__likely_optional_mismatch
+    template_id: likely_optional_mismatch
+  - id: motor_starter__partial_required_missing
+    template_id: partial_required_missing
+  - id: motor_starter__partial_required_mismatch
+    template_id: partial_required_mismatch
+  - id: motor_starter__uncertain_critical_missing
+    template_id: uncertain_critical_missing
+  - id: motor_starter__uncertain_evidence_missing
+    template_id: uncertain_evidence_missing
+  - id: motor_starter__no_match_critical_first
+    template_id: no_match_critical_first
+  - id: motor_starter__no_match_critical_second
+    template_id: no_match_critical_second
+  - id: motor_starter__partial_multiple_required
+    template_id: partial_multiple_required
+  - id: motor_starter__likely_all_optional_missing
+    template_id: likely_all_optional_missing
