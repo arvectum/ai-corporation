@@ -1,0 +1,102 @@
+tree_id: ARV-067B-ELECTRICAL-CATEGORY-TREE
+version: 1.0.0
+status: research_asset
+locale: ru-RU
+runtime_import: false
+purpose: Versioned offline category hierarchy for electrical procurement, with stable identifiers, explicit parent paths,
+  controlled attribute inheritance, routing aliases and lifecycle gates.
+source_assets:
+- id: nomenclature_v1
+  path: schemas/categories/electrical/nomenclature.v1.yaml
+  role: source_sections_subcategories_aliases_and_discriminators
+- id: attribute_registry_v1
+  path: schemas/categories/electrical/attribute_registry.v1.yaml
+  role: canonical_attribute_ids_units_and_profile_aliases
+- id: electrical_v1
+  path: schemas/categories/electrical/electrical.v1.yaml
+  role: verified_detailed_profiles
+lifecycle:
+  statuses:
+  - taxonomy_only
+  - profile_draft
+  - source_verified
+  - fixtures_ready
+  - benchmark_passed
+  - shadow_runtime
+  - operator_approved
+  - production_active
+  - deprecated
+  promotion_sequence:
+  - taxonomy_only
+  - profile_draft
+  - source_verified
+  - fixtures_ready
+  - benchmark_passed
+  - shadow_runtime
+  - operator_approved
+  - production_active
+  allowed_transitions:
+    taxonomy_only:
+    - profile_draft
+    - deprecated
+    profile_draft:
+    - taxonomy_only
+    - source_verified
+    - deprecated
+    source_verified:
+    - profile_draft
+    - fixtures_ready
+    - deprecated
+    fixtures_ready:
+    - source_verified
+    - benchmark_passed
+    - deprecated
+    benchmark_passed:
+    - fixtures_ready
+    - shadow_runtime
+    - deprecated
+    shadow_runtime:
+    - benchmark_passed
+    - operator_approved
+    - deprecated
+    operator_approved:
+    - shadow_runtime
+    - production_active
+    - deprecated
+    production_active:
+    - operator_approved
+    - deprecated
+    deprecated: []
+routing_policy:
+  normalization:
+  - lowercase
+  - replace_yo_with_e
+  - collapse_non_alphanumeric
+  - collapse_whitespace
+  match_mode: boundary_substring
+  score_order:
+  - exact_alias
+  - longest_token_sequence
+  - deepest_node
+  - highest_priority
+  ambiguity_outcome: UNCERTAIN
+  family_match_requires_review: true
+  minimum_alias_length: 2
+root_category_id: electrical
+node_files:
+- category_nodes/structure.v1.yaml
+- category_nodes/primary_switching_cables.v1.yaml
+- category_nodes/primary_lines.v1.yaml
+- category_nodes/primary_transformers.v1.yaml
+- category_nodes/primary_other.v1.yaml
+- category_nodes/secondary_automation.v1.yaml
+- category_nodes/secondary_communications.v1.yaml
+governance:
+  category_ids_are_stable: true
+  source_labels_are_preserved: true
+  inherited_attributes_must_exist_in_arv067a: true
+  ambiguous_routing_requires_review: true
+  family_matches_require_review: true
+  production_activation_requires_explicit_gate: true
+  production_runtime_not_wired: true
+  full_text_sources_are_not_stored: true
