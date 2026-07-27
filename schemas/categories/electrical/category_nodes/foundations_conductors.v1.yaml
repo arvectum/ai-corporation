@@ -1,0 +1,363 @@
+fragment_id: ARV-067B-FOUNDATIONS-CONDUCTORS
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.tower_foundations
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.tower_foundations
+  node_kind: family
+  registry: primary
+  title_ru: Фундаменты под опоры ВЛ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Фундаменты под опоры ВЛ
+    - фундамент опоры
+    - фундамент вл
+    - основание опоры
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - tower_compatibility
+    - foundation_type
+    - design_load_kn
+    - soil_conditions
+    - concrete_grade
+    - corrosion_protection
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: tower_foundations
+    source_label: Фундаменты под опоры ВЛ
+- category_id: electrical.primary.tower_foundations.reinforced_concrete_foundation
+  parent_id: electrical.primary.tower_foundations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.tower_foundations
+  - electrical.primary.tower_foundations.reinforced_concrete_foundation
+  node_kind: subcategory
+  registry: primary
+  title_ru: железобетонный фундамент
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - железобетонный фундамент
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: tower_foundations
+    source_label: железобетонный фундамент
+- category_id: electrical.primary.tower_foundations.pile_foundation
+  parent_id: electrical.primary.tower_foundations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.tower_foundations
+  - electrical.primary.tower_foundations.pile_foundation
+  node_kind: subcategory
+  registry: primary
+  title_ru: свайный фундамент
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - свайный фундамент
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: tower_foundations
+    source_label: свайный фундамент
+- category_id: electrical.primary.tower_foundations.anchor_foundation
+  parent_id: electrical.primary.tower_foundations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.tower_foundations
+  - electrical.primary.tower_foundations.anchor_foundation
+  node_kind: subcategory
+  registry: primary
+  title_ru: анкерный фундамент
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - анкерный фундамент
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: tower_foundations
+    source_label: анкерный фундамент
+- category_id: electrical.primary.tower_foundations.screw_pile
+  parent_id: electrical.primary.tower_foundations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.tower_foundations
+  - electrical.primary.tower_foundations.screw_pile
+  node_kind: subcategory
+  registry: primary
+  title_ru: винтовая свая
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - винтовая свая
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: tower_foundations
+    source_label: винтовая свая
+- category_id: electrical.primary.tower_foundations.footing
+  parent_id: electrical.primary.tower_foundations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.tower_foundations
+  - electrical.primary.tower_foundations.footing
+  node_kind: subcategory
+  registry: primary
+  title_ru: подножник
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - подножник
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: tower_foundations
+    source_label: подножник
+- category_id: electrical.primary.conductors_ground_wires_sip
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.conductors_ground_wires_sip
+  node_kind: family
+  registry: primary
+  title_ru: Провода, грозотросы, СИП
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Провода, грозотросы, СИП
+    - провод вл
+    - грозотрос
+    - сип
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - conductor_material
+    - cross_section_mm2
+    - rated_tensile_strength_kn
+    - rated_voltage_kv
+    - construction
+    - optical_fibre_count
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: conductors_ground_wires_sip
+    source_label: Провода, грозотросы, СИП
+- category_id: electrical.primary.conductors_ground_wires_sip.bare_conductor
+  parent_id: electrical.primary.conductors_ground_wires_sip
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.conductors_ground_wires_sip
+  - electrical.primary.conductors_ground_wires_sip.bare_conductor
+  node_kind: subcategory
+  registry: primary
+  title_ru: неизолированный провод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - неизолированный провод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: conductors_ground_wires_sip
+    source_label: неизолированный провод
+- category_id: electrical.primary.conductors_ground_wires_sip.ground_wire
+  parent_id: electrical.primary.conductors_ground_wires_sip
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.conductors_ground_wires_sip
+  - electrical.primary.conductors_ground_wires_sip.ground_wire
+  node_kind: subcategory
+  registry: primary
+  title_ru: грозозащитный трос
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - грозозащитный трос
+    - грозотрос
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: conductors_ground_wires_sip
+    source_label: грозозащитный трос
+- category_id: electrical.primary.conductors_ground_wires_sip.optical_ground_wire
+  parent_id: electrical.primary.conductors_ground_wires_sip
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.conductors_ground_wires_sip
+  - electrical.primary.conductors_ground_wires_sip.optical_ground_wire
+  node_kind: subcategory
+  registry: primary
+  title_ru: оптический грозотрос
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - оптический грозотрос
+    - ОКГТ
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: conductors_ground_wires_sip
+    source_label: оптический грозотрос
+- category_id: electrical.primary.conductors_ground_wires_sip.self_supporting_insulated_wire
+  parent_id: electrical.primary.conductors_ground_wires_sip
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.conductors_ground_wires_sip
+  - electrical.primary.conductors_ground_wires_sip.self_supporting_insulated_wire
+  node_kind: subcategory
+  registry: primary
+  title_ru: самонесущий изолированный провод
+  lifecycle_status: fixtures_ready
+  detailed_profile_refs:
+  - self_supporting_insulated_wire
+  routing:
+    aliases:
+    - самонесущий изолированный провод
+    - СИП
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - conductor_count
+    - insulation_material
+    - neutral_carrier
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: conductors_ground_wires_sip
+    source_label: самонесущий изолированный провод
+- category_id: electrical.primary.conductors_ground_wires_sip.covered_conductor
+  parent_id: electrical.primary.conductors_ground_wires_sip
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.conductors_ground_wires_sip
+  - electrical.primary.conductors_ground_wires_sip.covered_conductor
+  node_kind: subcategory
+  registry: primary
+  title_ru: защищенный провод
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - защищенный провод
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: conductors_ground_wires_sip
+    source_label: защищенный провод
