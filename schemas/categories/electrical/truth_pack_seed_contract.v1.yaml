@@ -1,0 +1,106 @@
+seed_contract_id: ARV-067H-TRUTH-PACK-SEED-CONTRACT
+version: 1.0.0
+generator_version: arv067h-generator-1.0.0
+profile_registry_file: detailed_profiles_wave1.v1.yaml
+matcher_file: wave1_profile_matcher.py
+profiles:
+- cable_joint
+- cable_lug_connector
+- cable_pipe_system
+- surge_arrester
+- high_voltage_fuse
+- high_voltage_disconnector
+- load_break_switch
+- recloser
+- line_hardware
+- insulator
+- residual_current_device
+- residual_current_breaker
+- switch_disconnector
+- control_relay
+- motor_starter
+split_outcome_counts:
+  train:
+    EXACT: 18
+    LIKELY_ANALOG: 12
+    PARTIAL: 10
+    UNCERTAIN: 10
+    NO_MATCH: 30
+  dev:
+    EXACT: 9
+    LIKELY_ANALOG: 6
+    PARTIAL: 5
+    UNCERTAIN: 5
+    NO_MATCH: 15
+  test:
+    EXACT: 8
+    LIKELY_ANALOG: 7
+    PARTIAL: 5
+    UNCERTAIN: 5
+    NO_MATCH: 15
+manufacturers_by_split:
+  train:
+  - synthetic.vektor_electro
+  - synthetic.sever_kabel
+  - synthetic.ural_switchgear
+  dev:
+  - synthetic.volga_controls
+  - synthetic.sibir_line
+  test:
+  - synthetic.neva_electro
+  - synthetic.taiga_power
+source_formats:
+- plain_text
+- technical_spec_table
+- catalog_card
+- ocr_scan
+noise_modes:
+- clean
+- abbreviation
+- punctuation_loss
+- ocr_confusion
+outcome_mutations:
+  EXACT: none
+  LIKELY_ANALOG: optional_attribute_missing
+  PARTIAL: required_noncritical_attribute_missing
+  UNCERTAIN: critical_attribute_missing_or_evidence_missing
+  NO_MATCH: critical_attribute_mismatch
+surface_contract:
+  include_profile_alias: true
+  include_manufacturer: true
+  include_source_record_id: true
+  include_structured_attribute_summary: true
+  ocr_replacements:
+    O: '0'
+    I: '1'
+    l: '1'
+    В: B
+    А: A
+  protected_full_text_used: false
+hash_contract:
+  canonical_json_utf8: true
+  sort_keys: true
+  separators: compact
+  item_hash_algorithm: sha256
+  pack_root_algorithm: sha256_of_newline_joined_sorted_item_hashes
+leakage_contract:
+  item_id_unique_across_all_splits: true
+  item_hash_unique_across_all_splits: true
+  source_record_id_unique_across_all_splits: true
+  test_manufacturers_absent_from_train_and_dev: true
+  exact_surface_text_duplicate_forbidden: true
+  semantic_generator_shared_across_splits_disclosed: true
+truth_semantics:
+  positive_outcomes:
+  - EXACT
+  - LIKELY_ANALOG
+  - PARTIAL
+  - UNCERTAIN
+  hard_negative_outcomes:
+  - NO_MATCH
+  category_prediction_outcomes:
+  - EXACT
+  - LIKELY_ANALOG
+  - PARTIAL
+  review_expected_for_all_items: true
+  automatic_compliance_decision: false

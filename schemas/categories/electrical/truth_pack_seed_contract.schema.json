@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "seed_contract_id",
+    "version",
+    "generator_version",
+    "profile_registry_file",
+    "matcher_file",
+    "profiles",
+    "split_outcome_counts",
+    "manufacturers_by_split",
+    "source_formats",
+    "noise_modes",
+    "outcome_mutations",
+    "surface_contract",
+    "hash_contract",
+    "leakage_contract",
+    "truth_semantics"
+  ],
+  "properties": {
+    "seed_contract_id": {"const": "ARV-067H-TRUTH-PACK-SEED-CONTRACT"},
+    "version": {"type": "string"},
+    "generator_version": {"type": "string"},
+    "profile_registry_file": {"type": "string"},
+    "matcher_file": {"type": "string"},
+    "profiles": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "split_outcome_counts": {"type": "object"},
+    "manufacturers_by_split": {"type": "object"},
+    "source_formats": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string"}},
+    "noise_modes": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string"}},
+    "outcome_mutations": {"type": "object"},
+    "surface_contract": {"type": "object"},
+    "hash_contract": {"type": "object"},
+    "leakage_contract": {"type": "object"},
+    "truth_semantics": {"type": "object"}
+  }
+}

@@ -30,6 +30,8 @@ ARV-067F adds 22 clause/page-level requirements backed by two Rosseti registry s
 
 ARV-067G adds a content-addressed provenance claim registry for categories, aliases, attributes, allowed values, relations and normative requirements. It includes immutable hash-chained review events, explicit conflict gates and a deterministic report of unverified, low-confidence, stale and production-blocked assertions.
 
+ARV-067H adds a reproducible candidate truth-pack benchmark for all 15 wave-1 profiles: 2400 synthetic contract items, 1500 positive and 900 hard-negative cases, exact leakage checks, OCR and unseen-manufacturer slices, content-addressed pack roots, metrics and release gates. Independent human acceptance remains pending, so shadow-runtime promotion is blocked.
+
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
 ## Files
@@ -117,6 +119,16 @@ Provenance and expert review:
 - `generate_provenance_report.py` — report generator;
 - `validate_provenance.py` — source, claim, review-event, conflict and report validator.
 
+Truth packs and benchmark:
+
+- `truth_pack_manifest.v1.yaml` — ARV-067H counts, slices, metrics and release gates;
+- `truth_pack_seed_contract.v1.yaml` — deterministic split, manufacturer, surface and mutation contract;
+- `truth_pack_acceptance.v1.yaml` — per-profile independent-acceptance registry;
+- `truth_pack_generator.py` — reproducible 2400-item JSONL materializer and pack-root generator;
+- `truth_pack_runner.py` — outcome, category, attribute, hard-negative and slice benchmark runner;
+- `truth_pack_release_report.v1.yaml` — committed blocked-release snapshot without production claims;
+- `validate_truth_packs.py` — schema, counts, hash, leakage, acceptance and release-gate validator.
+
 Fixtures live in `fixtures/ontology/electrical/`.
 
 ## Validation
@@ -131,6 +143,8 @@ python schemas/categories/electrical/validate_wave1_profiles.py
 python schemas/categories/electrical/validate_product_catalog.py
 python schemas/categories/electrical/validate_normative_requirements.py
 python schemas/categories/electrical/validate_provenance.py
+python schemas/categories/electrical/validate_truth_packs.py
+python schemas/categories/electrical/truth_pack_runner.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
 python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 python -m pytest -q tests/test_arv067a_attribute_registry.py
@@ -140,6 +154,8 @@ python -m pytest -q tests/test_arv067d_wave1_profiles.py
 python -m pytest -q tests/test_arv067e_product_catalog.py
 python -m pytest -q tests/test_arv067f_normative_requirements.py
 python -m pytest -q tests/test_arv067g_provenance.py
+python -m pytest -q tests/test_arv067h_truth_packs.py
+python -m pytest -q tests/test_arv067h_release_report.py
 ```
 
 Successful validator markers:
@@ -154,6 +170,7 @@ ARV-067D wave1 profiles: OK (profiles=15, bindings=11, fixtures=180, attributes=
 ARV-067E product catalog: OK (manufacturers=3, series=4, models=5, executions=6, offers=5, evidence=8, contract_cases=15, runtime_import=false)
 ARV-067F normative requirements: OK (document_editions=2, requirements=22, fixture_cases=20, runtime_import=false)
 ARV-067G provenance: OK (sources=6, claims=24, review_events=24, conflicts=0, fixture_cases=24, production_ready=0, runtime_import=false)
+ARV-067H truth packs: OK (profiles=15, items=2400, positive=1500, hard_negative=900, ocr=510, unseen_manufacturer=600, fixture_cases=25, independent_acceptance=false, release=BLOCKED, runtime_import=false)
 ```
 
 ## Safety boundary
@@ -166,6 +183,10 @@ ARV-067G provenance: OK (sources=6, claims=24, review_events=24, conflicts=0, fi
 - ARV-067G does not convert machine-extracted or legacy source-verified assertions into expert-verified claims;
 - provenance source revisions and review events are append-only; changed source content requires a new revision;
 - low-confidence claims and unresolved conflicts remain review-required and production-blocked;
+- ARV-067H synthetic truth items validate the matcher contract, not real-procurement accuracy;
+- exact train/dev/test leakage and test-manufacturer leakage are blocked, while shared-generator bias remains disclosed;
+- OCR-like inputs do not measure OCR extraction accuracy because structured values are supplied downstream;
+- independent acceptance is pending for all 15 profiles, so shadow-runtime promotion remains blocked;
 - manufacturers, series, models and supplier SKUs never become canonical categories;
 - series ranges are not proof of a concrete execution's parameters;
 - Rosseti registry rows map to operator-approval evidence, not categories or certificates;
@@ -177,4 +198,4 @@ ARV-067G provenance: OK (sources=6, claims=24, review_events=24, conflicts=0, fi
 - standards require scope, edition and amendment verification for each procurement;
 - unlicensed full texts, protected source content and secrets are not committed;
 - required unknowns remain uncertain rather than guessed;
-- live accuracy and compliance claims remain blocked until controlled truth packs and human review are accepted.
+- live accuracy and compliance claims remain blocked until real truth packs and independent human review are accepted.

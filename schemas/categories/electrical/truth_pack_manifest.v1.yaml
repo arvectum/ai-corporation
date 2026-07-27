@@ -1,0 +1,101 @@
+benchmark_id: ARV-067H-ELECTRICAL-TRUTH-PACK-BENCHMARK
+version: 1.0.0
+status: candidate_truth_pack_contract
+locale: ru-RU
+runtime_import: false
+ontology_registry_id: ARV-067D-ELECTRICAL-DETAILED-PROFILES-WAVE1
+ontology_version: 1.0.0
+product_catalog_registry_id: ARV-067E-ELECTRICAL-PRODUCT-CATALOG
+provenance_registry_id: ARV-067G-ELECTRICAL-PROVENANCE
+seed_contract_file: truth_pack_seed_contract.v1.yaml
+acceptance_file: truth_pack_acceptance.v1.yaml
+contract_fixture_file: fixtures/ontology/electrical/truth_pack_contract_cases.yaml
+profile_count: 15
+items_per_profile: 160
+positive_items_per_profile: 100
+hard_negative_items_per_profile: 60
+total_items: 2400
+split_policy:
+  train:
+    items_per_profile: 80
+    seen_manufacturer_only: true
+  dev:
+    items_per_profile: 40
+    seen_manufacturer_only: true
+  test:
+    items_per_profile: 40
+    unseen_manufacturer_only: true
+outcome_targets_per_profile:
+  EXACT: 35
+  LIKELY_ANALOG: 25
+  PARTIAL: 20
+  UNCERTAIN: 20
+  NO_MATCH: 60
+source_formats:
+- plain_text
+- technical_spec_table
+- catalog_card
+- ocr_scan
+noise_modes:
+- clean
+- abbreviation
+- punctuation_loss
+- ocr_confusion
+required_slices:
+- all
+- unseen_manufacturer
+- ocr
+metrics:
+- category_precision
+- category_recall
+- attribute_precision
+- attribute_recall
+- false_exact_rate_on_hard_negatives
+- false_analog_rate_on_hard_negatives
+- critical_mismatch_recall
+- review_rate
+release_gates:
+  category_precision_min: 0.98
+  category_recall_min: 0.75
+  attribute_precision_min: 0.98
+  attribute_recall_min: 0.98
+  false_exact_rate_max: 0.0
+  false_analog_rate_max: 0.01
+  critical_mismatch_recall_min: 0.99
+  review_rate_min: 0.95
+  zero_exact_item_hash_leakage: true
+  zero_source_record_leakage: true
+  unseen_manufacturer_isolation_required: true
+  independent_acceptance_required: true
+  all_profile_pack_roots_required: true
+truth_item_contract:
+  stable_item_id_required: true
+  content_hash_required: true
+  profile_id_required: true
+  ontology_version_required: true
+  source_record_id_required: true
+  split_required: true
+  manufacturer_id_required: true
+  source_format_required: true
+  expected_outcome_required: true
+  expected_issue_attributes_required: true
+  surface_text_required: true
+  structured_input_required: true
+acceptance_policy:
+  primary_and_acceptance_annotators_must_differ: true
+  accepted_pack_requires_acceptance_hash: true
+  accepted_pack_requires_rationale: true
+  accepted_pack_requires_minimum_audit_sample: 32
+  accepted_pack_max_disagreement_rate: 0.02
+  machine_generated_pack_cannot_self_accept: true
+  pending_acceptance_blocks_release: true
+governance:
+  synthetic_contract_pack_only: true
+  production_accuracy_claims_forbidden_before_independent_acceptance: true
+  shared_generator_bias_is_disclosed: true
+  benchmark_runner_is_offline: true
+  generated_items_are_not_training_data: true
+  source_full_texts_not_stored: true
+  secrets_not_stored: true
+  production_runtime_not_wired: true
+  shadow_runtime_requires_arv067i: true

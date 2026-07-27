@@ -1,0 +1,57 @@
+acceptance_registry_id: ARV-067H-TRUTH-PACK-INDEPENDENT-ACCEPTANCE
+version: 1.0.0
+status: pending_independent_acceptance
+policy_ref: ARV-067H-ELECTRICAL-TRUTH-PACK-BENCHMARK@1.0.0
+machine_generator_actor_id: system.arv067h.generator
+profiles:
+- &pending_profile
+  profile_id: cable_joint
+  acceptance_status: pending
+  primary_annotator_id: null
+  acceptance_annotator_id: null
+  accepted_at: null
+  acceptance_hash: null
+  audited_item_count: 0
+  disagreement_rate: null
+  rationale: Independent human acceptance has not been performed. Synthetic contract metrics cannot authorize shadow runtime.
+- <<: *pending_profile
+  profile_id: cable_lug_connector
+- <<: *pending_profile
+  profile_id: cable_pipe_system
+- <<: *pending_profile
+  profile_id: surge_arrester
+- <<: *pending_profile
+  profile_id: high_voltage_fuse
+- <<: *pending_profile
+  profile_id: high_voltage_disconnector
+- <<: *pending_profile
+  profile_id: load_break_switch
+- <<: *pending_profile
+  profile_id: recloser
+- <<: *pending_profile
+  profile_id: line_hardware
+- <<: *pending_profile
+  profile_id: insulator
+- <<: *pending_profile
+  profile_id: residual_current_device
+- <<: *pending_profile
+  profile_id: residual_current_breaker
+- <<: *pending_profile
+  profile_id: switch_disconnector
+- <<: *pending_profile
+  profile_id: control_relay
+- <<: *pending_profile
+  profile_id: motor_starter
+summary:
+  profile_count: 15
+  accepted_profiles: 0
+  pending_profiles: 15
+  rejected_profiles: 0
+  independent_acceptance_complete: false
+  release_gate_passed: false
+governance:
+  machine_self_acceptance_forbidden: true
+  synthetic_labels_are_not_human_truth: true
+  acceptance_history_must_be_append_only: true
+  accepted_record_requires_distinct_annotators: true
+  protected_source_text_not_stored: true

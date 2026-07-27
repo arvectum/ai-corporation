@@ -1,0 +1,72 @@
+report_id: ARV-067H-TRUTH-PACK-RELEASE-REPORT
+version: 1.0.0
+benchmark_id: ARV-067H-ELECTRICAL-TRUTH-PACK-BENCHMARK
+benchmark_version: 1.0.0
+status: RELEASE_BLOCKED
+accuracy_claim_status: synthetic_contract_replay_only
+profile_count: 15
+item_count: 2400
+positive_count: 1500
+hard_negative_count: 900
+split_counts:
+  train: 1200
+  dev: 600
+  test: 600
+source_format_counts:
+  plain_text: 705
+  technical_spec_table: 630
+  catalog_card: 555
+  ocr_scan: 510
+pack_root_count: 15
+pack_roots_generated_and_verified_at_runtime: true
+metrics:
+  outcome_accuracy: 1.0
+  category_precision: 1.0
+  category_recall: 0.8
+  attribute_precision: 1.0
+  attribute_recall: 1.0
+  false_exact_rate_on_hard_negatives: 0.0
+  false_analog_rate_on_hard_negatives: 0.0
+  critical_mismatch_recall: 1.0
+  review_rate: 1.0
+slice_metrics:
+  unseen_manufacturer:
+    item_count: 600
+    category_precision: 1.0
+    category_recall: 0.8
+    attribute_precision: 1.0
+    attribute_recall: 1.0
+    false_exact_rate_on_hard_negatives: 0.0
+    false_analog_rate_on_hard_negatives: 0.0
+    critical_mismatch_recall: 1.0
+    review_rate: 1.0
+  ocr:
+    item_count: 510
+    category_precision: 1.0
+    category_recall: 0.809524
+    attribute_precision: 1.0
+    attribute_recall: 1.0
+    false_exact_rate_on_hard_negatives: 0.0
+    false_analog_rate_on_hard_negatives: 0.0
+    critical_mismatch_recall: 1.0
+    review_rate: 1.0
+gates:
+  synthetic_contract_metrics_passed: true
+  exact_leakage_gates_passed: true
+  pack_roots_verified: true
+  independent_acceptance_passed: false
+  release_gate_passed: false
+acceptance:
+  accepted_profiles: 0
+  pending_profiles: 15
+  rejected_profiles: 0
+  independent_acceptance_complete: false
+limitations:
+- Метрики относятся только к детерминированному synthetic contract replay и не являются оценкой качества на реальных закупках.
+- OCR-срез содержит воспроизводимый OCR-подобный шум в исходном тексте, но downstream matcher получает структурированные значения; качество OCR-извлечения не измеряется.
+- Train, dev и test не имеют общих item hash, source record или производителей test-среза, однако используют одно семейство генератора; generator bias раскрыт явно.
+- Независимая человеческая приёмка разметки не проведена, поэтому перевод в shadow runtime заблокирован.
+production_accuracy_claims_allowed: false
+independent_acceptance_required: true
+shadow_runtime_promotion_allowed: false
+runtime_import: false
