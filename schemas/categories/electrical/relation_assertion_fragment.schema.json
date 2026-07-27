@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/relation_assertion_fragment.schema.json",
+  "title": "ARV-067C electrical relation assertion fragment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "fragment_id",
+    "version",
+    "assertions"
+  ],
+  "properties": {
+    "fragment_id": {
+      "type": "string",
+      "pattern": "^ARV-067C-[A-Z0-9-]+$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "assertion_id",
+          "relation_type",
+          "source",
+          "target",
+          "strength",
+          "status",
+          "decision_ceiling",
+          "scope_id",
+          "conditions",
+          "failure_outcome",
+          "evidence",
+          "provenance",
+          "reason_codes",
+          "requires_review",
+          "active"
+        ],
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "pattern": "^REL-[A-Z0-9-]+$"
+          },
+          "relation_type": {
+            "enum": [
+              "part_of",
+              "accessory_for",
+              "compatible_with",
+              "requires",
+              "replaces",
+              "alternative_to",
+              "not_compatible_with",
+              "approved_for",
+              "governed_by"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "category",
+                  "component_role",
+                  "catalog_entity",
+                  "normative_document"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 3
+              }
+            }
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "category",
+                  "component_role",
+                  "catalog_entity",
+                  "normative_document"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "minLength": 3
+              }
+            }
+          },
+          "strength": {
+            "enum": [
+              "hard",
+              "soft"
+            ]
+          },
+          "status": {
+            "enum": [
+              "provisional",
+              "source_verified",
+              "deprecated"
+            ]
+          },
+          "decision_ceiling": {
+            "enum": [
+              "SUPPORTED",
+              "CONDITIONAL"
+            ]
+          },
+          "scope_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          },
+          "conditions": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "condition_type",
+                "required",
+                "description_ru"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "condition_type": {
+                  "enum": [
+                    "attribute_match",
+                    "project_requirement",
+                    "configuration_presence",
+                    "human_confirmation"
+                  ]
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "description_ru": {
+                  "type": "string",
+                  "minLength": 30
+                },
+                "source_attribute_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "target_attribute_id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*$"
+                },
+                "comparator": {
+                  "enum": [
+                    "exact",
+                    "minimum",
+                    "maximum",
+                    "contains",
+                    "range_overlap"
+                  ]
+                }
+              }
+            }
+          },
+          "failure_outcome": {
+            "enum": [
+              "UNCERTAIN",
+              "NOT_COMPATIBLE",
+              "NOT_APPLICABLE"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "evidence_id",
+                "kind",
+                "source_ref",
+                "locator",
+                "status",
+                "note_ru"
+              ],
+              "properties": {
+                "evidence_id": {
+                  "type": "string",
+                  "pattern": "^EVID-[A-Z0-9-]+$"
+                },
+                "kind": {
+                  "enum": [
+                    "ontology_contract",
+                    "category_attribute_contract",
+                    "normative_metadata",
+                    "expert_review_required"
+                  ]
+                },
+                "source_ref": {
+                  "type": "string",
+                  "minLength": 3
+                },
+                "locator": {
+                  "type": "string",
+                  "minLength": 3
+                },
+                "status": {
+                  "enum": [
+                    "verified_structure",
+                    "source_verified",
+                    "metadata_only",
+                    "required_before_use"
+                  ]
+                },
+                "note_ru": {
+                  "type": "string",
+                  "minLength": 40
+                }
+              }
+            }
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source_asset",
+              "extraction_method",
+              "review_status",
+              "rationale_ru"
+            ],
+            "properties": {
+              "source_asset": {
+                "type": "string",
+                "minLength": 5
+              },
+              "extraction_method": {
+                "enum": [
+                  "expert_modeling",
+                  "metadata_mapping",
+                  "profile_semantic_mapping",
+                  "scope_validation",
+                  "attribute_semantic_mapping"
+                ]
+              },
+              "review_status": {
+                "enum": [
+                  "machine_extracted",
+                  "source_verified"
+                ]
+              },
+              "rationale_ru": {
+                "type": "string",
+                "minLength": 60
+              }
+            }
+          },
+          "reason_codes": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^RELATION_[A-Z0-9_]+$"
+            }
+          },
+          "requires_review": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}
