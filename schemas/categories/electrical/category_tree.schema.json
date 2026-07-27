@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/category_tree.schema.json",
+  "title": "ARV-067B electrical category tree manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tree_id",
+    "version",
+    "status",
+    "locale",
+    "runtime_import",
+    "purpose",
+    "source_assets",
+    "lifecycle",
+    "routing_policy",
+    "root_category_id",
+    "node_files",
+    "governance"
+  ],
+  "properties": {
+    "tree_id": {"const": "ARV-067B-ELECTRICAL-CATEGORY-TREE"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "status": {"const": "research_asset"},
+    "locale": {"const": "ru-RU"},
+    "runtime_import": {"const": false},
+    "purpose": {"type": "string", "minLength": 80},
+    "source_assets": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "role"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+          "path": {"type": "string", "minLength": 5},
+          "role": {"type": "string", "minLength": 5}
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["statuses", "promotion_sequence", "allowed_transitions"],
+      "properties": {
+        "statuses": {
+          "type": "array", "minItems": 9, "maxItems": 9, "uniqueItems": true,
+          "items": {"enum": ["taxonomy_only", "profile_draft", "source_verified", "fixtures_ready", "benchmark_passed", "shadow_runtime", "operator_approved", "production_active", "deprecated"]}
+        },
+        "promotion_sequence": {
+          "type": "array", "minItems": 8, "maxItems": 8, "uniqueItems": true,
+          "items": {"enum": ["taxonomy_only", "profile_draft", "source_verified", "fixtures_ready", "benchmark_passed", "shadow_runtime", "operator_approved", "production_active"]}
+        },
+        "allowed_transitions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array", "uniqueItems": true,
+            "items": {"enum": ["taxonomy_only", "profile_draft", "source_verified", "fixtures_ready", "benchmark_passed", "shadow_runtime", "operator_approved", "production_active", "deprecated"]}
+          }
+        }
+      }
+    },
+    "routing_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["normalization", "match_mode", "score_order", "ambiguity_outcome", "family_match_requires_review", "minimum_alias_length"],
+      "properties": {
+        "normalization": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string"}},
+        "match_mode": {"const": "boundary_substring"},
+        "score_order": {"type": "array", "minItems": 4, "uniqueItems": true, "items": {"type": "string"}},
+        "ambiguity_outcome": {"const": "UNCERTAIN"},
+        "family_match_requires_review": {"const": true},
+        "minimum_alias_length": {"type": "integer", "minimum": 2}
+      }
+    },
+    "root_category_id": {"const": "electrical"},
+    "node_files": {
+      "type": "array", "minItems": 7, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^category_nodes/[a-z0-9_]+\\.v1\\.yaml$"}
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category_ids_are_stable", "source_labels_are_preserved", "inherited_attributes_must_exist_in_arv067a", "ambiguous_routing_requires_review", "family_matches_require_review", "production_activation_requires_explicit_gate", "production_runtime_not_wired", "full_text_sources_are_not_stored"],
+      "properties": {
+        "category_ids_are_stable": {"const": true},
+        "source_labels_are_preserved": {"const": true},
+        "inherited_attributes_must_exist_in_arv067a": {"const": true},
+        "ambiguous_routing_requires_review": {"const": true},
+        "family_matches_require_review": {"const": true},
+        "production_activation_requires_explicit_gate": {"const": true},
+        "production_runtime_not_wired": {"const": true},
+        "full_text_sources_are_not_stored": {"const": true}
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+fragment_id: ARV-067B-STRUCTURE
+version: 1.0.0
+nodes:
+- category_id: electrical
+  parent_id: null
+  level: 0
+  path:
+  - electrical
+  node_kind: root
+  registry: none
+  title_ru: Электротехническая продукция
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases: []
+    priority: 0
+    block_auto_route: true
+    review_if_only_match: true
+  attributes:
+    inherit_parent: false
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: category_tree.v1.yaml
+    source_kind: structural_root
+- category_id: electrical.primary
+  parent_id: electrical
+  level: 1
+  path:
+  - electrical
+  - electrical.primary
+  node_kind: registry
+  registry: primary
+  title_ru: Первичное оборудование
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - первичное оборудование
+    priority: 10
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: category_tree.v1.yaml
+    source_kind: registry_group
+- category_id: electrical.secondary
+  parent_id: electrical
+  level: 1
+  path:
+  - electrical
+  - electrical.secondary
+  node_kind: registry
+  registry: secondary
+  title_ru: Вторичное оборудование
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - вторичное оборудование
+    priority: 10
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: category_tree.v1.yaml
+    source_kind: registry_group

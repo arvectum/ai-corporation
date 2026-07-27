@@ -1,0 +1,331 @@
+fragment_id: ARV-067B-MV-GIS
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.medium_voltage_switchgear
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.medium_voltage_switchgear
+  node_kind: family
+  registry: primary
+  title_ru: КРУ, КСО
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - КРУ, КСО
+    - кру
+    - ксo
+    - комплектное распределительное устройство
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - busbar_current_a
+    - short_circuit_withstand_ka
+    - compartmentalization
+    - arc_resistance
+    - enclosure_ip
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: medium_voltage_switchgear
+    source_label: КРУ, КСО
+- category_id: electrical.primary.medium_voltage_switchgear.indoor_switchgear
+  parent_id: electrical.primary.medium_voltage_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.medium_voltage_switchgear
+  - electrical.primary.medium_voltage_switchgear.indoor_switchgear
+  node_kind: subcategory
+  registry: primary
+  title_ru: КРУ внутренней установки
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - КРУ внутренней установки
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: medium_voltage_switchgear
+    source_label: КРУ внутренней установки
+- category_id: electrical.primary.medium_voltage_switchgear.outdoor_switchgear
+  parent_id: electrical.primary.medium_voltage_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.medium_voltage_switchgear
+  - electrical.primary.medium_voltage_switchgear.outdoor_switchgear
+  node_kind: subcategory
+  registry: primary
+  title_ru: КРУ наружной установки
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - КРУ наружной установки
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: medium_voltage_switchgear
+    source_label: КРУ наружной установки
+- category_id: electrical.primary.medium_voltage_switchgear.kso_switchgear
+  parent_id: electrical.primary.medium_voltage_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.medium_voltage_switchgear
+  - electrical.primary.medium_voltage_switchgear.kso_switchgear
+  node_kind: subcategory
+  registry: primary
+  title_ru: КСО
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - КСО
+    - камера сборная одностороннего обслуживания
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: medium_voltage_switchgear
+    source_label: КСО
+- category_id: electrical.primary.medium_voltage_switchgear.switchgear_cell
+  parent_id: electrical.primary.medium_voltage_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.medium_voltage_switchgear
+  - electrical.primary.medium_voltage_switchgear.switchgear_cell
+  node_kind: subcategory
+  registry: primary
+  title_ru: ячейка КРУ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - ячейка КРУ
+    - ячейка комплектного распределительного устройства
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: medium_voltage_switchgear
+    source_label: ячейка КРУ
+- category_id: electrical.primary.medium_voltage_switchgear.low_voltage_switchboard
+  parent_id: electrical.primary.medium_voltage_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.medium_voltage_switchgear
+  - electrical.primary.medium_voltage_switchgear.low_voltage_switchboard
+  node_kind: subcategory
+  registry: primary
+  title_ru: низковольтный комплектный шкаф
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - низковольтный комплектный шкаф
+    - НКУ
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: medium_voltage_switchgear
+    source_label: низковольтный комплектный шкаф
+- category_id: electrical.primary.gas_insulated_switchgear
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.gas_insulated_switchgear
+  node_kind: family
+  registry: primary
+  title_ru: КРУЭ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - КРУЭ
+    - газоизолированное распределительное устройство
+    - комплектное распределительное устройство элегазовое
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - busbar_current_a
+    - short_circuit_withstand_ka
+    - insulation_gas
+    - bay_composition
+    - enclosure_ip
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: gas_insulated_switchgear
+    source_label: КРУЭ
+- category_id: electrical.primary.gas_insulated_switchgear.gis_cell
+  parent_id: electrical.primary.gas_insulated_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.gas_insulated_switchgear
+  - electrical.primary.gas_insulated_switchgear.gis_cell
+  node_kind: subcategory
+  registry: primary
+  title_ru: ячейка КРУЭ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - ячейка КРУЭ
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: gas_insulated_switchgear
+    source_label: ячейка КРУЭ
+- category_id: electrical.primary.gas_insulated_switchgear.gis_module
+  parent_id: electrical.primary.gas_insulated_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.gas_insulated_switchgear
+  - electrical.primary.gas_insulated_switchgear.gis_module
+  node_kind: subcategory
+  registry: primary
+  title_ru: модуль КРУЭ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - модуль КРУЭ
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: gas_insulated_switchgear
+    source_label: модуль КРУЭ
+- category_id: electrical.primary.gas_insulated_switchgear.gas_insulated_bus
+  parent_id: electrical.primary.gas_insulated_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.gas_insulated_switchgear
+  - electrical.primary.gas_insulated_switchgear.gas_insulated_bus
+  node_kind: subcategory
+  registry: primary
+  title_ru: газоизолированная шина
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - газоизолированная шина
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: gas_insulated_switchgear
+    source_label: газоизолированная шина
+- category_id: electrical.primary.gas_insulated_switchgear.gis_bushing
+  parent_id: electrical.primary.gas_insulated_switchgear
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.gas_insulated_switchgear
+  - electrical.primary.gas_insulated_switchgear.gis_bushing
+  node_kind: subcategory
+  registry: primary
+  title_ru: ввод КРУЭ
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - ввод КРУЭ
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: gas_insulated_switchgear
+    source_label: ввод КРУЭ

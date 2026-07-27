@@ -1,0 +1,399 @@
+fragment_id: ARV-067B-CABLES-SUBSTATIONS
+version: 1.0.0
+nodes:
+- category_id: electrical.primary.cables_fittings_pipes
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  node_kind: family
+  registry: primary
+  title_ru: Кабель и арматура, кабельные трубы
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Кабель и арматура, кабельные трубы
+    - кабель
+    - кабельная арматура
+    - кабельная труба
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - rated_voltage_kv
+    - conductor_material
+    - conductor_count
+    - cross_section_mm2
+    - insulation_material
+    - fire_performance
+    - armour_or_screen
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: Кабель и арматура, кабельные трубы
+- category_id: electrical.primary.cables_fittings_pipes.power_cable
+  parent_id: electrical.primary.cables_fittings_pipes
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  - electrical.primary.cables_fittings_pipes.power_cable
+  node_kind: subcategory
+  registry: primary
+  title_ru: силовой кабель
+  lifecycle_status: fixtures_ready
+  detailed_profile_refs:
+  - power_cable_low_voltage
+  routing:
+    aliases:
+    - силовой кабель
+    - кабель силовой
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - core_shape
+    - core_flexibility
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: силовой кабель
+- category_id: electrical.primary.cables_fittings_pipes.control_cable
+  parent_id: electrical.primary.cables_fittings_pipes
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  - electrical.primary.cables_fittings_pipes.control_cable
+  node_kind: subcategory
+  registry: primary
+  title_ru: контрольный кабель
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - контрольный кабель
+    - кабель контрольный
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: контрольный кабель
+- category_id: electrical.primary.cables_fittings_pipes.communication_cable
+  parent_id: electrical.primary.cables_fittings_pipes
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  - electrical.primary.cables_fittings_pipes.communication_cable
+  node_kind: subcategory
+  registry: primary
+  title_ru: кабель связи
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - кабель связи
+    - кабель телекоммуникационный
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: кабель связи
+- category_id: electrical.primary.cables_fittings_pipes.cable_joint
+  parent_id: electrical.primary.cables_fittings_pipes
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  - electrical.primary.cables_fittings_pipes.cable_joint
+  node_kind: subcategory
+  registry: primary
+  title_ru: кабельная муфта
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - кабельная муфта
+    - муфта кабельная
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: кабельная муфта
+- category_id: electrical.primary.cables_fittings_pipes.cable_lug
+  parent_id: electrical.primary.cables_fittings_pipes
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  - electrical.primary.cables_fittings_pipes.cable_lug
+  node_kind: subcategory
+  registry: primary
+  title_ru: кабельный наконечник
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - кабельный наконечник
+    - наконечник кабельный
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: кабельный наконечник
+- category_id: electrical.primary.cables_fittings_pipes.cable_pipe
+  parent_id: electrical.primary.cables_fittings_pipes
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.cables_fittings_pipes
+  - electrical.primary.cables_fittings_pipes.cable_pipe
+  node_kind: subcategory
+  registry: primary
+  title_ru: кабельная труба
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - кабельная труба
+    - труба кабельная
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: cables_fittings_pipes
+    source_label: кабельная труба
+- category_id: electrical.primary.package_transformer_substations
+  parent_id: electrical.primary
+  level: 2
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.package_transformer_substations
+  node_kind: family
+  registry: primary
+  title_ru: Комплектные трансформаторные подстанции (КТП, БКТП, МТП, СТП, РП)
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - Комплектные трансформаторные подстанции (КТП, БКТП, МТП, СТП, РП)
+    - ктп
+    - комплектная трансформаторная подстанция
+    - распределительный пункт
+    priority: 50
+    block_auto_route: false
+    review_if_only_match: true
+  attributes:
+    inherit_parent: true
+    local_refs:
+    - primary_voltage_kv
+    - secondary_voltage_kv
+    - rated_power_kva
+    - transformer_type
+    - enclosure_type
+    - short_circuit_withstand_ka
+    - climate_version
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: section_mapping
+    source_section_id: package_transformer_substations
+    source_label: Комплектные трансформаторные подстанции (КТП, БКТП, МТП, СТП, РП)
+- category_id: electrical.primary.package_transformer_substations.package_transformer_substation
+  parent_id: electrical.primary.package_transformer_substations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.package_transformer_substations
+  - electrical.primary.package_transformer_substations.package_transformer_substation
+  node_kind: subcategory
+  registry: primary
+  title_ru: КТП
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - КТП
+    - комплектная трансформаторная подстанция
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: package_transformer_substations
+    source_label: КТП
+- category_id: electrical.primary.package_transformer_substations.block_package_transformer_substation
+  parent_id: electrical.primary.package_transformer_substations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.package_transformer_substations
+  - electrical.primary.package_transformer_substations.block_package_transformer_substation
+  node_kind: subcategory
+  registry: primary
+  title_ru: БКТП
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - БКТП
+    - блочная комплектная трансформаторная подстанция
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: package_transformer_substations
+    source_label: БКТП
+- category_id: electrical.primary.package_transformer_substations.mast_transformer_substation
+  parent_id: electrical.primary.package_transformer_substations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.package_transformer_substations
+  - electrical.primary.package_transformer_substations.mast_transformer_substation
+  node_kind: subcategory
+  registry: primary
+  title_ru: МТП
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - МТП
+    - мачтовая трансформаторная подстанция
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: package_transformer_substations
+    source_label: МТП
+- category_id: electrical.primary.package_transformer_substations.pole_transformer_substation
+  parent_id: electrical.primary.package_transformer_substations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.package_transformer_substations
+  - electrical.primary.package_transformer_substations.pole_transformer_substation
+  node_kind: subcategory
+  registry: primary
+  title_ru: СТП
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - СТП
+    - столбовая трансформаторная подстанция
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: package_transformer_substations
+    source_label: СТП
+- category_id: electrical.primary.package_transformer_substations.distribution_point
+  parent_id: electrical.primary.package_transformer_substations
+  level: 3
+  path:
+  - electrical
+  - electrical.primary
+  - electrical.primary.package_transformer_substations
+  - electrical.primary.package_transformer_substations.distribution_point
+  node_kind: subcategory
+  registry: primary
+  title_ru: распределительный пункт
+  lifecycle_status: taxonomy_only
+  detailed_profile_refs: []
+  routing:
+    aliases:
+    - распределительный пункт
+    - РП
+    priority: 100
+    block_auto_route: false
+    review_if_only_match: false
+  attributes:
+    inherit_parent: true
+    local_refs: []
+    overrides: []
+  provenance:
+    source_asset: nomenclature.v1.yaml
+    source_kind: subcategory_mapping
+    source_section_id: package_transformer_substations
+    source_label: распределительный пункт
