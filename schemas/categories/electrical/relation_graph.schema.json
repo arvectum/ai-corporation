@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/relation_graph.schema.json",
+  "title": "ARV-067C electrical relation graph manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "graph_id",
+    "version",
+    "status",
+    "locale",
+    "runtime_import",
+    "purpose",
+    "source_assets",
+    "type_registry_file",
+    "component_registry_file",
+    "assertion_files",
+    "reason_codes",
+    "evaluation_policy",
+    "governance"
+  ],
+  "properties": {
+    "graph_id": {
+      "const": "ARV-067C-ELECTRICAL-RELATION-GRAPH"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "status": {
+      "const": "research_asset"
+    },
+    "locale": {
+      "const": "ru-RU"
+    },
+    "runtime_import": {
+      "const": false
+    },
+    "purpose": {
+      "type": "string",
+      "minLength": 120
+    },
+    "source_assets": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "role"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]+$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 5
+          },
+          "role": {
+            "type": "string",
+            "minLength": 8
+          }
+        }
+      }
+    },
+    "type_registry_file": {
+      "const": "relation_types.v1.yaml"
+    },
+    "component_registry_file": {
+      "const": "component_roles.v1.yaml"
+    },
+    "assertion_files": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^relation_assertions/[a-z0-9_]+\\.v1\\.yaml$"
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "minItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^RELATION_[A-Z0-9_]+$"
+      }
+    },
+    "evaluation_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "no_assertion_outcome",
+        "missing_evidence_outcome",
+        "conditional_without_context_outcome",
+        "explicit_negative_precedence",
+        "symmetric_pairs_use_canonical_order",
+        "category_compatibility_ceiling",
+        "product_level_compatibility_requires_catalog_entity"
+      ],
+      "properties": {
+        "no_assertion_outcome": {
+          "const": "UNCERTAIN"
+        },
+        "missing_evidence_outcome": {
+          "const": "UNCERTAIN"
+        },
+        "conditional_without_context_outcome": {
+          "const": "CONDITIONAL"
+        },
+        "explicit_negative_precedence": {
+          "const": true
+        },
+        "symmetric_pairs_use_canonical_order": {
+          "const": true
+        },
+        "category_compatibility_ceiling": {
+          "const": "CONDITIONAL"
+        },
+        "product_level_compatibility_requires_catalog_entity": {
+          "const": true
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "typed_relations_required",
+        "all_endpoints_must_be_registered",
+        "compatibility_is_not_equivalence",
+        "completeness_is_not_compatibility",
+        "missing_evidence_returns_uncertain",
+        "replacement_cycles_are_forbidden",
+        "catalog_entity_assertions_require_arv067e",
+        "automatic_normative_compliance_disabled",
+        "production_runtime_not_wired"
+      ],
+      "properties": {
+        "typed_relations_required": {
+          "const": true
+        },
+        "all_endpoints_must_be_registered": {
+          "const": true
+        },
+        "compatibility_is_not_equivalence": {
+          "const": true
+        },
+        "completeness_is_not_compatibility": {
+          "const": true
+        },
+        "missing_evidence_returns_uncertain": {
+          "const": true
+        },
+        "replacement_cycles_are_forbidden": {
+          "const": true
+        },
+        "catalog_entity_assertions_require_arv067e": {
+          "const": true
+        },
+        "automatic_normative_compliance_disabled": {
+          "const": true
+        },
+        "production_runtime_not_wired": {
+          "const": true
+        }
+      }
+    }
+  }
+}

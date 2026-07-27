@@ -20,6 +20,8 @@ ARV-067A adds a shared registry of 126 attribute IDs, 21 units, five type-safe c
 
 ARV-067B adds an explicit category hierarchy with 166 stable nodes: one root, two registry groups, 28 source families and 135 source subcategories. Parent paths, attribute inheritance, role-specific overrides, routing aliases, provenance and lifecycle gates are validated across all files.
 
+ARV-067C adds a separate typed relation graph with nine relation types, three abstract component roles, 25 explainable assertions and 26 evaluation fixtures. Compatibility, completeness, replacement, approval and normative applicability remain separate semantics; missing evidence returns `UNCERTAIN`.
+
 The package is an offline research contract and is intentionally not imported by the production resolver.
 
 ## Files
@@ -58,6 +60,20 @@ Category hierarchy:
 - `category_router.py` — deterministic offline routing for fixtures;
 - `validate_category_tree.py` — graph, inheritance, source-coverage and routing validator.
 
+Relation graph:
+
+- `relation_graph.v1.yaml` — relation manifest, evaluation policy and safety governance;
+- `relation_graph.schema.json` — closed graph manifest contract;
+- `relation_types.v1.yaml` — nine non-equivalence relation semantics;
+- `relation_type_registry.schema.json` — direction, symmetry, transitivity and cardinality contract;
+- `component_roles.v1.yaml` — abstract component roles, not manufacturer models;
+- `component_role_registry.schema.json` — component-role contract;
+- `relation_assertions/*.v1.yaml` — cable, overhead-line, switching and RZA/measurement assertions;
+- `relation_assertion_fragment.schema.json` — assertion/evidence/provenance contract;
+- `relation_evaluator.py` — deterministic offline evaluation;
+- `relation_validation_contract.py`, `relation_validation_assertions.py` — validation helpers;
+- `validate_relations.py` — relation graph validation entrypoint.
+
 Fixtures live in `fixtures/ontology/electrical/`.
 
 ## Validation
@@ -67,10 +83,12 @@ python schemas/categories/electrical/validate.py
 python schemas/categories/electrical/validate_catalog.py
 python schemas/categories/electrical/validate_attributes.py
 python schemas/categories/electrical/validate_category_tree.py
+python schemas/categories/electrical/validate_relations.py
 python -m pytest -q tests/test_arv067_electrical_ontology.py
 python -m pytest -q tests/test_arv067_electrical_catalog_expansion.py
 python -m pytest -q tests/test_arv067a_attribute_registry.py
 python -m pytest -q tests/test_arv067b_category_tree.py
+python -m pytest -q tests/test_arv067c_relations.py
 ```
 
 Successful validator markers:
@@ -80,17 +98,21 @@ ARV-067 electrical ontology: OK (categories=4, synonyms=8, matches=13, runtime_i
 ARV-067 expanded electrical catalog: OK (sections=28, normative_documents=42, runtime_import=false)
 ARV-067A attribute registry: OK (..., runtime_import=false)
 ARV-067B category tree: OK (nodes=166, families=28, subcategories=135, detailed_profiles=4, routing_cases=24, runtime_import=false)
+ARV-067C relation graph: OK (types=9, components=3, assertions=25, fixtures=26, runtime_import=false)
 ```
 
 ## Safety boundary
 
 - no database model, migration or production resolver is changed;
-- taxonomy-only families, provisional attributes and category nodes are not production matchers;
+- taxonomy-only families, provisional attributes, category nodes and relation templates are not production matchers;
 - broad family matches and cross-branch ambiguity require review;
+- compatibility is not equivalence, and completeness is not compatibility;
+- category-level compatibility never rises above `CONDITIONAL`;
+- missing relation evidence returns `UNCERTAIN` rather than a guess;
+- `replaces` and `approved_for` instances remain blocked until ARV-067E provides catalog entities;
 - role-specific voltage and current fields are not merged automatically;
 - the ontology and normative registry are not certification or legal-compliance evidence;
 - operator registry inclusion is not universal product equivalence proof;
 - standards require scope, edition and amendment verification for each procurement;
 - unlicensed full texts are not committed;
-- required unknowns remain uncertain rather than guessed;
 - live accuracy and compliance claims remain blocked until controlled truth packs and human review are accepted.

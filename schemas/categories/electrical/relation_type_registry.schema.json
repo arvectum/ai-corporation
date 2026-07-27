@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/categories/electrical/relation_type_registry.schema.json",
+  "title": "ARV-067C electrical relation type registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "registry_id",
+    "version",
+    "status",
+    "types"
+  ],
+  "properties": {
+    "registry_id": {
+      "const": "ARV-067C-ELECTRICAL-RELATION-TYPES"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "status": {
+      "const": "research_asset"
+    },
+    "types": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title_ru",
+          "semantic_class",
+          "directed",
+          "symmetric",
+          "inverse_type_id",
+          "transitivity",
+          "cardinality",
+          "source_kinds",
+          "target_kinds",
+          "evidence_required",
+          "default_strength",
+          "absence_outcome",
+          "allows_conditions",
+          "category_level_decision_ceiling",
+          "equivalence_semantics",
+          "reason_code",
+          "description_ru"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "part_of",
+              "accessory_for",
+              "compatible_with",
+              "requires",
+              "replaces",
+              "alternative_to",
+              "not_compatible_with",
+              "approved_for",
+              "governed_by"
+            ]
+          },
+          "title_ru": {
+            "type": "string",
+            "minLength": 3
+          },
+          "semantic_class": {
+            "enum": [
+              "structure",
+              "completeness",
+              "compatibility",
+              "dependency",
+              "replacement",
+              "selection",
+              "approval",
+              "governance"
+            ]
+          },
+          "directed": {
+            "type": "boolean"
+          },
+          "symmetric": {
+            "type": "boolean"
+          },
+          "inverse_type_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "transitivity": {
+            "enum": [
+              "none",
+              "contextual",
+              "acyclic_closure"
+            ]
+          },
+          "cardinality": {
+            "enum": [
+              "one_to_one",
+              "one_to_many",
+              "many_to_one",
+              "many_to_many",
+              "contextual"
+            ]
+          },
+          "source_kinds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "category",
+                "component_role",
+                "catalog_entity",
+                "normative_document"
+              ]
+            }
+          },
+          "target_kinds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "category",
+                "component_role",
+                "catalog_entity",
+                "normative_document"
+              ]
+            }
+          },
+          "evidence_required": {
+            "const": true
+          },
+          "default_strength": {
+            "enum": [
+              "hard",
+              "soft"
+            ]
+          },
+          "absence_outcome": {
+            "const": "UNCERTAIN"
+          },
+          "allows_conditions": {
+            "type": "boolean"
+          },
+          "category_level_decision_ceiling": {
+            "enum": [
+              "SUPPORTED",
+              "CONDITIONAL"
+            ]
+          },
+          "equivalence_semantics": {
+            "const": false
+          },
+          "reason_code": {
+            "type": "string",
+            "pattern": "^RELATION_[A-Z0-9_]+$"
+          },
+          "description_ru": {
+            "type": "string",
+            "minLength": 80
+          }
+        }
+      }
+    }
+  }
+}
