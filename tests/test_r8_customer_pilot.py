@@ -1,5 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
 from src.modules.customer_pilot import artifact_publisher, artifacts, canonical_snapshot
 from src.modules.customer_pilot.models import (
     PilotProject,
@@ -8,17 +11,15 @@ from src.modules.customer_pilot.models import (
 )
 from src.modules.customer_pilot.router import StartIn, start_run
 from src.modules.customer_registry.models import CustomerProfile
-from src.shared.db.base import Base
 from src.shared.api.middleware import _is_protected_path
 from src.shared.config.settings import Settings
-from src.tender_research.models import TenderAnalysisRun
+from src.shared.db.base import Base
 from src.tender_research.models import (
     ProcurementDocumentChunk,
     ProcurementTender,
     ProcurementTenderDocument,
+    TenderAnalysisRun,
 )
-from sqlalchemy import create_engine, select
-from sqlalchemy.orm import sessionmaker
 
 
 def _customer(session, customer_id: str) -> None:
@@ -105,7 +106,7 @@ def test_idempotent_start_review_feedback_and_delivery_contract(
     url = f"/api/operator/pilot/customers/CUST-A/cases/{case['id']}/runs"
     first = client.post(url, json={}, headers={"Idempotency-Key": "one"})
     again = client.post(url, json={}, headers={"Idempotency-Key": "one"})
-    assert first.status_code == 201 and again.status_code == 201
+    assert first.status_code == 201 and again.status_code == 200
     assert (
         again.json()["idempotent"] is True and first.json()["id"] == again.json()["id"]
     )

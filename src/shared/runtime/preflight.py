@@ -1,6 +1,6 @@
-from __future__ import annotations
-
 """Non-destructive runtime preflight for the Mac mini contour."""
+
+from __future__ import annotations
 
 import shutil
 from pathlib import Path

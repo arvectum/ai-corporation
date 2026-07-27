@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -103,6 +103,52 @@ class Settings(BaseSettings):
     hermes_timeout_seconds: int = 120
     hermes_enabled: bool = False
 
+    # Redis foundation (ARV-007)
+    arvectum_redis_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_ENABLED", "AI_CORP_REDIS_ENABLED"),
+    )
+    arvectum_redis_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_URL", "AI_CORP_REDIS_URL"),
+    )
+    arvectum_redis_namespace: str = Field(
+        default="arvectum",
+        validation_alias=AliasChoices("ARVECTUM_REDIS_NAMESPACE", "AI_CORP_REDIS_NAMESPACE"),
+    )
+    arvectum_redis_connect_timeout_seconds: int = Field(
+        default=5, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_CONNECT_TIMEOUT_SECONDS", "AI_CORP_REDIS_CONNECT_TIMEOUT_SECONDS"),
+    )
+    arvectum_redis_operation_timeout_seconds: int = Field(
+        default=5, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_OPERATION_TIMEOUT_SECONDS", "AI_CORP_REDIS_OPERATION_TIMEOUT_SECONDS"),
+    )
+    arvectum_redis_max_connections: int = Field(
+        default=10, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_MAX_CONNECTIONS", "AI_CORP_REDIS_MAX_CONNECTIONS"),
+    )
+    arvectum_redis_default_lock_ttl_seconds: int = Field(
+        default=30, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_DEFAULT_LOCK_TTL_SECONDS", "AI_CORP_REDIS_DEFAULT_LOCK_TTL_SECONDS"),
+    )
+    arvectum_redis_default_cache_ttl_seconds: int = Field(
+        default=300, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_DEFAULT_CACHE_TTL_SECONDS", "AI_CORP_REDIS_DEFAULT_CACHE_TTL_SECONDS"),
+    )
+    arvectum_redis_idempotency_ttl_seconds: int = Field(
+        default=3600, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_IDEMPOTENCY_TTL_SECONDS", "AI_CORP_REDIS_IDEMPOTENCY_TTL_SECONDS"),
+    )
+    arvectum_redis_rate_limit_window_seconds: int = Field(
+        default=60, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_RATE_LIMIT_WINDOW_SECONDS", "AI_CORP_REDIS_RATE_LIMIT_WINDOW_SECONDS"),
+    )
+    arvectum_redis_rate_limit_default_limit: int = Field(
+        default=100, gt=0,
+        validation_alias=AliasChoices("ARVECTUM_REDIS_RATE_LIMIT_DEFAULT_LIMIT", "AI_CORP_REDIS_RATE_LIMIT_DEFAULT_LIMIT"),
+    )
+
     # Storage capacity guardrails (ARV-010)
     # Canonical env: ARVECTUM_STORAGE_*; compatibility: AI_CORP_ARVECTUM_STORAGE_*
     # Canonical has priority via AliasChoices order.
@@ -123,6 +169,18 @@ class Settings(BaseSettings):
         default=90, ge=0, le=100,
         validation_alias=AliasChoices("ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT", "AI_CORP_ARVECTUM_STORAGE_INGESTION_PROTECTED_PERCENT"),
     )
+
+    @model_validator(mode="after")
+    def _validate_redis(self):
+        if self.arvectum_redis_enabled:
+            url = self.arvectum_redis_url
+            if not url:
+                raise ValueError("ARVECTUM_REDIS_URL is required when REDIS_ENABLED=true")
+            if not url.startswith(("redis://", "rediss://")):
+                raise ValueError("ARVECTUM_REDIS_URL must start with redis:// or rediss://")
+            if not self.arvectum_redis_namespace.strip():
+                raise ValueError("ARVECTUM_REDIS_NAMESPACE must not be empty in production")
+        return self
 
     def model_post_init(self, __context, /):
         warning = self.arvectum_storage_warning_percent
@@ -166,6 +224,10 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def invalidate_settings_cache() -> None:
+    get_settings.cache_clear()
 
 
 def _split_csv(raw_value: str) -> list[str]:

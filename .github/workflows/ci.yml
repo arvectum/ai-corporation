@@ -27,7 +27,7 @@ jobs:
           name: r9-operational-hardening-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           if-no-files-found: error
           path: |
-            output/pytest.log
+            output/*.log
             output/r9-db-filesystem-mismatch-*/
             output/r9-orphan-lifecycle-*/
             output/r9-backup-restore-*/
@@ -87,3 +87,34 @@ jobs:
         with:
           name: r8-tenant-evidence-${{ github.event.pull_request.head.sha || github.sha }}
           path: output/r8-acceptance-tenant-concurrency-*/
+  redis-integration:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7.4.9-alpine
+        ports:
+          - 16379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install .[dev]
+      - run: make test-redis-integration
+        env:
+          AI_CORP_REDIS_ENABLED: "true"
+          AI_CORP_REDIS_URL: redis://127.0.0.1:16379/1
+          AI_CORP_REDIS_NAMESPACE: ci-${{ github.sha }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: redis-integration-logs-${{ github.event.pull_request.head.sha || github.sha }}
+          if-no-files-found: warn
+          path: output/*.log
