@@ -27,7 +27,7 @@ def test_plan_is_exactly_covered_and_stable():
         "chunk-0", "chunk-1", "chunk-2", "chunk-3"
     ]
     assert len(first.fragment_ids) == len(set(first.fragment_ids)) == 4
-    assert [batch.evidence_tokens for batch in first.batches] == [12, 7]
+    assert [batch.evidence_tokens for batch in first.batches] == [10, 11]
 
 
 def test_duplicate_fragment_is_rejected():
@@ -36,16 +36,16 @@ def test_duplicate_fragment_is_rejected():
     try:
         build_evidence_batch_plan(fragments, tokenizer=lambda text: len(text))
     except BatchCoverageError as exc:
-        assert exc.code == "batch_coverage_invalid"
+        assert exc.code == "evidence_batch_duplicate_assignment"
     else:
         raise AssertionError("duplicate fragment was accepted")
 
 
 def test_oversized_chunk_is_never_split():
-    policy = BatchPolicy(context_window=10, output_reserve=4, safety_margin=2)
+    policy = BatchPolicy(context_window=10, evidence_budget=4, output_reserve=4, safety_margin=2)
     try:
         build_evidence_batch_plan(_fragments(), tokenizer=lambda text: len(text), policy=policy)
     except OversizedEvidenceChunk as exc:
-        assert exc.code == "oversized_evidence_chunk"
+        assert exc.code == "evidence_batch_oversized_chunk"
     else:
         raise AssertionError("oversized chunk was split or accepted")

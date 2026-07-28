@@ -68,7 +68,7 @@ def resolve_customer_run_inputs(
     from src.modules.procurement_analysis.frozen_types import AnalyzedDocument
 
     documents, identities = [], []
-    for row in rows:
+    for document_order, row in enumerate(rows, 1):
         chunks = session.scalars(
             select(ProcurementDocumentChunk)
             .where(ProcurementDocumentChunk.document_id == row.id)
@@ -93,8 +93,22 @@ def resolve_customer_run_inputs(
             {
                 "document_id": document_identity,
                 "document_name": name,
-                "chunk_id": f"{document_identity}:chunk:{chunk.chunk_index}",
-                "locator": {"role": detect_document_role(name), "chunk_index": chunk.chunk_index},
+                "chunk_id": sha256(
+                    f"{document_identity}\0{chunk.chunk_index}\0{chunk.text_hash}".encode("utf-8")
+                ).hexdigest(),
+                "locator": {
+                    "document_order": document_order,
+                    "role": detect_document_role(name),
+                    "chunk_index": int(chunk.chunk_index),
+                    "char_start": int(chunk.char_start),
+                    "char_end": int(chunk.char_end),
+                    "text_hash": chunk.text_hash,
+                    "token_estimate": int(chunk.token_estimate),
+                    **{
+                        key: value for key, value in (chunk.raw_meta or {}).items()
+                        if key in {"page", "section"} and isinstance(value, (str, int, float))
+                    },
+                },
                 "text": chunk.text,
             }
             for chunk in chunks if chunk.text

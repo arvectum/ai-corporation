@@ -171,6 +171,11 @@ class ProductionLLMAnalysisRequest(ContractModel):
     batch_ordinal: int | None = Field(default=None, ge=1)
     batch_count: int | None = Field(default=None, ge=1)
     corpus_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    map_mode: bool = False
+    max_claims: int | None = Field(default=None, ge=1)
+    allowed_field_paths: list[str] = Field(default_factory=list)
+    context_profile: str | None = None
+    tokenizer_identity: str | None = None
 
 
 class ProviderAnalysisResponse(ContractModel):
@@ -212,3 +217,11 @@ class ProductionLLMAnalysisResult(ContractModel):
     batch_ordinal: int | None = Field(default=None, ge=1)
     batch_count: int | None = Field(default=None, ge=1)
     corpus_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    map_empty: bool = False
+    batch_hashes: list[str] = Field(default_factory=list)
+    batch_result_hashes: list[str] = Field(default_factory=list)
+    provider_call_count: int = Field(default=0, ge=0)
+    empty_batch_count: int = Field(default=0, ge=0)
+    provider_request_ids: list[str] = Field(default_factory=list)
+    tokenizer_identity: str | None = None
+    context_profile: str | None = None

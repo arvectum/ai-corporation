@@ -175,6 +175,11 @@ class OpenAICompatibleProductionLLMProvider:
         return headers
 
     def _build_request_body(self, request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
+        claim_schema = ProviderClaim.model_json_schema()
+        if request.allowed_field_paths:
+            claim_schema.setdefault("properties", {}).setdefault("field_path", {})[
+                "enum"
+            ] = list(request.allowed_field_paths)
         evidence = [
             {
                 "fragment_id": fragment.fragment_id,
@@ -187,6 +192,19 @@ class OpenAICompatibleProductionLLMProvider:
             }
             for fragment in request.evidence_packet.fragments
         ]
+        output_contract = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["claims"],
+            "properties": {
+                "claims": {
+                    "type": "array",
+                    "items": claim_schema,
+                }
+            },
+        }
+        if request.max_claims is not None:
+            output_contract["properties"]["claims"]["maxItems"] = request.max_claims
         task = {
             "prompt_id": request.prompt_id,
             "prompt_version": request.prompt_version,
@@ -203,16 +221,14 @@ class OpenAICompatibleProductionLLMProvider:
             "batch_count": request.batch_count,
             "corpus_evidence_hash": request.corpus_evidence_hash,
             "evidence_fragments": evidence,
-            "output_contract": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": ["claims"],
-                "properties": {
-                    "claims": {
-                        "type": "array",
-                        "items": ProviderClaim.model_json_schema(),
-                    }
-                },
+            "output_contract": output_contract,
+            "map_contract": {
+                "max_claims": request.max_claims,
+                "allowed_field_paths": request.allowed_field_paths,
+                "context_profile": request.context_profile,
+                "evidence_budget": request.budget_policy.limits.max_input_tokens,
+                "output_reserve": request.budget_policy.limits.max_output_tokens,
+                "absence_is_not_corpus_negative": True,
             },
         }
         return {
@@ -228,6 +244,9 @@ class OpenAICompatibleProductionLLMProvider:
                         "Return exactly one valid JSON object matching the supplied output contract. "
                         "Use only supplied evidence fragments. Every factual claim must copy exact evidence "
                         "identities, locator and quote. Return an empty claims array when evidence is insufficient. "
+                        "Analyze only the current batch; absence in this batch is not absence in the corpus. "
+                        "Use only allowed field paths, return no more than max_claims, and never make GO/NO-GO "
+                        "or other corpus-wide negative conclusions. "
                         "Do not authorize submission, signing, supplier outreach or any autonomous external action."
                     ),
                 },

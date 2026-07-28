@@ -233,11 +233,15 @@ def main() -> int:
             metadata=metadata,
             documents=inputs.documents,
             evidence_chunks=[chunk for document in inputs.documents for chunk in (document.evidence_chunks or [])],
-            token_counter=CommandTokenCounter(os.environ["ARV003_EXACT_TOKENIZER_COMMAND"])
+            token_counter=CommandTokenCounter(
+                os.environ["ARV003_EXACT_TOKENIZER_COMMAND"],
+                identity=os.environ.get("ARV003_TOKENIZER_IDENTITY", ""),
+            )
             if os.environ.get("ARV003_EXACT_TOKENIZER_COMMAND")
             else (_ for _ in ()).throw(
                 ControlledRunnerConfigurationError("exact_tokenizer_not_configured")
             ),
+            controlled=True,
             provider_factory=provider_factory,
             policy=policy,
         )

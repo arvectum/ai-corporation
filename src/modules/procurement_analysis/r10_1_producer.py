@@ -8,6 +8,7 @@ or silently falls back to the frozen producer.
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -23,15 +24,19 @@ from src.modules.procurement_analysis.frozen_producer import (
     FrozenCanonicalProduction,
     produce_frozen_canonical_analysis,
 )
-from src.modules.production_llm_analysis.evidence import build_evidence_packet
+from src.modules.production_llm_analysis.evidence import build_evidence_packet, canonical_json_bytes
 from src.modules.production_llm_analysis.batching import (
     BatchPolicy,
+    BatchExecutionTimeout,
+    BatchPlanningError,
     EvidenceBatchPlan,
     build_evidence_batch_plan,
 )
 from src.modules.production_llm_analysis.schemas import (
     AnalysisStatus,
     BudgetPolicy,
+    BudgetEvaluation,
+    BudgetStatus,
     EvidenceFragmentInput,
     GroundedClaim,
     ProductionLLMAnalysisResult,
@@ -81,6 +86,8 @@ class R10_1CanonicalProduction:
     batch_plan_hash: str | None = None
     corpus_evidence_hash: str | None = None
     batch_count: int = 1
+    tokenizer_identity: str | None = None
+    context_profile: str | None = None
 
 
 _REQUIREMENT_PATHS = {
@@ -102,6 +109,7 @@ _POSITIVE_RECOMMENDATIONS = {
     "READY",
     "APPROVED",
 }
+_MAP_ALLOWED_FIELD_PATHS = tuple(sorted((*_REQUIREMENT_PATHS.keys(), "contract_risks", "supplier_questions")))
 
 
 def _owned_identity(
@@ -331,6 +339,8 @@ def _runtime_provenance(result: ProductionLLMAnalysisResult) -> dict[str, Any]:
         "batch_ordinal": result.batch_ordinal if hasattr(result, "batch_ordinal") else None,
         "batch_count": result.batch_count if hasattr(result, "batch_count") else None,
         "corpus_evidence_hash": result.corpus_evidence_hash if hasattr(result, "corpus_evidence_hash") else None,
+        "tokenizer_identity": result.tokenizer_identity,
+        "context_profile": result.context_profile,
     }
 
 
@@ -344,38 +354,105 @@ def _merge_batch_results(
     if not results:
         raise R10_1AnalysisRejectedError("no_batch_results")
     if any(result.status != AnalysisStatus.SUCCESS for result in results):
-        failed = next(result for result in results if result.status != AnalysisStatus.SUCCESS)
-        return failed.model_copy(update={
-            "evidence_packet_hash": corpus_packet_hash,
-            "limitations": [*failed.limitations, "batch_execution_incomplete"],
-        })
-    accepted = sorted(
-        (claim for result in results for claim in result.accepted_claims),
-        key=lambda claim: (claim.claim_id, claim.field_path, canonical_sha256(claim.model_dump(mode="json"))),
-    )
-    rejected = sorted(
-        (claim for result in results for claim in result.rejected_claims),
-        key=lambda claim: (claim.claim_id, claim.field_path, canonical_sha256(claim.model_dump(mode="json"))),
-    )
-    claim_ids = [claim.claim_id for claim in [*accepted, *rejected]]
-    if len(claim_ids) != len(set(claim_ids)):
-        raise R10_1AnalysisRejectedError("duplicate_claim_id_across_batches")
+        raise R10_1AnalysisRejectedError("evidence_batch_provider_failed")
+
+    def semantic(claim: Any) -> dict[str, Any]:
+        references = [{
+            "fragment_id": ref.fragment_id,
+            "quote_sha256": ref.quote_sha256,
+            "locator_hash": canonical_sha256(ref.locator),
+        } for ref in claim.evidence_references]
+        references.sort(key=canonical_sha256)
+        return {
+            "field_path": claim.field_path, "value": claim.value,
+            "support_status": claim.support_status.value,
+            "evidence_references": references,
+        }
+
+    all_claims = [claim for result in results for claim in (*result.accepted_claims, *result.rejected_claims)]
+    by_claim_id: dict[str, dict[str, Any]] = {}
+    for claim in all_claims:
+        item = semantic(claim)
+        prior = by_claim_id.get(claim.claim_id)
+        if prior is not None and prior["semantic"] != item:
+            raise R10_1ClaimMappingError("evidence_aggregation_claim_id_conflict")
+        by_claim_id[claim.claim_id] = {"semantic": item, "claim": claim}
+    unique_by_semantic: dict[str, dict[str, Any]] = {}
+    for item in by_claim_id.values():
+        key = canonical_sha256(item["semantic"])
+        claim = item["claim"]
+        if key not in unique_by_semantic:
+            unique_by_semantic[key] = {"claim": claim, "claim_ids": [claim.claim_id]}
+        else:
+            unique_by_semantic[key]["claim_ids"].append(claim.claim_id)
+    merged_claims = []
+    for item in unique_by_semantic.values():
+        claim = item["claim"]
+        canonical_id = min(item["claim_ids"]) if len(item["claim_ids"]) > 1 else claim.claim_id
+        merged_claims.append(claim.model_copy(update={"claim_id": canonical_id}))
+    merged_claims.sort(key=lambda claim: (claim.field_path, claim.claim_id))
+    accepted = [claim for claim in merged_claims if claim.support_status.value == "supported"]
+    rejected = [claim for claim in merged_claims if claim.support_status.value != "supported"]
+    supported_values: dict[str, set[str]] = {}
+    for claim in accepted:
+        supported_values.setdefault(claim.field_path, set()).add(canonical_sha256(claim.value))
+    conflicts = [field for field, values in supported_values.items() if len(values) > 1]
     first = results[0]
+    estimated_input = sum(result.budget.estimated_input_tokens for result in results)
+    estimated_output = sum(result.budget.estimated_output_tokens for result in results)
+    actual_inputs = [result.budget.actual_input_tokens for result in results]
+    actual_outputs = [result.budget.actual_output_tokens for result in results]
+    actual_input = sum(value for value in actual_inputs if value is not None) if all(value is not None for value in actual_inputs) else None
+    actual_output = sum(value for value in actual_outputs if value is not None) if all(value is not None for value in actual_outputs) else None
+    first_budget = first.budget
+    aggregate_budget = first_budget.model_copy(update={
+        "status": BudgetStatus.WITHIN_BUDGET,
+        "estimated_input_tokens": estimated_input,
+        "estimated_output_tokens": estimated_output,
+        "actual_input_tokens": actual_input,
+        "actual_output_tokens": actual_output,
+        "estimated_cost": sum(result.budget.estimated_cost or 0 for result in results),
+        "actual_or_reconciled_cost": sum(result.budget.actual_or_reconciled_cost or 0 for result in results),
+        "total_latency_ms": sum(result.budget.total_latency_ms or 0 for result in results),
+        "reasons": sorted({reason for result in results for reason in result.budget.reasons}),
+    })
+    result_hashes = [canonical_sha256({
+        "status": result.status.value,
+        "accepted": [semantic(claim) for claim in result.accepted_claims],
+        "rejected": [semantic(claim) for claim in result.rejected_claims],
+    }) for result in results]
     merged = first.model_copy(update={
         "request_id": canonical_sha256({
             "plan_hash": plan.plan_hash,
             "corpus_evidence_hash": plan.corpus_evidence_hash,
-            "batch_request_ids": [result.request_id for result in results],
+            "batch_hashes": list(plan.ordered_batch_hashes),
         }),
         "evidence_packet_hash": corpus_packet_hash,
         "accepted_claims": accepted,
         "rejected_claims": rejected,
-        "limitations": sorted({limitation for result in results for limitation in result.limitations}),
+        "limitations": sorted({limitation for result in results for limitation in result.limitations} | ({"cross_batch_supported_value_conflict"} if conflicts else set())),
+        "budget": aggregate_budget,
+        "provider_request_id": None,
+        "raw_response_sha256": None,
         "retry_count": sum(result.retry_count for result in results),
         "batch_plan_version": plan.plan_version,
         "batch_plan_hash": plan.plan_hash,
         "batch_count": len(plan.batches),
         "corpus_evidence_hash": plan.corpus_evidence_hash,
+        "batch_hashes": list(plan.ordered_batch_hashes),
+        "batch_result_hashes": result_hashes,
+        "provider_call_count": len(results),
+        "empty_batch_count": sum(result.map_empty for result in results),
+        "provider_request_ids": [
+            request_id for result in results
+            for request_id in ([result.provider_request_id] if result.provider_request_id else [])
+        ],
+        "map_empty": not accepted and not rejected,
+        "status": AnalysisStatus.INSUFFICIENT_EVIDENCE if not accepted and not rejected else AnalysisStatus.SUCCESS,
+        "canonical_input_eligible": bool(accepted) and not rejected,
+        "sanitized_error_code": "insufficient_evidence" if not accepted and not rejected else None,
+        "tokenizer_identity": plan.tokenizer_identity,
+        "context_profile": plan.policy.profile,
     })
     return merged.model_copy(update={
         "validated_result_hash": canonical_sha256(merged.model_dump(mode="json", exclude={"validated_result_hash"}))
@@ -405,6 +482,7 @@ def produce_r10_1_canonical_analysis(
     evidence_chunks: list[dict[str, Any]] | None = None,
     token_counter: Any | None = None,
     batch_policy: BatchPolicy | None = None,
+    controlled: bool = False,
 ) -> R10_1CanonicalProduction:
     """Produce verified canonical bytes from fully grounded, allow-listed claims."""
     _owned_identity(
@@ -435,6 +513,13 @@ def produce_r10_1_canonical_analysis(
     # approved llama.cpp/Gemma tokenizer; the fallback is only for legacy small
     # offline callers and is never sufficient for a controlled live run.
     counter = token_counter or (lambda text: max(1, len(text.encode("utf-8")) // 4))
+    if batch_policy is None:
+        tokenizer_identity = str(getattr(counter, "identity", "offline-estimated"))
+        batch_policy = (
+            BatchPolicy.approved_32k(tokenizer_identity=tokenizer_identity, measured_overhead=0)
+            if controlled
+            else BatchPolicy(tokenizer_identity=tokenizer_identity)
+        )
     plan_fragments = [
         EvidenceFragmentInput(
             document_id=fragment.document_id,
@@ -445,13 +530,49 @@ def produce_r10_1_canonical_analysis(
         )
         for fragment in packet.fragments
     ]
-    plan = build_evidence_batch_plan(
-        plan_fragments,
-        tokenizer=counter,
-        policy=batch_policy or BatchPolicy(),
-    )
+    from src.modules.production_llm_analysis.openai_compatible import OpenAICompatibleProductionLLMProvider
+
+    def measure_request(candidate: list[EvidenceFragmentInput]) -> tuple[int, str]:
+        candidate_packet = _evidence_packet_from_documents(
+            customer_id=customer_id, project_id=project_id,
+            procurement_case_id=procurement_case_id, run_id=run_id,
+            registry_number=registry_number, documents=documents,
+            evidence_fragments=candidate,
+        )
+        provisional_batch_hash = canonical_sha256({"fragment_ids": [fragment.fragment_id for fragment in candidate_packet.fragments]})
+        request = build_production_llm_request(
+            evidence_packet=candidate_packet, provider=provider_name, model=model,
+            prompt_id=prompt_id, prompt_version=prompt_version,
+            output_schema_id=output_schema_id, output_schema_version=output_schema_version,
+            grounding_policy_version=grounding_policy_version, budget_policy=budget_policy,
+            batch_plan_version=batch_policy.plan_version, batch_plan_hash="0" * 64,
+            batch_hash=provisional_batch_hash, batch_ordinal=1, batch_count=1,
+            corpus_evidence_hash=candidate_packet.packet_hash, map_mode=True,
+            max_claims=batch_policy.max_claims, allowed_field_paths=list(_MAP_ALLOWED_FIELD_PATHS) if controlled else [],
+            context_profile=batch_policy.profile, tokenizer_identity=batch_policy.tokenizer_identity,
+        )
+        provider_adapter = OpenAICompatibleProductionLLMProvider.__new__(OpenAICompatibleProductionLLMProvider)
+        body = provider_adapter._build_request_body(request)
+        body_text = canonical_json_bytes(body).decode("utf-8")
+        projected = int(counter(body_text)) + batch_policy.chat_template_overhead
+        return projected, canonical_sha256(body)
+
+    try:
+        plan = build_evidence_batch_plan(
+            plan_fragments,
+            tokenizer=counter,
+            policy=batch_policy,
+            request_measure=measure_request,
+            budget_policy=budget_policy,
+            controlled=controlled,
+        )
+    except BatchPlanningError as exc:
+        raise R10_1AnalysisRejectedError(exc.code) from None
+    started = time.monotonic()
     batch_results: list[ProductionLLMAnalysisResult] = []
     for batch in plan.batches:
+        if (time.monotonic() - started) * 1000 >= batch_policy.execution_deadline_ms:
+            raise R10_1AnalysisRejectedError("evidence_batch_execution_timeout")
         batch_packet = _evidence_packet_from_documents(
             customer_id=customer_id, project_id=project_id,
             procurement_case_id=procurement_case_id, run_id=run_id,
@@ -466,9 +587,35 @@ def produce_r10_1_canonical_analysis(
             batch_plan_version=plan.plan_version, batch_plan_hash=plan.plan_hash,
             batch_hash=batch.batch_hash, batch_ordinal=batch.batch_ordinal,
             batch_count=len(plan.batches), corpus_evidence_hash=plan.corpus_evidence_hash,
+            map_mode=True, max_claims=batch_policy.max_claims,
+            allowed_field_paths=list(_MAP_ALLOWED_FIELD_PATHS) if controlled else [],
+            context_profile=batch_policy.profile, tokenizer_identity=plan.tokenizer_identity,
         )
-        batch_results.append(run_production_llm_analysis(request, provider))
+        result = run_production_llm_analysis(request, provider)
+        if result.status != AnalysisStatus.SUCCESS:
+            error_code = (result.sanitized_error_code if not controlled else None) or {
+                AnalysisStatus.TIMEOUT: "evidence_batch_execution_timeout",
+                AnalysisStatus.PROVIDER_UNAVAILABLE: "evidence_batch_provider_failed",
+                AnalysisStatus.INVALID_RESPONSE: "evidence_batch_invalid_response",
+                AnalysisStatus.BUDGET_EXCEEDED: "evidence_aggregation_budget_exceeded",
+                AnalysisStatus.VALIDATION_FAILED: "evidence_batch_grounding_failed",
+                AnalysisStatus.INSUFFICIENT_EVIDENCE: "evidence_batch_grounding_failed",
+            }.get(result.status, "evidence_batch_provider_failed")
+            raise R10_1AnalysisRejectedError(
+                error_code
+            )
+        batch_results.append(result)
     result = _merge_batch_results(results=batch_results, corpus_packet_hash=packet.packet_hash, plan=plan)
+    limits = budget_policy.limits
+    aggregate_budget = result.budget
+    if (
+        aggregate_budget.estimated_input_tokens > limits.max_input_tokens
+        or aggregate_budget.actual_input_tokens is not None and aggregate_budget.actual_input_tokens > limits.max_input_tokens
+        or aggregate_budget.actual_output_tokens is not None and aggregate_budget.actual_output_tokens > limits.max_output_tokens
+        or (aggregate_budget.actual_or_reconciled_cost or 0) > limits.max_estimated_cost
+        or (aggregate_budget.total_latency_ms or 0) > batch_policy.execution_deadline_ms
+    ):
+        raise R10_1AnalysisRejectedError("evidence_aggregation_budget_exceeded")
     requirements, risks, questions = _map_supported_claims(result)
 
     from src.modules.tender_operator_agent_demo.upload_service import (
@@ -554,6 +701,8 @@ def produce_r10_1_canonical_analysis(
         batch_plan_hash=plan.plan_hash,
         corpus_evidence_hash=plan.corpus_evidence_hash,
         batch_count=len(plan.batches),
+        tokenizer_identity=plan.tokenizer_identity,
+        context_profile=plan.policy.profile,
     )
 
 

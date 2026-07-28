@@ -52,6 +52,11 @@ def build_production_llm_request(
     batch_ordinal: int | None = None,
     batch_count: int | None = None,
     corpus_evidence_hash: str | None = None,
+    map_mode: bool = False,
+    max_claims: int | None = None,
+    allowed_field_paths: list[str] | None = None,
+    context_profile: str | None = None,
+    tokenizer_identity: str | None = None,
 ) -> ProductionLLMAnalysisRequest:
     identity = {
         "customer_id": evidence_packet.customer_id,
@@ -75,6 +80,11 @@ def build_production_llm_request(
         "batch_ordinal": batch_ordinal,
         "batch_count": batch_count,
         "corpus_evidence_hash": corpus_evidence_hash,
+        "map_mode": map_mode,
+        "max_claims": max_claims,
+        "allowed_field_paths": allowed_field_paths or [],
+        "context_profile": context_profile,
+        "tokenizer_identity": tokenizer_identity,
     }
     return ProductionLLMAnalysisRequest(
         request_id=canonical_sha256(identity),
@@ -98,6 +108,11 @@ def build_production_llm_request(
         batch_ordinal=batch_ordinal,
         batch_count=batch_count,
         corpus_evidence_hash=corpus_evidence_hash,
+        map_mode=map_mode,
+        max_claims=max_claims,
+        allowed_field_paths=allowed_field_paths or [],
+        context_profile=context_profile,
+        tokenizer_identity=tokenizer_identity,
     )
 
 
@@ -142,6 +157,9 @@ def _failure_result(
         batch_ordinal=request.batch_ordinal,
         batch_count=request.batch_count,
         corpus_evidence_hash=request.corpus_evidence_hash,
+        map_empty=False,
+        tokenizer_identity=request.tokenizer_identity,
+        context_profile=request.context_profile,
     )
 
 
@@ -277,6 +295,25 @@ def run_production_llm_analysis(
             limitation="Provider response did not satisfy the versioned output schema.",
         )
 
+    if request.max_claims is not None and len(response.claims) > request.max_claims:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.INVALID_RESPONSE,
+            budget=preflight,
+            error_code="evidence_batch_output_budget_exceeded",
+            limitation="Provider returned more claims than the approved batch contract allows.",
+        )
+    if request.allowed_field_paths and any(
+        claim.field_path not in request.allowed_field_paths for claim in response.claims
+    ):
+        return _failure_result(
+            request,
+            status=AnalysisStatus.VALIDATION_FAILED,
+            budget=preflight,
+            error_code="evidence_batch_grounding_failed",
+            limitation="Provider returned a field path outside the approved map contract.",
+        )
+
     runtime_budget = reconcile_runtime_budget(request, response, preflight)
     grounded = validate_provider_claims(request.evidence_packet, response.claims)
     accepted = [claim for claim in grounded if claim.support_status == SupportStatus.SUPPORTED]
@@ -287,6 +324,9 @@ def run_production_llm_analysis(
     if runtime_budget.status == BudgetStatus.EXCEEDED:
         status = AnalysisStatus.BUDGET_EXCEEDED
         limitations.append("Runtime token, latency, retry or cost budget was exceeded.")
+    elif not grounded and request.map_mode:
+        status = AnalysisStatus.SUCCESS
+        limitations.append("map_batch_empty; absence in this batch is not a corpus-wide negative conclusion.")
     elif not grounded:
         status = AnalysisStatus.INSUFFICIENT_EVIDENCE
         limitations.append("Provider returned no claims.")
@@ -332,4 +372,7 @@ def run_production_llm_analysis(
         batch_ordinal=request.batch_ordinal,
         batch_count=request.batch_count,
         corpus_evidence_hash=request.corpus_evidence_hash,
+        map_empty=request.map_mode and not grounded,
+        tokenizer_identity=request.tokenizer_identity,
+        context_profile=request.context_profile,
     )
