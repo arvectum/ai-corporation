@@ -26,7 +26,10 @@ def _repo_and_config(tmp_path):
 
 
 def test_chunk_text_creates_overlapping_chunks():
-    text = ("Требования к составу заявки и условиям участия. " * 20).strip()
+    text = " ".join(
+        f"Раздел {index} содержит уникальные требования к заявке."
+        for index in range(40)
+    )
     chunks = chunk_text(
         text,
         ChunkingConfig(chunk_size_chars=180, overlap_chars=30, min_chunk_chars=50),
