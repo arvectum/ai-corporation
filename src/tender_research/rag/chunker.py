@@ -39,6 +39,26 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+def _deduplicate_and_reindex(drafts: list[ChunkDraft]) -> list[ChunkDraft]:
+    unique: list[ChunkDraft] = []
+    seen_hashes: set[str] = set()
+    for draft in drafts:
+        if draft.text_hash in seen_hashes:
+            continue
+        seen_hashes.add(draft.text_hash)
+        unique.append(
+            ChunkDraft(
+                chunk_index=len(unique),
+                text=draft.text,
+                text_hash=draft.text_hash,
+                char_start=draft.char_start,
+                char_end=draft.char_end,
+                token_estimate=draft.token_estimate,
+            )
+        )
+    return unique
+
+
 def chunk_text(text: str, config: ChunkingConfig) -> list[ChunkDraft]:
     cleaned = normalize_text(text)
     if len(cleaned) < config.min_chunk_chars:
@@ -82,4 +102,4 @@ def chunk_text(text: str, config: ChunkingConfig) -> list[ChunkDraft]:
             next_start += 1
         start = next_start
 
-    return drafts
+    return _deduplicate_and_reindex(drafts)
