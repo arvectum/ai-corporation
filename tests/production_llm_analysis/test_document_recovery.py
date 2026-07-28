@@ -340,6 +340,98 @@ def test_build_chunks_requires_apply(tmp_path: Path) -> None:
         recover_procurement_documents(request)
 
 
+def test_chunks_only_report_does_not_duplicate_backup_created(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from src.modules.production_llm_analysis import document_recovery as recovery
+
+    backup_dir = tmp_path / "backup"
+    backup_dir.mkdir()
+    backup = backup_dir / "documents.json"
+    backup.write_text("{}", encoding="utf-8")
+
+    class FakeSession:
+        def __init__(self):
+            self.commit_calls = 0
+            self.rollback_calls = 0
+
+        def execute(self, _statement):
+            return self
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return []
+
+        def __iter__(self):
+            return iter(())
+
+        def commit(self):
+            self.commit_calls += 1
+
+        def rollback(self):
+            self.rollback_calls += 1
+
+    class FakeIndexer:
+        def __init__(self, _repo, _config):
+            self.build_calls = 0
+
+        def build_for_tender(self, _tender_id, *, commit):
+            assert commit is False
+            self.build_calls += 1
+
+    session = FakeSession()
+    indexer = FakeIndexer(None, None)
+    monkeypatch.setattr(recovery, "_safe_backup_dir", lambda *args, **kwargs: backup_dir)
+    monkeypatch.setattr(recovery, "_backup_documents", lambda *args, **kwargs: backup)
+    monkeypatch.setattr(
+        recovery,
+        "_chunk_snapshot",
+        lambda _chunks, _documents, _tender_id: (
+            True,
+            {
+                "chunk_count": 1266,
+                "nonempty_chunk_count": 1266,
+                "token_estimate": 93874,
+            },
+            [("chunk", 0)],
+        ),
+    )
+
+    report = recovery._run_chunks_only(
+        DocumentRecoveryRequest(
+            "registry",
+            tmp_path / "env",
+            tmp_path / "data",
+            backup_dir,
+            apply=True,
+            build_chunks=True,
+        ),
+        session,
+        type("Tender", (), {"id": "tender-id"})(),
+        [],
+        [],
+        backup_dir,
+        tmp_path / "data",
+        None,
+        "097",
+        lambda _repo, _config: indexer,
+        None,
+    )
+
+    assert report["final_status"] == "DOCUMENTS_RESTORED_AND_CHUNKS_BUILT"
+    assert report["classification"] == "DOCUMENTS_RESTORED_AND_CHUNKS_BUILT"
+    assert report["backup_created"] is True
+    assert report["chunk_count_before"] == 0
+    assert report["chunk_count_after_first_build"] == 1266
+    assert report["chunk_count_after_second_build"] == 1266
+    assert report["database_mutation_performed"] is True
+    assert session.commit_calls == 1
+    assert session.rollback_calls == 0
+    assert indexer.build_calls == 2
+
+
 def test_recovery_dry_run_executes_extraction_without_persistent_mutation(
     tmp_path: Path, monkeypatch
 ) -> None:

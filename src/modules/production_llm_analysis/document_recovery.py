@@ -1377,19 +1377,22 @@ def _run_chunks_only(
         if not valid2 or metrics != metrics2 or ordered != ordered2:
             raise RuntimeError("chunk_idempotency_failed")
         session.commit()
-        return _report(
-            **base,
-            backup_created=backup.exists(),
-            chunk_count_before=len(chunks),
-            chunk_count_after_first_build=metrics["chunk_count"],
-            chunk_count_after_second_build=metrics2["chunk_count"],
-            nonempty_chunk_count=metrics2["nonempty_chunk_count"],
-            token_estimate=metrics2["token_estimate"],
-            chunk_hashes_stable=True,
-            database_mutation_performed=True,
-            classification="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
-            final_status="DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+        report_payload = dict(base)
+        report_payload.update(
+            {
+                "backup_created": backup.exists(),
+                "chunk_count_before": len(chunks),
+                "chunk_count_after_first_build": metrics["chunk_count"],
+                "chunk_count_after_second_build": metrics2["chunk_count"],
+                "nonempty_chunk_count": metrics2["nonempty_chunk_count"],
+                "token_estimate": metrics2["token_estimate"],
+                "chunk_hashes_stable": True,
+                "database_mutation_performed": True,
+                "classification": "DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+                "final_status": "DOCUMENTS_RESTORED_AND_CHUNKS_BUILT",
+            }
         )
+        return _report(**report_payload)
     except (OSError, RuntimeError, ValueError, SQLAlchemyError) as exc:
         session.rollback()
         return _report(

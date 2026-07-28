@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +16,7 @@ from src.modules.production_llm_analysis.controlled_preflight import (
 )
 from src.shared.config.settings import Settings
 
-REQUIRED_ALEMBIC_HEAD = "096_add_r8_canonical_snapshot_binding"
+MINIMUM_REQUIRED_ALEMBIC_REVISION = "096_add_r8_canonical_snapshot_binding"
 REQUIRED_RUN_COLUMNS = frozenset(
     {
         "customer_id",
@@ -24,6 +26,89 @@ REQUIRED_RUN_COLUMNS = frozenset(
         "artifact_key",
     }
 )
+
+
+def _repository_script_directory() -> ScriptDirectory:
+    config = AlembicConfig(str(Path(__file__).resolve().parents[3] / "alembic.ini"))
+    return ScriptDirectory.from_config(config)
+
+
+def _alembic_schema_state(revisions: list[str]) -> dict[str, Any]:
+    heads: tuple[str, ...] = ()
+    repository_head: str | None = None
+    current_revision = revisions[0] if len(revisions) == 1 else None
+    revision_known = False
+    minimum_present = False
+    minimum_is_ancestor = False
+
+    try:
+        script = _repository_script_directory()
+        heads = tuple(script.get_heads())
+        repository_head = heads[0] if len(heads) == 1 else None
+    except Exception:  # noqa: BLE001
+        script = None
+
+    if script is not None:
+        try:
+            minimum_present = (
+                script.get_revision(MINIMUM_REQUIRED_ALEMBIC_REVISION) is not None
+            )
+        except Exception:  # noqa: BLE001
+            minimum_present = False
+
+        try:
+            cursor = (
+                script.get_revision(current_revision)
+                if current_revision is not None
+                else None
+            )
+        except Exception:  # noqa: BLE001
+            cursor = None
+        revision_known = cursor is not None
+
+        if cursor is not None and minimum_present:
+            seen: set[str] = set()
+            while cursor.revision != MINIMUM_REQUIRED_ALEMBIC_REVISION:
+                if cursor.revision in seen:
+                    break
+                seen.add(cursor.revision)
+                down_revision = cursor.down_revision
+                if not isinstance(down_revision, str):
+                    break
+                try:
+                    cursor = script.get_revision(down_revision)
+                except Exception:  # noqa: BLE001
+                    cursor = None
+                if cursor is None:
+                    break
+            minimum_is_ancestor = bool(
+                cursor is not None
+                and cursor.revision == MINIMUM_REQUIRED_ALEMBIC_REVISION
+            )
+
+    database_at_repository_head = bool(
+        repository_head is not None and current_revision == repository_head
+    )
+    ready = bool(
+        len(heads) == 1
+        and len(revisions) == 1
+        and repository_head is not None
+        and revision_known
+        and minimum_present
+        and minimum_is_ancestor
+        and database_at_repository_head
+    )
+    return {
+        "repository_heads": list(heads),
+        "repository_head": repository_head,
+        "current_revision": current_revision,
+        "revision_known": revision_known,
+        "minimum_required_revision": MINIMUM_REQUIRED_ALEMBIC_REVISION,
+        "minimum_present": minimum_present,
+        "minimum_is_ancestor": minimum_is_ancestor,
+        "database_at_repository_head": database_at_repository_head,
+        "ready": ready,
+    }
 
 
 def _sanitized_database_target(database_url: str) -> dict[str, Any]:
@@ -76,12 +161,21 @@ def collect_database_preflight(
     *,
     database_url: str,
 ) -> dict[str, Any]:
+    initial_schema = _alembic_schema_state([])
     report: dict[str, Any] = {
         **_sanitized_database_target(database_url),
         "connection_ready": False,
         "error_code": None,
         "alembic_revisions": [],
-        "required_alembic_head": REQUIRED_ALEMBIC_HEAD,
+        "required_alembic_head": initial_schema["repository_head"],
+        "alembic_repository_heads": initial_schema["repository_heads"],
+        "minimum_required_alembic_revision": (
+            initial_schema["minimum_required_revision"]
+        ),
+        "alembic_revision_known": False,
+        "alembic_minimum_present": initial_schema["minimum_present"],
+        "alembic_minimum_is_ancestor": False,
+        "alembic_database_at_repository_head": False,
         "alembic_head_ready": False,
         "tender_analysis_runs_present": False,
         "tender_analysis_run_columns": [],
@@ -114,12 +208,22 @@ def collect_database_preflight(
                 else []
             )
             columns_ready = REQUIRED_RUN_COLUMNS.issubset(run_columns)
-            head_ready = revisions == [REQUIRED_ALEMBIC_HEAD]
+            schema = _alembic_schema_state(revisions)
 
             reasons: list[str] = []
+            if len(schema["repository_heads"]) != 1:
+                reasons.append("alembic_repository_head_unresolved")
             if not revisions:
                 reasons.append("alembic_revision_missing")
-            elif not head_ready:
+            elif len(revisions) != 1:
+                reasons.append("alembic_multiple_revisions")
+            elif not schema["revision_known"]:
+                reasons.append("alembic_revision_unknown")
+            elif not schema["minimum_present"]:
+                reasons.append("alembic_minimum_revision_missing")
+            elif not schema["minimum_is_ancestor"]:
+                reasons.append("alembic_minimum_revision_not_ancestor")
+            elif not schema["database_at_repository_head"]:
                 reasons.append("alembic_head_mismatch")
             if not run_table_present:
                 reasons.append("tender_analysis_runs_missing")
@@ -130,7 +234,18 @@ def collect_database_preflight(
                 {
                     "connection_ready": True,
                     "alembic_revisions": revisions,
-                    "alembic_head_ready": head_ready,
+                    "required_alembic_head": schema["repository_head"],
+                    "alembic_repository_heads": schema["repository_heads"],
+                    "minimum_required_alembic_revision": (
+                        schema["minimum_required_revision"]
+                    ),
+                    "alembic_revision_known": schema["revision_known"],
+                    "alembic_minimum_present": schema["minimum_present"],
+                    "alembic_minimum_is_ancestor": schema["minimum_is_ancestor"],
+                    "alembic_database_at_repository_head": (
+                        schema["database_at_repository_head"]
+                    ),
+                    "alembic_head_ready": schema["ready"],
                     "tender_analysis_runs_present": run_table_present,
                     "tender_analysis_run_columns": run_columns,
                     "required_columns_present": columns_ready,
@@ -171,7 +286,7 @@ def collect_runtime_controlled_provider_preflight(
         )
         provider = resolve_provider_preflight(settings)
         base_report: dict[str, Any] = {
-            "preflight_version": "r10.1-controlled-provider-preflight-v2",
+            "preflight_version": "r10.1-controlled-provider-preflight-v3",
             "database": database,
             "configuration": provider.as_dict(),
             "eligible_run_count": 0,
