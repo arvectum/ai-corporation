@@ -196,6 +196,12 @@ class OpenAICompatibleProductionLLMProvider:
             "procurement_case_id": request.procurement_case_id,
             "registry_number": request.registry_number,
             "evidence_packet_hash": request.evidence_packet.packet_hash,
+            "batch_plan_version": request.batch_plan_version,
+            "batch_plan_hash": request.batch_plan_hash,
+            "batch_hash": request.batch_hash,
+            "batch_ordinal": request.batch_ordinal,
+            "batch_count": request.batch_count,
+            "corpus_evidence_hash": request.corpus_evidence_hash,
             "evidence_fragments": evidence,
             "output_contract": {
                 "type": "object",

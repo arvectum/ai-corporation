@@ -4,6 +4,12 @@ Status: `RUNNER_READY_LIVE_EVIDENCE_NOT_EXECUTED`.
 
 This runbook is only for one explicitly approved provider, model, pricing policy and customer-owned procurement run. It is not a general rollout procedure.
 
+R10.1 uses deterministic map batches. Persisted source chunks are the atomic
+units: a chunk is never split, batches are packed in stable source order, and
+each batch carries the plan hash, batch hash, ordinal and corpus evidence hash.
+The approved exact tokenizer must be configured for the provider/model before
+any live execution; character estimates are not an acceptance basis.
+
 ## Safety boundary
 
 - Run only on the operator-controlled host that already contains the approved database and extracted procurement documents.
@@ -77,6 +83,17 @@ Record outside the repository:
 The runner independently re-checks these identities and refuses a non-customer-owned or mismatched run.
 
 ## 4. Execute
+
+Before execution, record the approved tokenizer identity and context budget in
+the non-secret policy/approval record. The runner executes batches sequentially
+and merges claims by stable `(claim_id, field_path, canonical claim hash)` order.
+Any missing, duplicate or oversized chunk fails closed; no partial target is
+published.
+
+Set `ARV003_EXACT_TOKENIZER_COMMAND` to the locally approved tokenizer adapter
+(for example, a wrapper around the pinned `llama-tokenize` build). The command
+must accept one text argument and print one integer token count. The controlled
+runner refuses to start when this variable is absent.
 
 ```bash
 python scripts/r10_1/run_controlled_provider_evidence.py \

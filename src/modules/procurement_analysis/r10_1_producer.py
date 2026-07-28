@@ -24,6 +24,11 @@ from src.modules.procurement_analysis.frozen_producer import (
     produce_frozen_canonical_analysis,
 )
 from src.modules.production_llm_analysis.evidence import build_evidence_packet
+from src.modules.production_llm_analysis.batching import (
+    BatchPolicy,
+    EvidenceBatchPlan,
+    build_evidence_batch_plan,
+)
 from src.modules.production_llm_analysis.schemas import (
     AnalysisStatus,
     BudgetPolicy,
@@ -37,6 +42,7 @@ from src.modules.production_llm_analysis.service import (
     build_production_llm_request,
     run_production_llm_analysis,
 )
+from src.modules.production_llm_analysis.evidence import canonical_sha256
 
 
 class CanonicalAnalysisMode(StrEnum):
@@ -72,6 +78,9 @@ class R10_1CanonicalProduction:
     production_model_hash: str
     report_model_hash: str
     llm_result: ProductionLLMAnalysisResult
+    batch_plan_hash: str | None = None
+    corpus_evidence_hash: str | None = None
+    batch_count: int = 1
 
 
 _REQUIREMENT_PATHS = {
@@ -134,8 +143,15 @@ def _evidence_packet_from_documents(
     run_id: str,
     registry_number: str,
     documents: list[Any],
+    evidence_fragments: list[EvidenceFragmentInput] | None = None,
 ):
-    fragments: list[EvidenceFragmentInput] = []
+    fragments: list[EvidenceFragmentInput] = list(evidence_fragments or [])
+    if fragments:
+        return build_evidence_packet(
+            customer_id=customer_id, project_id=project_id,
+            procurement_case_id=procurement_case_id, run_id=run_id,
+            registry_number=registry_number, fragments=fragments,
+        )
     seen_document_ids: set[str] = set()
     for document in sorted(
         documents,
@@ -309,7 +325,61 @@ def _runtime_provenance(result: ProductionLLMAnalysisResult) -> dict[str, Any]:
         "retry_count": result.retry_count,
         "raw_response_sha256": result.raw_response_sha256,
         "raw_response_stored": False,
+        "batch_plan_version": result.batch_plan_version if hasattr(result, "batch_plan_version") else None,
+        "batch_plan_hash": result.batch_plan_hash if hasattr(result, "batch_plan_hash") else None,
+        "batch_hash": result.batch_hash if hasattr(result, "batch_hash") else None,
+        "batch_ordinal": result.batch_ordinal if hasattr(result, "batch_ordinal") else None,
+        "batch_count": result.batch_count if hasattr(result, "batch_count") else None,
+        "corpus_evidence_hash": result.corpus_evidence_hash if hasattr(result, "corpus_evidence_hash") else None,
     }
+
+
+def _merge_batch_results(
+    *,
+    results: list[ProductionLLMAnalysisResult],
+    corpus_packet_hash: str,
+    plan: EvidenceBatchPlan,
+) -> ProductionLLMAnalysisResult:
+    """Merge map outputs without provider-order or hash-order ambiguity."""
+    if not results:
+        raise R10_1AnalysisRejectedError("no_batch_results")
+    if any(result.status != AnalysisStatus.SUCCESS for result in results):
+        failed = next(result for result in results if result.status != AnalysisStatus.SUCCESS)
+        return failed.model_copy(update={
+            "evidence_packet_hash": corpus_packet_hash,
+            "limitations": [*failed.limitations, "batch_execution_incomplete"],
+        })
+    accepted = sorted(
+        (claim for result in results for claim in result.accepted_claims),
+        key=lambda claim: (claim.claim_id, claim.field_path, canonical_sha256(claim.model_dump(mode="json"))),
+    )
+    rejected = sorted(
+        (claim for result in results for claim in result.rejected_claims),
+        key=lambda claim: (claim.claim_id, claim.field_path, canonical_sha256(claim.model_dump(mode="json"))),
+    )
+    claim_ids = [claim.claim_id for claim in [*accepted, *rejected]]
+    if len(claim_ids) != len(set(claim_ids)):
+        raise R10_1AnalysisRejectedError("duplicate_claim_id_across_batches")
+    first = results[0]
+    merged = first.model_copy(update={
+        "request_id": canonical_sha256({
+            "plan_hash": plan.plan_hash,
+            "corpus_evidence_hash": plan.corpus_evidence_hash,
+            "batch_request_ids": [result.request_id for result in results],
+        }),
+        "evidence_packet_hash": corpus_packet_hash,
+        "accepted_claims": accepted,
+        "rejected_claims": rejected,
+        "limitations": sorted({limitation for result in results for limitation in result.limitations}),
+        "retry_count": sum(result.retry_count for result in results),
+        "batch_plan_version": plan.plan_version,
+        "batch_plan_hash": plan.plan_hash,
+        "batch_count": len(plan.batches),
+        "corpus_evidence_hash": plan.corpus_evidence_hash,
+    })
+    return merged.model_copy(update={
+        "validated_result_hash": canonical_sha256(merged.model_dump(mode="json", exclude={"validated_result_hash"}))
+    })
 
 
 def produce_r10_1_canonical_analysis(
@@ -327,11 +397,14 @@ def produce_r10_1_canonical_analysis(
     provider_name: str,
     model: str,
     prompt_id: str = "procurement-analysis",
-    prompt_version: str = "r10.1-v1",
+    prompt_version: str = "r10.1-batched-v1",
     output_schema_id: str = "production-llm-analysis",
     output_schema_version: str = "v1",
     grounding_policy_version: str = "grounding-v1",
     source_analysis_run_id: str | None = None,
+    evidence_chunks: list[dict[str, Any]] | None = None,
+    token_counter: Any | None = None,
+    batch_policy: BatchPolicy | None = None,
 ) -> R10_1CanonicalProduction:
     """Produce verified canonical bytes from fully grounded, allow-listed claims."""
     _owned_identity(
@@ -342,6 +415,13 @@ def produce_r10_1_canonical_analysis(
         run_id=run_id,
         registry_number=registry_number,
     )
+    fragments = [EvidenceFragmentInput.model_validate(item) for item in (evidence_chunks or [])]
+    if not fragments:
+        for document in documents:
+            fragments.extend(
+                EvidenceFragmentInput.model_validate(item)
+                for item in (getattr(document, "evidence_chunks", None) or [])
+            )
     packet = _evidence_packet_from_documents(
         customer_id=customer_id,
         project_id=project_id,
@@ -349,19 +429,46 @@ def produce_r10_1_canonical_analysis(
         run_id=run_id,
         registry_number=registry_number,
         documents=documents,
+        evidence_fragments=fragments or None,
     )
-    request = build_production_llm_request(
-        evidence_packet=packet,
-        provider=provider_name,
-        model=model,
-        prompt_id=prompt_id,
-        prompt_version=prompt_version,
-        output_schema_id=output_schema_id,
-        output_schema_version=output_schema_version,
-        grounding_policy_version=grounding_policy_version,
-        budget_policy=budget_policy,
+    # Tests may inject a deterministic counter. Production must inject the
+    # approved llama.cpp/Gemma tokenizer; the fallback is only for legacy small
+    # offline callers and is never sufficient for a controlled live run.
+    counter = token_counter or (lambda text: max(1, len(text.encode("utf-8")) // 4))
+    plan_fragments = [
+        EvidenceFragmentInput(
+            document_id=fragment.document_id,
+            document_name=fragment.document_name,
+            chunk_id=fragment.chunk_id,
+            locator=fragment.locator,
+            text=fragment.text,
+        )
+        for fragment in packet.fragments
+    ]
+    plan = build_evidence_batch_plan(
+        plan_fragments,
+        tokenizer=counter,
+        policy=batch_policy or BatchPolicy(),
     )
-    result = run_production_llm_analysis(request, provider)
+    batch_results: list[ProductionLLMAnalysisResult] = []
+    for batch in plan.batches:
+        batch_packet = _evidence_packet_from_documents(
+            customer_id=customer_id, project_id=project_id,
+            procurement_case_id=procurement_case_id, run_id=run_id,
+            registry_number=registry_number, documents=documents,
+            evidence_fragments=list(batch.fragments),
+        )
+        request = build_production_llm_request(
+            evidence_packet=batch_packet, provider=provider_name, model=model,
+            prompt_id=prompt_id, prompt_version=prompt_version,
+            output_schema_id=output_schema_id, output_schema_version=output_schema_version,
+            grounding_policy_version=grounding_policy_version, budget_policy=budget_policy,
+            batch_plan_version=plan.plan_version, batch_plan_hash=plan.plan_hash,
+            batch_hash=batch.batch_hash, batch_ordinal=batch.batch_ordinal,
+            batch_count=len(plan.batches), corpus_evidence_hash=plan.corpus_evidence_hash,
+        )
+        batch_results.append(run_production_llm_analysis(request, provider))
+    result = _merge_batch_results(results=batch_results, corpus_packet_hash=packet.packet_hash, plan=plan)
     requirements, risks, questions = _map_supported_claims(result)
 
     from src.modules.tender_operator_agent_demo.upload_service import (
@@ -444,6 +551,9 @@ def produce_r10_1_canonical_analysis(
         production_model_hash=verified.production_model_hash,
         report_model_hash=verified.report_model_hash,
         llm_result=result,
+        batch_plan_hash=plan.plan_hash,
+        corpus_evidence_hash=plan.corpus_evidence_hash,
+        batch_count=len(plan.batches),
     )
 
 

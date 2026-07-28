@@ -165,6 +165,12 @@ class ProductionLLMAnalysisRequest(ContractModel):
     temperature: float = Field(default=0.0, ge=0.0, le=0.0)
     evidence_packet: EvidencePacket
     budget_policy: BudgetPolicy
+    batch_plan_version: str | None = None
+    batch_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_ordinal: int | None = Field(default=None, ge=1)
+    batch_count: int | None = Field(default=None, ge=1)
+    corpus_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ProviderAnalysisResponse(ContractModel):
@@ -200,3 +206,9 @@ class ProductionLLMAnalysisResult(ContractModel):
     sanitized_error_code: str | None = None
     raw_response_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     validated_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    batch_plan_version: str | None = None
+    batch_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_ordinal: int | None = Field(default=None, ge=1)
+    batch_count: int | None = Field(default=None, ge=1)
+    corpus_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")

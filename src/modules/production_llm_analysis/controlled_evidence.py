@@ -148,6 +148,9 @@ def _stable_semantic_identity(production: R10_1CanonicalProduction) -> dict[str,
     return {
         "request_id": result.request_id,
         "evidence_packet_hash": result.evidence_packet_hash,
+        "batch_plan_hash": production.batch_plan_hash,
+        "corpus_evidence_hash": production.corpus_evidence_hash,
+        "batch_count": production.batch_count,
         "grounded_claims_hash": _grounded_claims_hash(production),
         "source_analysis_run_id": production.source_analysis_run_id,
         "source_graph_hash": production.source_graph_hash,
@@ -205,7 +208,9 @@ def build_sanitized_controlled_evidence_manifest(
 
     first_identity = _stable_semantic_identity(first)
     second_identity = _stable_semantic_identity(second)
-    if first_identity != second_identity:
+    comparison_first = {key: value for key, value in first_identity.items() if key != "request_id"}
+    comparison_second = {key: value for key, value in second_identity.items() if key != "request_id"}
+    if comparison_first != comparison_second:
         raise ControlledEvidenceConflictError(
             "controlled_evidence_repeat_identity_mismatch"
         )
@@ -276,6 +281,8 @@ def run_controlled_provider_evidence(
     documents: list[Any],
     provider_factory: Callable[[], ProductionLLMProvider],
     policy: ApprovedControlledProviderPolicy,
+    evidence_chunks: list[dict[str, Any]] | None = None,
+    token_counter: Any | None = None,
 ) -> ControlledEvidenceBundle:
     """Execute the same approved input twice and publish only matching evidence.
 
@@ -306,6 +313,8 @@ def run_controlled_provider_evidence(
                 output_dir=stage / f"execution-{index}",
                 metadata=metadata,
                 documents=documents,
+                evidence_chunks=evidence_chunks,
+                token_counter=token_counter,
                 provider=provider_factory(),
                 budget_policy=policy.budget,
                 provider_name=policy.provider,

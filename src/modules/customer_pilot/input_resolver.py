@@ -89,6 +89,16 @@ def resolve_customer_run_inputs(
             document_identity = sha256(
                 (f"{name}\0{text}").encode("utf-8")
             ).hexdigest()
+        evidence_chunks = [
+            {
+                "document_id": document_identity,
+                "document_name": name,
+                "chunk_id": f"{document_identity}:chunk:{chunk.chunk_index}",
+                "locator": {"role": detect_document_role(name), "chunk_index": chunk.chunk_index},
+                "text": chunk.text,
+            }
+            for chunk in chunks if chunk.text
+        ]
         documents.append(
             AnalyzedDocument(
                 name,
@@ -100,6 +110,7 @@ def resolve_customer_run_inputs(
                 "persisted_procurement_intake",
                 document_identity,
                 None,
+                evidence_chunks,
             )
         )
         identities.append(document_identity)

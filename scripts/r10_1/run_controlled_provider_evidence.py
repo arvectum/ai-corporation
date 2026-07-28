@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -26,6 +27,7 @@ from src.modules.production_llm_analysis.controlled_evidence import (
     load_approved_provider_policy,
     run_controlled_provider_evidence,
 )
+from src.modules.production_llm_analysis.batching import CommandTokenCounter
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
     OpenAICompatibleTransportConfig,
@@ -230,6 +232,12 @@ def main() -> int:
             run_id=run.id,
             metadata=metadata,
             documents=inputs.documents,
+            evidence_chunks=[chunk for document in inputs.documents for chunk in (document.evidence_chunks or [])],
+            token_counter=CommandTokenCounter(os.environ["ARV003_EXACT_TOKENIZER_COMMAND"])
+            if os.environ.get("ARV003_EXACT_TOKENIZER_COMMAND")
+            else (_ for _ in ()).throw(
+                ControlledRunnerConfigurationError("exact_tokenizer_not_configured")
+            ),
             provider_factory=provider_factory,
             policy=policy,
         )

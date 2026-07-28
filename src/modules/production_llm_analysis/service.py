@@ -46,6 +46,12 @@ def build_production_llm_request(
     output_schema_version: str,
     grounding_policy_version: str,
     budget_policy: Any,
+    batch_plan_version: str | None = None,
+    batch_plan_hash: str | None = None,
+    batch_hash: str | None = None,
+    batch_ordinal: int | None = None,
+    batch_count: int | None = None,
+    corpus_evidence_hash: str | None = None,
 ) -> ProductionLLMAnalysisRequest:
     identity = {
         "customer_id": evidence_packet.customer_id,
@@ -63,6 +69,12 @@ def build_production_llm_request(
         "grounding_policy_version": grounding_policy_version,
         "temperature": 0.0,
         "budget_policy": budget_policy.model_dump(mode="json") if hasattr(budget_policy, "model_dump") else budget_policy,
+        "batch_plan_version": batch_plan_version,
+        "batch_plan_hash": batch_plan_hash,
+        "batch_hash": batch_hash,
+        "batch_ordinal": batch_ordinal,
+        "batch_count": batch_count,
+        "corpus_evidence_hash": corpus_evidence_hash,
     }
     return ProductionLLMAnalysisRequest(
         request_id=canonical_sha256(identity),
@@ -80,6 +92,12 @@ def build_production_llm_request(
         grounding_policy_version=grounding_policy_version,
         evidence_packet=evidence_packet,
         budget_policy=budget_policy,
+        batch_plan_version=batch_plan_version,
+        batch_plan_hash=batch_plan_hash,
+        batch_hash=batch_hash,
+        batch_ordinal=batch_ordinal,
+        batch_count=batch_count,
+        corpus_evidence_hash=corpus_evidence_hash,
     )
 
 
@@ -118,6 +136,12 @@ def _failure_result(
         retry_count=retry_count,
         sanitized_error_code=error_code,
         raw_response_sha256=raw_response_sha256,
+        batch_plan_version=request.batch_plan_version,
+        batch_plan_hash=request.batch_plan_hash,
+        batch_hash=request.batch_hash,
+        batch_ordinal=request.batch_ordinal,
+        batch_count=request.batch_count,
+        corpus_evidence_hash=request.corpus_evidence_hash,
     )
 
 
@@ -302,4 +326,10 @@ def run_production_llm_analysis(
         retry_count=response.retry_count,
         sanitized_error_code=error_code,
         raw_response_sha256=response.raw_response_sha256,
+        batch_plan_version=request.batch_plan_version,
+        batch_plan_hash=request.batch_plan_hash,
+        batch_hash=request.batch_hash,
+        batch_ordinal=request.batch_ordinal,
+        batch_count=request.batch_count,
+        corpus_evidence_hash=request.corpus_evidence_hash,
     )
