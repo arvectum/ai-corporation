@@ -93,3 +93,5 @@ def test_chunk_indexer_is_idempotent(tmp_path):
     assert first["chunks_created"] == len(chunks)
     assert second["chunks_created"] == 0
     assert second["chunks_skipped_existing"] >= len(chunks)
+    assert [chunk.chunk_index for chunk in chunks] == list(range(len(chunks)))
+    assert len({chunk.text_hash for chunk in chunks}) == len(chunks)
