@@ -18,6 +18,9 @@ from sqlalchemy import select
 
 from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
 from src.modules.customer_pilot.models import ProcurementCase
+from src.modules.procurement_analysis.r10_1_producer import (
+    R10_1CanonicalProductionError,
+)
 from src.modules.production_llm_analysis.controlled_evidence import (
     ControlledEvidenceError,
     load_approved_provider_policy,
@@ -35,6 +38,9 @@ from src.tender_research.models import ProcurementTender, TenderAnalysisRun
 
 class ControlledRunnerConfigurationError(RuntimeError):
     pass
+
+
+_FAILURE_CODE_PATTERN = re.compile(r"^[a-z0-9_.:-]{1,160}$")
 
 
 def _arguments() -> argparse.Namespace:
@@ -67,6 +73,19 @@ def _provider_secret_boundary(provider_name: str) -> tuple[str, str]:
 def _safe_segment(value: str) -> str:
     segment = re.sub(r"[^A-Za-z0-9_-]+", "-", value).strip("-")
     return segment[:80] or "model"
+
+
+def _sanitized_producer_failure(exc: R10_1CanonicalProductionError) -> str:
+    """Return only repository-owned diagnostic codes, never raw exception text."""
+
+    code = str(exc).strip().lower()
+    if _FAILURE_CODE_PATTERN.fullmatch(code):
+        return code
+    return "canonical_production_failed"
+
+
+def _controlled_failure_message(exc: R10_1CanonicalProductionError) -> str:
+    return f"controlled_provider_evidence_rejected:{_sanitized_producer_failure(exc)}"
 
 
 def _metadata(
@@ -234,6 +253,9 @@ def main() -> int:
         return 0
     except (ControlledEvidenceError, ControlledRunnerConfigurationError) as exc:
         print(str(exc), file=sys.stderr)
+        return 2
+    except R10_1CanonicalProductionError as exc:
+        print(_controlled_failure_message(exc), file=sys.stderr)
         return 2
     except Exception:
         print("controlled_provider_evidence_failed", file=sys.stderr)
