@@ -37,6 +37,20 @@ def test_chunk_text_creates_overlapping_chunks():
     assert chunks[0].token_estimate > 0
 
 
+def test_chunk_text_deduplicates_hashes_and_compacts_indexes():
+    repeated = "A" * 60
+    final = "B" * 60
+    chunks = chunk_text(
+        f"{repeated} {repeated} {final}",
+        ChunkingConfig(chunk_size_chars=60, overlap_chars=0, min_chunk_chars=10),
+    )
+
+    assert [chunk.text for chunk in chunks] == [repeated, final]
+    assert [chunk.chunk_index for chunk in chunks] == [0, 1]
+    assert len({chunk.text_hash for chunk in chunks}) == len(chunks)
+    assert chunks[1].char_start > chunks[0].char_end
+
+
 def test_chunk_indexer_skips_tiny_or_missing_text(tmp_path):
     repo, config = _repo_and_config(tmp_path)
     tender = repo.upsert_tender({"source": "eis", "external_id": "t-1", "title": "Tender"})
