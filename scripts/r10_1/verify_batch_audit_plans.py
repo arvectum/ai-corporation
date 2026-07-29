@@ -162,7 +162,9 @@ def main() -> int:
             run=run,
         ),
     }
-    if any(len(plan.fragment_ids) != len(evidence_fragments) for plan in plans.values()):
+    if any(
+        len(plan.fragment_ids) != len(evidence_fragments) for plan in plans.values()
+    ):
         raise SystemExit("evidence_batch_plan_coverage_mismatch")
     legacy_paths = {"32k": args.legacy_plan_32k, "64k": args.legacy_plan_64k}
     records = []
@@ -196,6 +198,16 @@ def main() -> int:
                 "plan_duration_ms": 0,
                 "tokenizer_invocations": 0,
                 "tokenizer_cache_hits": 0,
+                "tokenizer_mode": "unknown",
+                "tokenizer_subprocess_count": 0,
+                "tokenizer_request_duration_ms_total": 0,
+                "tokenizer_request_duration_ms_max": 0,
+                "adjustment_rounds_total": sum(
+                    batch.adjustment_rounds for batch in plan.batches
+                ),
+                "adjustment_rounds_max": max(
+                    (batch.adjustment_rounds for batch in plan.batches), default=0
+                ),
                 "maxrss": 0,
             }
         )
@@ -204,6 +216,16 @@ def main() -> int:
         "plan_duration_ms": duration_ms,
         "tokenizer_invocations": int(getattr(args.tokenizer, "invocations", 0)),
         "tokenizer_cache_hits": int(getattr(args.tokenizer, "cache_hits", 0)),
+        "tokenizer_mode": str(getattr(args.tokenizer, "tokenizer_mode", "command")),
+        "tokenizer_subprocess_count": int(
+            getattr(args.tokenizer, "subprocess_count", 0)
+        ),
+        "tokenizer_request_duration_ms_total": int(
+            getattr(args.tokenizer, "request_duration_ms_total", 0)
+        ),
+        "tokenizer_request_duration_ms_max": int(
+            getattr(args.tokenizer, "request_duration_ms_max", 0)
+        ),
         "maxrss": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss),
     }
     for record in records:
