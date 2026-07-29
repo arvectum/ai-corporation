@@ -49,3 +49,19 @@ def test_oversized_chunk_is_never_split():
         assert exc.code == "evidence_batch_oversized_chunk"
     else:
         raise AssertionError("oversized chunk was split or accepted")
+
+
+def test_approved_profiles_pin_runtime_overhead_and_deadline():
+    assert BatchPolicy.approved_32k(tokenizer_identity="pinned").chat_template_overhead == 32
+    assert BatchPolicy.approved_64k(tokenizer_identity="pinned").chat_template_overhead == 32
+    assert BatchPolicy.approved_32k(tokenizer_identity="pinned").execution_deadline_ms >= 7_200_000
+
+
+def test_command_token_counter_caches_exact_inputs():
+    from src.modules.production_llm_analysis.batching import CommandTokenCounter
+
+    counter = CommandTokenCounter("python -c 'print(\"Total number of tokens: 7\")'", identity="test")
+    assert counter("same") == 7
+    assert counter("same") == 7
+    assert counter.invocations == 1
+    assert counter.cache_hits == 1

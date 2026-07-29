@@ -226,7 +226,7 @@ class OpenAICompatibleProductionLLMProvider:
                 "max_claims": request.max_claims,
                 "allowed_field_paths": request.allowed_field_paths,
                 "context_profile": request.context_profile,
-                "evidence_budget": request.budget_policy.limits.max_input_tokens,
+                "evidence_budget": request.evidence_budget,
                 "output_reserve": request.budget_policy.limits.max_output_tokens,
                 "absence_is_not_corpus_negative": True,
             },

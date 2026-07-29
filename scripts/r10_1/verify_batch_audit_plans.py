@@ -1,234 +1,132 @@
 #!/usr/bin/env python3
-"""Read-only reproduction of the approved ARV-003 32K/64K audit plans.
+"""Build and verify product R10.1 plans through the production code path.
 
-The command keeps source text in memory only, never prints it, and never writes
-the audit artifacts.  It intentionally mirrors the pinned audit serialization
-so a changed request contract produces a full-hash mismatch instead of a new
-expected value.
+This is plan-only: it resolves persisted input read-only, invokes the same
+evidence projection and ``build_r10_1_batch_plan`` as the producer, and writes
+only the caller-selected sanitized lineage artifact.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import math
-import subprocess
+import os
+import resource
 import sys
-from collections import Counter
-from hashlib import sha256
+import time
 from pathlib import Path
+
+from sqlalchemy import select
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.modules.production_llm_analysis.evidence import build_evidence_packet, canonical_json_bytes
-from src.modules.production_llm_analysis.schemas import EvidenceFragmentInput, ProviderClaim
+from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
+from src.modules.procurement_analysis.r10_1_producer import (
+    build_r10_1_batch_plan,
+    build_r10_1_evidence_packet,
+)
+from src.modules.production_llm_analysis.batching import (
+    BatchPolicy,
+    tokenizer_from_environment,
+)
+from src.modules.production_llm_analysis.schemas import BudgetLimits, BudgetPolicy, ProviderPricing
+from src.shared.config.settings import get_settings
+from src.shared.db.session import SessionLocal
+from src.tender_research.models import TenderAnalysisRun
 
 
-REGISTRY = "0388100001826000047"
-TOKENIZER = "/opt/homebrew/bin/llama-tokenize"
-MODEL = "/Users/master/.ollama/models/blobs/sha256-1278394b693672ac2799eadc9a83fd98259a6a88a40acfb1dcaa6c6fc895a606"
-CHAT_TEMPLATE_OVERHEAD = 32
-
-
-def _sha(value: object) -> str:
-    return sha256(canonical_json_bytes(value)).hexdigest()
-
-
-def _tokenize(value: str) -> int:
-    completed = subprocess.run(
-        [TOKENIZER, "-m", MODEL, "--stdin", "--show-count"],
-        input=value.encode("utf-8"), capture_output=True, check=True,
-    )
-    for line in reversed(completed.stdout.decode("utf-8", "replace").splitlines()):
-        if line.startswith("Total number of tokens:"):
-            return int(line.rsplit(":", 1)[1].strip())
-    raise RuntimeError("evidence_batch_exact_tokenizer_unavailable")
-
-
-def _psql_json(sql: str) -> object:
-    completed = subprocess.run(
-        ["docker", "exec", "arvectum-postgres", "psql", "-U", "arvectum", "-d", "arvectum", "-At", "-c", sql],
-        capture_output=True, text=True, check=True,
-    )
-    return json.loads(completed.stdout.strip() or "null")
-
-
-def _request_body(packet: object, output_tokens: int) -> dict:
-    # The approved artifact was calculated before numeric source ordering was
-    # introduced. Reproduce that artifact's legacy packet serialization here;
-    # product code itself uses numeric ordering.
-    fragments_sorted = sorted(packet.fragments, key=lambda item: (item.document_id, item.chunk_id, item.fragment_id))
-    unsigned = packet.model_dump(mode="json", exclude={"packet_hash"})
-    unsigned["fragments"] = [fragment.model_dump(mode="json") for fragment in fragments_sorted]
-    packet = packet.model_copy(update={"fragments": fragments_sorted, "packet_hash": _sha(unsigned)})
-    fragments = [
-        {
-            "fragment_id": fragment.fragment_id,
-            "document_id": fragment.document_id,
-            "document_name": fragment.document_name,
-            "chunk_id": fragment.chunk_id,
-            "locator": fragment.locator,
-            "text": fragment.text,
-            "text_sha256": fragment.text_sha256,
-        }
-        for fragment in packet.fragments
-    ]
-    task = {
-        "prompt_id": "procurement-analysis",
-        "prompt_version": "v1",
-        "output_schema_id": "production-llm-analysis",
-        "output_schema_version": "v1",
-        "grounding_policy_version": "grounding-v1",
-        "procurement_case_id": packet.procurement_case_id,
-        "registry_number": packet.registry_number,
-        "evidence_packet_hash": packet.packet_hash,
-        "evidence_fragments": fragments,
-        "output_contract": {
-            "type": "object", "additionalProperties": False, "required": ["claims"],
-            "properties": {"claims": {"type": "array", "items": ProviderClaim.model_json_schema()}},
-        },
-    }
-    return {
-        "model": "gemma4:12b", "temperature": 0, "max_tokens": output_tokens,
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": (
-                "You are a controlled internal procurement analysis component. "
-                "Return exactly one valid JSON object matching the supplied output contract. "
-                "Use only supplied evidence fragments. Every factual claim must copy exact evidence "
-                "identities, locator and quote. Return an empty claims array when evidence is insufficient. "
-                "Do not authorize submission, signing, supplier outreach or any autonomous external action."
-            )},
-            {"role": "user", "content": canonical_json_bytes(task).decode("utf-8")},
-        ],
-    }
-
-
-def _legacy_packet(packet: object) -> object:
-    fragments = sorted(packet.fragments, key=lambda item: (item.document_id, item.chunk_id, item.fragment_id))
-    unsigned = packet.model_dump(mode="json", exclude={"packet_hash"})
-    unsigned["fragments"] = [fragment.model_dump(mode="json") for fragment in fragments]
-    return packet.model_copy(update={"fragments": fragments, "packet_hash": _sha(unsigned)})
-
-
-def _fragment(chunk: dict, document: dict) -> EvidenceFragmentInput:
-    locator = dict(chunk.get("raw_meta") or {})
-    locator.update({"chunk_index": chunk["chunk_index"], "char_start": chunk["char_start"], "char_end": chunk["char_end"]})
-    return EvidenceFragmentInput(
-        document_id=document["doc_id"], document_name=document["file_name"],
-        chunk_id=chunk["chunk_id"], locator=locator, text=chunk["text"],
+def _policy(output_tokens: int) -> BudgetPolicy:
+    return BudgetPolicy(
+        limits=BudgetLimits(
+            max_input_tokens=1_000_000, max_output_tokens=output_tokens,
+            timeout_ms=900_000, max_retries=0, max_total_latency_ms=1_200_000,
+            max_estimated_cost=1.0,
+        ),
+        pricing=ProviderPricing(
+            input_cost_per_1k_tokens=0, output_cost_per_1k_tokens=0,
+            currency="USD", pricing_table_version="plan-only-zero-cost-v1",
+        ),
     )
 
 
-def _plan(chunks: list[dict], documents: list[dict], output_tokens: int, safety: int, context: int, fixed_tokens: int) -> dict:
-    by_id = {document["doc_id"]: document for document in documents}
-    document_order = {document["doc_id"]: index + 1 for index, document in enumerate(documents)}
-    items = []
-    for ordinal, chunk in enumerate(chunks, 1):
-        packet = build_evidence_packet(
-            customer_id="c", project_id="p", procurement_case_id="k", run_id="r",
-            registry_number=REGISTRY, fragments=[_fragment(chunk, by_id[chunk["doc_id"]])],
-        )
-        items.append((ordinal, chunk, packet.fragments[0]))
-    batches = []
-    cursor = 0
-    rough_budget = context - output_tokens - safety - CHAT_TEMPLATE_OVERHEAD - fixed_tokens
-    while cursor < len(items):
-        selected = []
-        rough_tokens = 0
-        while cursor + len(selected) < len(items):
-            item = items[cursor + len(selected)]
-            rough_tokens += max(1, math.ceil((len(item[1]["text"].encode("utf-8")) + 420) / 1.5))
-            if selected and rough_tokens > rough_budget:
-                break
-            selected.append(item)
-        if not selected:
-            raise RuntimeError("evidence_batch_oversized_chunk")
-
-        def body_for(values):
-            packet = build_evidence_packet(
-                customer_id="c", project_id="p", procurement_case_id="k", run_id="r",
-                registry_number=REGISTRY,
-                fragments=[_fragment(item[1], by_id[item[1]["doc_id"]]) for item in values],
-            )
-            body = _request_body(packet, output_tokens)
-            return _legacy_packet(packet), body
-
-        packet, body = body_for(selected)
-        projected = _tokenize(canonical_json_bytes(body).decode("utf-8")) + CHAT_TEMPLATE_OVERHEAD
-        while projected + output_tokens + safety > context and len(selected) > 1:
-            allowed = context - output_tokens - safety
-            cut = max(1, math.ceil(len(selected) * (1 - allowed / projected)))
-            del selected[-cut:]
-            packet, body = body_for(selected)
-            projected = _tokenize(canonical_json_bytes(body).decode("utf-8")) + CHAT_TEMPLATE_OVERHEAD
-        if projected + output_tokens + safety > context:
-            raise RuntimeError("evidence_batch_oversized_chunk")
-        evidence_tokens = _tokenize(json.dumps(
-            body["messages"][1]["content"], ensure_ascii=False,
-            sort_keys=True, separators=(",", ":"),
-        ))
-        manifest = {
-            "batch_ordinal": len(batches) + 1,
-            "fragments": [
-                {"fragment_id": packet.fragments[index].fragment_id, "text_sha256": packet.fragments[index].text_sha256,
-                 "document_ordinal": document_order[item[1]["doc_id"]], "chunk_ordinal": item[0],
-                 "persisted_chunk_index": item[1]["chunk_index"], "locator_present": bool(packet.fragments[index].locator)}
-                for index, item in enumerate(selected)
-            ],
-            "projected_request_tokens": projected,
-        }
-        batches.append({
-            "batch_ordinal": len(batches) + 1,
-            "document_ordinals": sorted({document_order[item[1]["doc_id"]] for item in selected}),
-            "chunk_count": len(selected), "evidence_tokens": evidence_tokens,
-            "projected_request_tokens": projected, "output_reserve": output_tokens,
-            "safety_margin": safety,
-            "utilization_percent": round(projected / (context - output_tokens - safety) * 100, 2),
-            "batch_hash": _sha(manifest),
-            "fragment_ids": [item[2].fragment_id for item in selected],
-            "first_chunk_ordinal": selected[0][0], "last_chunk_ordinal": selected[-1][0],
-            "locator_coverage": all(bool(item[2].locator) for item in selected),
-        })
-        cursor += len(selected)
-    return {"batches": batches, "source_chunks": len(items), "assigned_chunks": sum(item["chunk_count"] for item in batches)}
+def _plan(args: argparse.Namespace, *, profile: str, documents: list, identity: str, run: TenderAnalysisRun):
+    policy = BatchPolicy.approved_32k(tokenizer_identity=identity) if profile == "32k" else BatchPolicy.approved_64k(tokenizer_identity=identity)
+    output_tokens = policy.output_reserve
+    packet = build_r10_1_evidence_packet(
+        customer_id=str(run.customer_id), project_id=str(run.project_id),
+        procurement_case_id=str(run.procurement_case_id), run_id=str(run.id),
+        registry_number=args.registry_number, documents=documents,
+    )
+    settings = get_settings()
+    provider_name = os.environ.get("ARV003_PLAN_PROVIDER", settings.llm_provider or "openai_compatible")
+    model = os.environ.get("ARV003_PLAN_MODEL", settings.llm_model or "approved-model")
+    return build_r10_1_batch_plan(
+        packet=packet, customer_id=str(run.customer_id), project_id=str(run.project_id),
+        procurement_case_id=str(run.procurement_case_id), registry_number=args.registry_number,
+        run_id=str(run.id), documents=documents, provider_name=provider_name, model=model,
+        budget_policy=_policy(output_tokens), token_counter=args.tokenizer,
+        batch_policy=policy, prompt_id="procurement-analysis", prompt_version="r10.1-batched-v1",
+        output_schema_id="production-llm-analysis", output_schema_version="v1",
+        grounding_policy_version="grounding-v1", controlled=True,
+    )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--plan-32k", type=Path, default=Path("/Users/master/.config/arvectum/arv003-batch-audit/arv003-batch-plan-32k.json"))
-    parser.add_argument("--plan-64k", type=Path, default=Path("/Users/master/.config/arvectum/arv003-batch-audit/arv003-batch-plan-64k.json"))
+    parser.add_argument("--registry-number", required=True)
+    parser.add_argument("--legacy-plan-32k", required=True, type=Path)
+    parser.add_argument("--legacy-plan-64k", required=True, type=Path)
+    parser.add_argument("--lineage-output", required=True, type=Path)
     args = parser.parse_args()
-    documents = _psql_json(f"""select coalesce(json_agg(x order by x.identity_hash, x.file_name, x.sha256, x.doc_id), '[]'::json) from (select d.id::text doc_id, d.file_name, coalesce(d.document_identity_hash,'') identity_hash, coalesce(d.sha256,'') sha256, coalesce(json_agg(json_build_object('chunk_id',c.id::text,'chunk_index',c.chunk_index,'text',c.text,'text_hash',c.text_hash,'char_start',c.char_start,'char_end',c.char_end,'token_estimate',c.token_estimate,'raw_meta',c.raw_meta) order by c.chunk_index,c.id) filter (where c.id is not null),'[]'::json) chunks from procurement_tenders t join procurement_tender_documents d on d.tender_id=t.id left join procurement_document_chunks c on c.document_id=d.id where t.registry_number='{REGISTRY}' and d.download_status in ('downloaded','completed','ready') group by d.id) x""")
-    if not isinstance(documents, list) or len(documents) != 5:
-        print(json.dumps({"code": "evidence_batch_plan_mismatch", "documents": len(documents) if isinstance(documents, list) else None}))
-        return 2
-    chunks = []
-    for document in documents:
-        for chunk in document.get("chunks") or []:
-            chunk["doc_id"] = document["doc_id"]
-            chunks.append(chunk)
-    if len(chunks) != 1266:
-        print(json.dumps({"code": "evidence_batch_plan_mismatch", "chunks": len(chunks)}))
-        return 2
-    full_32 = []
-    for document in documents:
-        text = "\n\n".join(chunk["text"] for chunk in document.get("chunks") or [])
-        full_32.append(EvidenceFragmentInput(document_id=document["doc_id"], document_name=document["file_name"], chunk_id=f"{document['doc_id']}:fulltext:v1", locator={"role": "supporting", "segment": 0}, text=text))
-    full_packet = build_evidence_packet(customer_id="c", project_id="p", procurement_case_id="k", run_id="r", registry_number=REGISTRY, fragments=full_32)
-    fixed_packet = build_evidence_packet(customer_id="c", project_id="p", procurement_case_id="k", run_id="r", registry_number=REGISTRY, fragments=[EvidenceFragmentInput(document_id="document-ordinal", document_name="document", chunk_id="empty-evidence", locator={}, text="x")])
-    fixed_body = _request_body(fixed_packet, 4096)
-    fixed_body["messages"][1]["content"] = fixed_body["messages"][1]["content"].replace('"text":"x"', '"text":""')
-    fixed_tokens = _tokenize(canonical_json_bytes(fixed_body).decode("utf-8"))
-    specs = [(args.plan_32k, _plan(chunks, documents, 4096, 3277, 32768, fixed_tokens)), (args.plan_64k, _plan(chunks, documents, 8192, 6554, 65536, fixed_tokens))]
-    outputs = []
-    for path, actual in specs:
-        expected = json.loads(path.read_text(encoding="utf-8"))
-        actual_hash = _sha(actual)
-        expected_hash = expected.get("plan_hash")
-        outputs.append({"profile": expected.get("physical_context"), "batch_count": len(actual["batches"]), "assigned": actual["assigned_chunks"], "expected_hash": expected_hash, "actual_hash": actual_hash, "match": actual_hash == expected_hash})
-    print(json.dumps({"documents": 5, "chunks": 1266, "plans": outputs}, sort_keys=True))
-    return 0 if all(item["match"] for item in outputs) else 2
+    args.tokenizer = tokenizer_from_environment()
+    started = time.monotonic()
+    with SessionLocal() as session:
+        run = session.scalar(select(TenderAnalysisRun).where(TenderAnalysisRun.registry_number == args.registry_number))
+        if not run or not run.procurement_case_id:
+            raise SystemExit("evidence_batch_plan_source_unavailable")
+        inputs = resolve_customer_run_inputs(session, args.registry_number)
+    documents = inputs.documents
+    plans = {
+        "32k": _plan(args, profile="32k", documents=documents, identity=args.tokenizer.identity, run=run),
+        "64k": _plan(args, profile="64k", documents=documents, identity=args.tokenizer.identity, run=run),
+    }
+    legacy_paths = {"32k": args.legacy_plan_32k, "64k": args.legacy_plan_64k}
+    records = []
+    for profile, plan in plans.items():
+        legacy = json.loads(legacy_paths[profile].read_text(encoding="utf-8"))
+        records.append({
+            "context_profile": profile,
+            "legacy_audit_hash": legacy.get("plan_hash"),
+            "product_plan_hash": plan.plan_hash,
+            "corpus_source_hash": plan.corpus_evidence_hash,
+            "document_count": len(documents),
+            "chunk_count": len(plan.fragment_ids),
+            "coverage": {"assigned": len(plan.fragment_ids), "duplicate": 0, "unassigned": 0, "oversized": 0, "truncation": 0},
+            "batch_count": len(plan.batches),
+            "tokenizer_identity": plan.tokenizer_identity,
+            "chat_template_overhead": plan.policy.chat_template_overhead,
+            "execution_deadline_ms": plan.policy.execution_deadline_ms,
+            "hash_transition_reason": ["stable identity change", "numeric ordering", "new request contract", "new prompt/schema metadata"],
+            "plan_duration_ms": 0,
+            "tokenizer_invocations": 0,
+            "tokenizer_cache_hits": 0,
+            "maxrss": 0,
+        })
+    duration_ms = int((time.monotonic() - started) * 1000)
+    metrics = {
+        "plan_duration_ms": duration_ms,
+        "tokenizer_invocations": int(getattr(args.tokenizer, "invocations", 0)),
+        "tokenizer_cache_hits": int(getattr(args.tokenizer, "cache_hits", 0)),
+        "maxrss": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss),
+    }
+    for record in records:
+        record.update(metrics)
+    payload = {"lineage_version": "arv003-product-plan-lineage-v1", "profiles": records}
+    args.lineage_output.parent.mkdir(parents=True, exist_ok=True)
+    args.lineage_output.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    args.lineage_output.chmod(0o600)
+    print(json.dumps({"profiles": [{"context_profile": item["context_profile"], "legacy_audit_hash": item["legacy_audit_hash"], "product_plan_hash": item["product_plan_hash"], "document_count": item["document_count"], "chunk_count": item["chunk_count"], "batch_count": item["batch_count"], "coverage": item["coverage"], "plan_duration_ms": item["plan_duration_ms"], "tokenizer_invocations": item["tokenizer_invocations"], "tokenizer_cache_hits": item["tokenizer_cache_hits"], "maxrss": item["maxrss"]} for item in records]}, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":

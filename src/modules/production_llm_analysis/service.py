@@ -57,6 +57,9 @@ def build_production_llm_request(
     allowed_field_paths: list[str] | None = None,
     context_profile: str | None = None,
     tokenizer_identity: str | None = None,
+    evidence_budget: int | None = None,
+    chat_template_overhead: int | None = None,
+    execution_deadline_ms: int | None = None,
 ) -> ProductionLLMAnalysisRequest:
     identity = {
         "customer_id": evidence_packet.customer_id,
@@ -85,6 +88,9 @@ def build_production_llm_request(
         "allowed_field_paths": allowed_field_paths or [],
         "context_profile": context_profile,
         "tokenizer_identity": tokenizer_identity,
+        "evidence_budget": evidence_budget,
+        "chat_template_overhead": chat_template_overhead,
+        "execution_deadline_ms": execution_deadline_ms,
     }
     return ProductionLLMAnalysisRequest(
         request_id=canonical_sha256(identity),
@@ -113,6 +119,9 @@ def build_production_llm_request(
         allowed_field_paths=allowed_field_paths or [],
         context_profile=context_profile,
         tokenizer_identity=tokenizer_identity,
+        evidence_budget=evidence_budget,
+        chat_template_overhead=chat_template_overhead,
+        execution_deadline_ms=execution_deadline_ms,
     )
 
 
@@ -159,6 +168,9 @@ def _failure_result(
         corpus_evidence_hash=request.corpus_evidence_hash,
         map_empty=False,
         tokenizer_identity=request.tokenizer_identity,
+        evidence_budget=request.evidence_budget,
+        chat_template_overhead=request.chat_template_overhead,
+        execution_deadline_ms=request.execution_deadline_ms,
         context_profile=request.context_profile,
     )
 
@@ -374,5 +386,8 @@ def run_production_llm_analysis(
         corpus_evidence_hash=request.corpus_evidence_hash,
         map_empty=request.map_mode and not grounded,
         tokenizer_identity=request.tokenizer_identity,
+        evidence_budget=request.evidence_budget,
+        chat_template_overhead=request.chat_template_overhead,
+        execution_deadline_ms=request.execution_deadline_ms,
         context_profile=request.context_profile,
     )
