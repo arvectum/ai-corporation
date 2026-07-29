@@ -10,6 +10,14 @@ each batch carries the plan hash, batch hash, ordinal and corpus evidence hash.
 The approved exact tokenizer must be configured for the provider/model before
 any live execution; character estimates are not an acceptance basis.
 
+The current planner identity is `arv003-map-plan-v5`. It recalculates payload
+capacity after every exact request measurement and reserves enough rough-token
+capacity for the remaining batch slots. The 32K/64K batch limits (32/18) and
+HTTP tokenizer budgets (80/48) remain fixed. A locally fitting batch is not
+accepted if it makes the remaining corpus infeasible; the planner performs at
+most one deterministic grow attempt and bounded payload-domain shrink before
+returning a sanitized fail-closed code.
+
 ## Safety boundary
 
 - Run only on the operator-controlled host that already contains the approved database and extracted procurement documents.
