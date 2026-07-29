@@ -90,10 +90,24 @@ and merges claims by stable `(claim_id, field_path, canonical claim hash)` order
 Any missing, duplicate or oversized chunk fails closed; no partial target is
 published.
 
-Set `ARV003_EXACT_TOKENIZER_COMMAND` to the locally approved tokenizer adapter
-(for example, a wrapper around the pinned `llama-tokenize` build). The command
-must accept one text argument and print one integer token count. The controlled
-runner refuses to start when this variable is absent.
+For the local Gemma runtime, reuse the already loaded loopback `llama-server`
+model through its non-generating `/tokenize` endpoint. This avoids loading the
+7.6 GB GGUF in a new `llama-tokenize` process for every planner measurement.
+The adapter accepts evidence only through stdin, permits only an explicit
+`127.0.0.1` or `::1` HTTP endpoint ending in `/tokenize`, and never calls a
+chat/completion route.
+
+```bash
+export ARV003_LLAMA_TOKENIZER_URL='http://127.0.0.1:8081/tokenize'
+export ARV003_EXACT_TOKENIZER_COMMAND='python scripts/r10_1/tokenize_via_llama_server.py'
+export ARV003_TOKENIZER_IDENTITY='<llama-build>-<gguf-sha256>-server-tokenize-v1'
+```
+
+A direct command that reloads the GGUF on every invocation is not approved for
+the 1266-chunk controlled corpus because its planning time is not bounded in
+practice. The controlled runner refuses to start when the tokenizer command or
+identity is absent. Tokenizer failures are surfaced only as sanitized repository
+codes.
 
 ```bash
 python scripts/r10_1/run_controlled_provider_evidence.py \
