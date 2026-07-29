@@ -91,8 +91,28 @@ class CalibrationCapacityInvalid(BatchPlanningError):
     code = "evidence_batch_calibration_capacity_invalid"
 
 
+class CapacityInvalid(BatchPlanningError):
+    code = "evidence_batch_capacity_invalid"
+
+
 class PlanningConvergenceFailed(BatchPlanningError):
     code = "evidence_batch_planning_convergence_failed"
+
+
+class MaxBatchesExceeded(PlanningConvergenceFailed):
+    code = "evidence_batch_max_batches_exceeded"
+
+
+class CandidateNotConvergent(PlanningConvergenceFailed):
+    code = "evidence_batch_candidate_not_convergent"
+
+
+class RemainingSlotsInfeasible(PlanningConvergenceFailed):
+    code = "evidence_batch_remaining_slots_infeasible"
+
+
+class RemainingCorpusInfeasible(PlanningConvergenceFailed):
+    code = "evidence_batch_remaining_corpus_infeasible"
 
 
 class PlanningTimeout(BatchPlanningError):
@@ -120,7 +140,7 @@ class BatchPolicy:
     """One of the two approved context profiles; arbitrary defaults are forbidden."""
 
     profile: str = "32k"
-    plan_version: str = "arv003-map-plan-v4"
+    plan_version: str = "arv003-map-plan-v5"
     context_window: int = 32768
     evidence_budget: int = 24488
     output_reserve: int = 4096
@@ -136,8 +156,8 @@ class BatchPolicy:
     max_total_output_tokens: int = 262_144
     max_total_retries: int = 32
     max_total_cost: float = 1.0
-    planning_algorithm_version: str = "serialized-payload-prefix-bounded-v3"
-    calibration_policy_version: str = "representative-one-batch-envelope-v3"
+    planning_algorithm_version: str = "serialized-payload-slot-balanced-v4"
+    calibration_policy_version: str = "representative-envelope-adaptive-v4"
     measurement_contract_version: str = "openai-request-measurement-v2"
     calibration_max_budget_fraction: float = 0.25
     calibration_max_nominal_batches: int = 1
@@ -151,6 +171,7 @@ class BatchPolicy:
     max_tokenizer_invocations: int = 80
     max_adjustments_per_batch: int = 3
     max_planning_duration_ms: int = 120_000
+    packing_target_utilization: float = 0.98
     _approved: bool = field(default=False, repr=False, compare=False)
 
     @classmethod
@@ -218,6 +239,8 @@ class BatchPolicy:
     def validate(
         self, budget_policy: BudgetPolicy | None = None, *, controlled: bool = False
     ) -> None:
+        if not 0 < self.packing_target_utilization <= 1:
+            raise BatchPolicyInvalid("packing target utilization is invalid")
         expected = {
             "32k": (32768, 24488, 4096, 3277, 3),
             "64k": (65536, 49883, 8192, 6554, 7),
@@ -472,6 +495,7 @@ def _batch_hash(
             "measurement_contract_version": policy.measurement_contract_version,
             "calibration_max_budget_fraction": policy.calibration_max_budget_fraction,
             "calibration_max_nominal_batches": policy.calibration_max_nominal_batches,
+            "packing_target_utilization": policy.packing_target_utilization,
             "output_reserve": policy.output_reserve,
             "safety_margin": policy.safety_margin,
             "chat_template_overhead": policy.chat_template_overhead,
@@ -565,14 +589,41 @@ def build_evidence_batch_plan(
         "calibration_full_request_tokens": 0,
         "calibration_fixed_envelope_tokens": 0,
         "current_fixed_envelope_tokens": 0,
-        "payload_ratio": 1.05,
+        "packing_target_utilization": policy.packing_target_utilization,
+        "calibration_raw_payload_ratio": 0.0,
+        "maximum_observed_payload_ratio": 0.0,
+        "planning_payload_ratio": 0.0,
+        "payload_capacity": 0,
+        "rough_capacity": 0,
+        "normal_rough_target": 0,
+        "chosen_rough_target": 0,
+        "remaining_rough_tokens": rough_prefix[-1],
+        "remaining_slots_before": policy.max_batches,
+        "required_average_rough_tokens": 0,
+        "slot_pressure_ratio": 0.0,
+        "globally_feasible": False,
+        "grow_attempt_count": 0,
+        "shrink_attempt_count": 0,
+        "capacity_recalculation_count": 0,
+        "failure_reason_detail": "",
+        "accepted_batch_count": 0,
+        "fragments_per_batch_min": 0,
+        "fragments_per_batch_max": 0,
+        "fragments_per_batch_sum": 0,
+        "rough_tokens_per_batch_min": 0,
+        "rough_tokens_per_batch_max": 0,
+        "payload_utilization_min": 0.0,
+        "payload_utilization_max": 0.0,
+        "context_utilization_min": 0.0,
+        "context_utilization_max": 0.0,
+        # v4 names remain as transparent aliases for historical evidence readers.
         "context_payload_capacity": 0,
         "rough_batch_limit": 0,
         "envelope_drift_max": 0,
-        "conservative_ratio": 1.05,
+        "conservative_ratio": 0.0,
     }
     measurement_cache: dict[str, ExactRequestMeasurement] = {}
-    conservative_ratio = 1.05
+    conservative_ratio = 1.0
 
     def update_diagnostics() -> None:
         diagnostics.update(
@@ -592,6 +643,7 @@ def build_evidence_batch_plan(
         )
 
     def fail(error: BatchPlanningError) -> None:
+        diagnostics["failure_reason_detail"] = error.code
         update_diagnostics()
         error.diagnostics = diagnostics.copy()  # type: ignore[attr-defined]
         raise error
@@ -604,7 +656,7 @@ def build_evidence_batch_plan(
         return int(getattr(tokenizer, "invocations", counter_start)) - counter_start
 
     def ensure_invocation_capacity() -> None:
-        if measured_invocations() >= policy.max_http_tokenizer_requests:
+        if measured_invocations() + 2 > policy.max_http_tokenizer_requests:
             fail(
                 TokenizerInvocationLimitExceeded(
                     "bounded tokenizer invocation limit exceeded"
@@ -693,17 +745,71 @@ def build_evidence_batch_plan(
         end = bisect_right(rough_prefix, target, lo=start + 1, hi=stop + 1) - 1
         return max(start + 1, min(stop, end))
 
-    calibration_envelope = 0
-    if request_measure is None:
-        request_overhead = int(request_token_overhead or 0)
-        context_payload_capacity = (
+    calibration_envelope = int(request_token_overhead or 0)
+    calibration_raw_payload_ratio = 1.0
+    maximum_observed_payload_ratio = 1.0
+    conservative_ratio = 1.0
+    request_overhead = calibration_envelope
+    payload_capacity = 0
+    rough_capacity = 0
+    normal_rough_target = 0
+
+    def recalculate_capacity() -> None:
+        nonlocal payload_capacity, rough_capacity, normal_rough_target
+        payload_capacity = min(
+            policy.evidence_budget,
             policy.context_window
             - policy.output_reserve
             - policy.safety_margin
-            - request_overhead
+            - request_overhead,
         )
-        rough_batch_limit = policy.evidence_budget
-    else:
+        rough_capacity = max(1, math.floor(payload_capacity / conservative_ratio))
+        normal_rough_target = max(
+            1, math.floor(rough_capacity * policy.packing_target_utilization)
+        )
+        if payload_capacity <= 0:
+            fail(CapacityInvalid("exact-derived payload capacity is invalid"))
+        diagnostics.update(
+            calibration_raw_payload_ratio=calibration_raw_payload_ratio,
+            maximum_observed_payload_ratio=maximum_observed_payload_ratio,
+            planning_payload_ratio=conservative_ratio,
+            payload_capacity=payload_capacity,
+            rough_capacity=rough_capacity,
+            normal_rough_target=normal_rough_target,
+            current_fixed_envelope_tokens=request_overhead,
+            context_payload_capacity=payload_capacity,
+            rough_batch_limit=rough_capacity,
+            payload_ratio=conservative_ratio,
+            conservative_ratio=conservative_ratio,
+            capacity_recalculation_count=int(
+                diagnostics["capacity_recalculation_count"]
+            )
+            + 1,
+        )
+
+    def observe_measurement(
+        measurement: ExactRequestMeasurement, rough_evidence_tokens: int
+    ) -> None:
+        nonlocal maximum_observed_payload_ratio, conservative_ratio, request_overhead
+        if measurement.fixed_envelope_tokens < 0:
+            fail(RequestEnvelopeInvalid("request envelope is invalid"))
+        observed_ratio = measurement.serialized_evidence_tokens / max(
+            1, rough_evidence_tokens
+        )
+        maximum_observed_payload_ratio = max(
+            maximum_observed_payload_ratio, observed_ratio
+        )
+        conservative_ratio = max(
+            calibration_raw_payload_ratio, maximum_observed_payload_ratio
+        )
+        request_overhead = max(request_overhead, measurement.fixed_envelope_tokens)
+        diagnostics["envelope_drift_max"] = max(
+            int(diagnostics["envelope_drift_max"]),
+            measurement.fixed_envelope_tokens - calibration_envelope,
+        )
+        recalculate_capacity()
+
+    if request_measure is not None:
         nominal_fragments = max(
             1,
             math.ceil(len(items) / policy.max_batches)
@@ -718,59 +824,69 @@ def build_evidence_batch_plan(
         calibration_candidate = items[:calibration_end]
         calibration_rough = rough_prefix[calibration_end]
         calibration = exact_request(calibration_candidate)
-        request_overhead = calibration.fixed_envelope_tokens
-        calibration_envelope = request_overhead
-        context_payload_capacity = (
-            policy.context_window
-            - policy.output_reserve
-            - policy.safety_margin
-            - request_overhead
+        calibration_envelope = calibration.fixed_envelope_tokens
+        request_overhead = calibration_envelope
+        calibration_raw_payload_ratio = calibration.serialized_evidence_tokens / max(
+            1, calibration_rough
         )
-        if context_payload_capacity <= 0:
-            fail(
-                CalibrationCapacityInvalid(
-                    "calibration context payload capacity is invalid"
-                )
-            )
-        conservative_ratio = max(
-            calibration.serialized_evidence_tokens / max(1, calibration_rough) * 1.05,
-            1.05,
-        )
-        rough_batch_limit = math.floor(
-            min(
-                policy.evidence_budget / conservative_ratio,
-                context_payload_capacity / conservative_ratio,
-            )
-            * 0.95
-        )
-        if rough_batch_limit <= 0:
-            fail(CalibrationCapacityInvalid("calibration rough capacity is invalid"))
-        rough_batch_limit = max(rough_batch_limit, calibration_rough)
+        maximum_observed_payload_ratio = calibration_raw_payload_ratio
+        conservative_ratio = calibration_raw_payload_ratio
+        try:
+            recalculate_capacity()
+        except CapacityInvalid as exc:
+            fail(CalibrationCapacityInvalid(str(exc)))
         diagnostics.update(
             calibration_fragment_count=len(calibration_candidate),
             calibration_rough_tokens=calibration_rough,
             calibration_serialized_evidence_tokens=calibration.serialized_evidence_tokens,
             calibration_full_request_tokens=calibration.full_request_tokens,
             calibration_fixed_envelope_tokens=request_overhead,
-            current_fixed_envelope_tokens=request_overhead,
-            context_payload_capacity=context_payload_capacity,
-            payload_ratio=conservative_ratio,
-            rough_batch_limit=rough_batch_limit,
         )
+    else:
+        recalculate_capacity()
 
     while cursor < len(items):
         ensure_deadline()
         if len(batches) >= policy.max_batches:
-            fail(PlanningConvergenceFailed("maximum batch count exceeded"))
-        end = max_end(
-            cursor,
-            len(items),
-            rough_batch_limit,
+            fail(MaxBatchesExceeded("maximum batch count exceeded"))
+        remaining_fragments = len(items) - cursor
+        remaining_slots = policy.max_batches - len(batches)
+        remaining_rough_tokens = rough_prefix[-1] - rough_prefix[cursor]
+        required_average_rough_tokens = math.ceil(
+            remaining_rough_tokens / remaining_slots
+        )
+        chosen_rough_target = min(
+            rough_capacity,
+            max(normal_rough_target, required_average_rough_tokens),
+        )
+        minimum_fragments_for_current_batch = max(
+            1, math.ceil(remaining_fragments / remaining_slots)
+        )
+        diagnostics.update(
+            remaining_fragments_before=remaining_fragments,
+            remaining_slots_before=remaining_slots,
+            remaining_rough_tokens=remaining_rough_tokens,
+            required_average_rough_tokens=required_average_rough_tokens,
+            chosen_rough_target=chosen_rough_target,
+            slot_pressure_ratio=required_average_rough_tokens / rough_capacity,
+        )
+        end = (
+            len(items)
+            if remaining_slots == 1
+            else max(
+                cursor + minimum_fragments_for_current_batch,
+                max_end(cursor, len(items), chosen_rough_target),
+            )
         )
         candidate_evaluations = 0
         adjustment_rounds = 0
+        grow_attempted = False
+        seen_ends: set[int] = set()
         while True:
             ensure_deadline()
+            if end in seen_ends:
+                fail(CandidateNotConvergent("candidate boundary repeated"))
+            seen_ends.add(end)
             selected = items[cursor:end]
             rough_evidence_tokens = rough_prefix[end] - rough_prefix[cursor]
             diagnostics.update(
@@ -781,15 +897,7 @@ def build_evidence_batch_plan(
             projected = measurement.full_request_tokens
             request_hash = measurement.request_body_hash
             evidence_tokens = measurement.serialized_evidence_tokens
-            observed_envelope = measurement.fixed_envelope_tokens
-            if observed_envelope < 0:
-                fail(RequestEnvelopeInvalid("request envelope is invalid"))
-            request_overhead = max(request_overhead, observed_envelope)
-            diagnostics["current_fixed_envelope_tokens"] = request_overhead
-            diagnostics["envelope_drift_max"] = max(
-                int(diagnostics["envelope_drift_max"]),
-                observed_envelope - calibration_envelope,
-            )
+            observe_measurement(measurement, rough_evidence_tokens)
             candidate_evaluations += 1
             diagnostics["candidate_evaluation_count"] = (
                 int(diagnostics["candidate_evaluation_count"]) + 1
@@ -804,7 +912,55 @@ def build_evidence_batch_plan(
                 <= policy.context_window
             )
             if fits:
-                break
+                next_remaining_slots = remaining_slots - 1
+                next_remaining_rough = rough_prefix[-1] - rough_prefix[end]
+                globally_feasible = (
+                    end == len(items)
+                    if next_remaining_slots == 0
+                    else math.ceil(next_remaining_rough / next_remaining_slots)
+                    <= rough_capacity
+                )
+                diagnostics["globally_feasible"] = globally_feasible
+                if globally_feasible:
+                    break
+                if (
+                    grow_attempted
+                    or candidate_evaluations >= policy.max_candidate_evaluations
+                ):
+                    fail(
+                        RemainingSlotsInfeasible(
+                            "fitting candidate leaves insufficient slot capacity"
+                        )
+                    )
+                grow_target = min(
+                    rough_capacity,
+                    max(
+                        chosen_rough_target,
+                        math.ceil(
+                            remaining_rough_tokens
+                            - rough_capacity * (remaining_slots - 1)
+                        ),
+                    ),
+                )
+                next_end = max_end(cursor, len(items), grow_target)
+                if next_end <= end:
+                    fail(
+                        RemainingSlotsInfeasible(
+                            "remaining corpus cannot be balanced across slots"
+                        )
+                    )
+                end = next_end
+                grow_attempted = True
+                diagnostics["grow_attempt_count"] = (
+                    int(diagnostics["grow_attempt_count"]) + 1
+                )
+                continue
+            if remaining_slots == 1:
+                fail(
+                    RemainingCorpusInfeasible(
+                        "the final slot cannot contain the remaining corpus"
+                    )
+                )
             if len(selected) == 1:
                 fail(
                     OversizedEvidenceChunk(
@@ -816,33 +972,34 @@ def build_evidence_batch_plan(
                 or adjustment_rounds >= policy.max_adjustments_per_batch
             ):
                 fail(
-                    PlanningConvergenceFailed(
-                        "bounded batch adjustment did not converge"
-                    )
+                    CandidateNotConvergent("bounded batch adjustment did not converge")
                 )
-            available = min(
-                policy.max_evidence_tokens,
+            observed_payload_ratio = evidence_tokens / max(1, rough_evidence_tokens)
+            observed_payload_capacity = min(
+                policy.evidence_budget,
                 policy.context_window
                 - policy.output_reserve
                 - policy.safety_margin
-                - request_overhead,
+                - measurement.fixed_envelope_tokens,
             )
-            observed = max(evidence_tokens, projected)
-            rough_target = max(
-                1, int(rough_evidence_tokens * available / max(1, observed) * 0.95)
+            rough_target = math.floor(
+                observed_payload_capacity
+                / observed_payload_ratio
+                * policy.packing_target_utilization
             )
             next_end = max_end(cursor, end - 1, rough_target)
             if next_end >= end:
                 next_end = end - 1
+            if next_end <= cursor:
+                fail(CandidateNotConvergent("shrink candidate cannot advance cursor"))
             end = max(cursor + 1, next_end)
             adjustment_rounds += 1
+            diagnostics["shrink_attempt_count"] = (
+                int(diagnostics["shrink_attempt_count"]) + 1
+            )
             diagnostics["adjustment_evaluation_count"] = (
                 int(diagnostics["adjustment_evaluation_count"]) + 1
             )
-        conservative_ratio = max(
-            conservative_ratio,
-            evidence_tokens / max(1, rough_evidence_tokens) * 1.05,
-        )
         batches.append(
             EvidenceBatch(
                 len(batches) + 1,
@@ -876,6 +1033,27 @@ def build_evidence_batch_plan(
         diagnostics["adjustment_rounds_max"] = max(
             int(diagnostics["adjustment_rounds_max"]), adjustment_rounds
         )
+        fragment_counts = [len(batch.fragments) for batch in batches]
+        rough_counts = [batch.rough_evidence_tokens for batch in batches]
+        payload_utilizations = [
+            batch.exact_evidence_tokens / payload_capacity for batch in batches
+        ]
+        context_utilizations = [
+            batch.exact_projected_request_tokens / policy.context_window
+            for batch in batches
+        ]
+        diagnostics.update(
+            accepted_batch_count=len(batches),
+            fragments_per_batch_min=min(fragment_counts),
+            fragments_per_batch_max=max(fragment_counts),
+            fragments_per_batch_sum=sum(fragment_counts),
+            rough_tokens_per_batch_min=min(rough_counts),
+            rough_tokens_per_batch_max=max(rough_counts),
+            payload_utilization_min=min(payload_utilizations),
+            payload_utilization_max=max(payload_utilizations),
+            context_utilization_min=min(context_utilizations),
+            context_utilization_max=max(context_utilizations),
+        )
     assigned = [fragment_id(item) for batch in batches for item in batch.fragments]
     if assigned != identities:
         raise BatchCoverageError("Batch coverage is not exactly one-to-one")
@@ -903,6 +1081,7 @@ def build_evidence_batch_plan(
         "measurement_contract_version": policy.measurement_contract_version,
         "calibration_max_budget_fraction": policy.calibration_max_budget_fraction,
         "calibration_max_nominal_batches": policy.calibration_max_nominal_batches,
+        "packing_target_utilization": policy.packing_target_utilization,
         "max_batches": policy.max_batches,
         "exact_measurements_per_batch": policy.exact_measurements_per_batch,
         "profile_calibration_requests": policy.profile_calibration_requests,

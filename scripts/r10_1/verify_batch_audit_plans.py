@@ -146,6 +146,11 @@ def _write_diagnostics(path: Path, payload: dict) -> None:
 
 _FAILURE_REASONS = {
     "evidence_batch_planning_convergence_failed": "planning_convergence",
+    "evidence_batch_max_batches_exceeded": "max_batches_exceeded",
+    "evidence_batch_candidate_not_convergent": "candidate_not_convergent",
+    "evidence_batch_remaining_slots_infeasible": "remaining_slots_infeasible",
+    "evidence_batch_remaining_corpus_infeasible": "remaining_corpus_infeasible",
+    "evidence_batch_capacity_invalid": "capacity_invalid",
     "evidence_batch_tokenizer_invocation_limit_exceeded": "invocation_limit",
     "evidence_batch_planning_timeout": "planning_deadline",
     "evidence_batch_calibration_capacity_invalid": "calibration_capacity",
@@ -164,7 +169,7 @@ def _source_head() -> str:
 
 def _diagnostic_payload(*, diagnostic_only: bool, profiles: list[dict]) -> dict:
     return {
-        "diagnostics_version": "arv003-batch-planning-diagnostics-v1",
+        "diagnostics_version": "arv003-batch-planning-diagnostics-v2",
         "source_head": _source_head(),
         "diagnostic_only": diagnostic_only,
         "profiles": profiles,
