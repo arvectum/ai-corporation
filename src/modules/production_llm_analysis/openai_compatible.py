@@ -374,8 +374,31 @@ class OpenAICompatibleProductionLLMProvider:
             raise InvalidProviderResponseError(str(exc), **failure_metadata) from None
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise InvalidProviderResponseError("provider_response_invalid_json", **failure_metadata) from None
-        except PydanticValidationError:
-            raise InvalidProviderResponseError("provider_claim_schema_invalid", **failure_metadata) from None
+        except PydanticValidationError as exc:
+            raise InvalidProviderResponseError(
+                self._compact_schema_error_code(exc),
+                **failure_metadata,
+            ) from None
+
+    @staticmethod
+    def _compact_schema_error_code(exc: PydanticValidationError) -> str:
+        """Classify compact-wire schema errors without exposing provider input."""
+
+        errors = exc.errors()
+        reference_errors = [
+            item
+            for item in errors
+            if "evidence_references" in item.get("loc", ())
+        ]
+        if reference_errors:
+            if any(
+                item.get("loc", ())[-1:] == ("quote",)
+                and item.get("type") == "string_too_short"
+                for item in reference_errors
+            ):
+                return "provider_wire_quote_empty"
+            return "provider_wire_reference_schema_invalid"
+        return "provider_wire_claim_schema_invalid"
 
     @staticmethod
     def _extract_message_content(envelope: dict[str, Any]) -> str:
