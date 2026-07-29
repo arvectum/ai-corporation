@@ -8,6 +8,7 @@ from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
 )
 from src.modules.production_llm_analysis.schemas import (
+    CompactWireEvidenceFragment,
     CompactWireProviderResponse,
     EvidenceFragmentInput,
 )
@@ -24,6 +25,12 @@ def _request(wire="compact-safe-v1"):
 def test_compact_wire_schema_forbids_server_metadata():
     with pytest.raises(ValidationError):
         CompactWireProviderResponse.model_validate({"claims": [{"claim_id": "c", "field_path": "x", "value": "v", "evidence_references": [{"fragment_id": "0" * 64, "quote": "q", "locator": {}}]}]})
+
+
+@pytest.mark.parametrize("value", [True, 1.0, "1"])
+def test_compact_locator_indices_are_strict_integers(value):
+    with pytest.raises(ValidationError):
+        CompactWireEvidenceFragment(fragment_id="0" * 64, document_order=value, chunk_index=0, text="text")
 
 
 def test_compact_request_only_exposes_safe_fragment_fields():

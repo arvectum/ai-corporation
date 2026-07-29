@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,12 +15,12 @@ from src.modules.procurement_analysis.r10_1_producer import (
     R10_1CanonicalProduction,
     produce_r10_1_canonical_analysis,
 )
+from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
 from src.modules.production_llm_analysis.evidence import canonical_sha256
 from src.modules.production_llm_analysis.schemas import BudgetPolicy
 from src.modules.production_llm_analysis.service import ProductionLLMProvider
 
-
-MANIFEST_VERSION = "r10.1-controlled-provider-evidence-v2"
+MANIFEST_VERSION = "r10.1-controlled-provider-evidence-v3"
 
 
 class ControlledEvidenceError(RuntimeError):
@@ -145,6 +146,12 @@ def _stable_semantic_identity(production: R10_1CanonicalProduction) -> dict[str,
 
     result = production.llm_result
     return {
+        "provider_wire_contract_version": R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
+        "prompt_id": R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+        "prompt_version": R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        "output_schema_id": R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+        "output_schema_version": R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        "grounding_policy_version": R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
         "request_id": result.request_id,
         "evidence_packet_hash": result.evidence_packet_hash,
         "batch_plan_hash": production.batch_plan_hash,
@@ -241,6 +248,14 @@ def build_sanitized_controlled_evidence_manifest(
     payload = {
         "manifest_version": MANIFEST_VERSION,
         "stable_identity": stable,
+        "wire_contract": {
+            "provider_wire_contract_version": R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
+            "input_fragment_schema": ["fragment_id", "document_order", "chunk_index", "text"],
+            "output_reference_schema": ["fragment_id", "quote"],
+            "server_side_reference_expansion": True,
+            "full_grounding_revalidation": True,
+            "provider_metadata_authority": False,
+        },
         "repeat_count": 2,
         "repeat_identity_verified": True,
         "executions": [_execution_summary(first), _execution_summary(second)],

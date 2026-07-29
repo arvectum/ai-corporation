@@ -16,6 +16,7 @@ from src.modules.production_llm_analysis.evidence import (
     text_sha256,
 )
 from src.modules.production_llm_analysis.schemas import (
+    CompactWireEvidenceFragment,
     CompactWireProviderClaim,
     CompactWireProviderResponse,
     EvidenceReference,
@@ -209,11 +210,20 @@ class OpenAICompatibleProductionLLMProvider:
             for fragment in request.evidence_packet.fragments:
                 locator = fragment.locator
                 for key, code in (("document_order", "provider_wire_document_order"), ("chunk_index", "provider_wire_chunk_index")):
-                    if key not in locator: raise ValueError(f"{code}_missing")
-                    try: value = int(locator[key])
-                    except (TypeError, ValueError): raise ValueError(f"{code}_invalid") from None
-                    if value < 0: raise ValueError(f"{code}_invalid")
-                evidence.append({"fragment_id":fragment.fragment_id,"document_order":int(locator["document_order"]),"chunk_index":int(locator["chunk_index"]),"text":fragment.text})
+                    if key not in locator:
+                        raise ValueError(f"{code}_missing")
+                try:
+                    wire_fragment = CompactWireEvidenceFragment(
+                        fragment_id=fragment.fragment_id,
+                        document_order=locator["document_order"],
+                        chunk_index=locator["chunk_index"],
+                        text=fragment.text,
+                    )
+                except PydanticValidationError as exc:
+                    fields = {item.get("loc", (None,))[0] for item in exc.errors()}
+                    code = "provider_wire_document_order_invalid" if "document_order" in fields else "provider_wire_chunk_index_invalid"
+                    raise ValueError(code) from None
+                evidence.append(wire_fragment.model_dump(mode="json"))
         output_contract = {
             "type": "object",
             "additionalProperties": False,

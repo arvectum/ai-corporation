@@ -93,8 +93,8 @@ class EvidenceReference(ContractModel):
 
 class CompactWireEvidenceFragment(ContractModel):
     fragment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
-    document_order: int = Field(ge=0)
-    chunk_index: int = Field(ge=0)
+    document_order: int = Field(strict=True, ge=0)
+    chunk_index: int = Field(strict=True, ge=0)
     text: str = Field(min_length=1)
 
 
