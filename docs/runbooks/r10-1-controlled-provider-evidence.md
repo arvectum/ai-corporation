@@ -4,6 +4,26 @@ Status: `RUNNER_READY_LIVE_EVIDENCE_NOT_EXECUTED`.
 
 This runbook is only for one explicitly approved provider, model, pricing policy and customer-owned procurement run. It is not a general rollout procedure.
 
+R10.1 uses deterministic map batches. Persisted source chunks are the atomic
+units: a chunk is never split, batches are packed in stable source order, and
+each batch carries the plan hash, batch hash, ordinal and corpus evidence hash.
+The approved exact tokenizer must be configured for the provider/model before
+any live execution; character estimates are not an acceptance basis.
+
+The current planner identity is `arv003-map-plan-v6`. Its provider wire contract is
+`compact-safe-v1`: the provider receives only fragment identity, source order, chunk
+index and text; server-side expansion restores canonical provenance before grounding.
+Producer and diagnostic verifier share the repository-owned controlled-map contract;
+the verifier intentionally has no prompt-version override and rejects a mismatch before
+tokenization or provider construction.
+It recalculates payload
+capacity after every exact request measurement and reserves enough rough-token
+capacity for the remaining batch slots. The 32K/64K batch limits (32/18) and
+HTTP tokenizer budgets (80/48) remain fixed. A locally fitting batch is not
+accepted if it makes the remaining corpus infeasible; the planner performs at
+most one deterministic grow attempt and bounded payload-domain shrink before
+returning a sanitized fail-closed code.
+
 ## Safety boundary
 
 - Run only on the operator-controlled host that already contains the approved database and extracted procurement documents.
@@ -77,6 +97,31 @@ Record outside the repository:
 The runner independently re-checks these identities and refuses a non-customer-owned or mismatched run.
 
 ## 4. Execute
+
+Before execution, record the approved tokenizer identity and context budget in
+the non-secret policy/approval record. The runner executes batches sequentially
+and merges claims by stable `(claim_id, field_path, canonical claim hash)` order.
+Any missing, duplicate or oversized chunk fails closed; no partial target is
+published.
+
+For the local Gemma runtime, reuse the already loaded loopback `llama-server`
+model through its non-generating `/tokenize` endpoint. This avoids loading the
+7.6 GB GGUF in a new `llama-tokenize` process for every planner measurement.
+The adapter accepts evidence only through stdin, permits only an explicit
+`127.0.0.1` or `::1` HTTP endpoint ending in `/tokenize`, and never calls a
+chat/completion route.
+
+```bash
+export ARV003_LLAMA_TOKENIZER_URL='http://127.0.0.1:8081/tokenize'
+export ARV003_EXACT_TOKENIZER_COMMAND='python scripts/r10_1/tokenize_via_llama_server.py'
+export ARV003_TOKENIZER_IDENTITY='<llama-build>-<gguf-sha256>-server-tokenize-v1'
+```
+
+A direct command that reloads the GGUF on every invocation is not approved for
+the 1266-chunk controlled corpus because its planning time is not bounded in
+practice. The controlled runner refuses to start when the tokenizer command or
+identity is absent. Tokenizer failures are surfaced only as sanitized repository
+codes.
 
 ```bash
 python scripts/r10_1/run_controlled_provider_evidence.py \

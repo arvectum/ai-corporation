@@ -1,0 +1,417 @@
+"""Build and verify product R10.1 plans through the production code path.
+
+This is plan-only: it resolves persisted input read-only, invokes the same
+chunk projection and ``build_r10_1_batch_plan`` as the producer, and writes
+only the caller-selected sanitized lineage artifact.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import resource
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from sqlalchemy import select
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
+from src.modules.procurement_analysis.r10_1_producer import (
+    R10_1BatchPlanningRejectedError,
+    build_r10_1_batch_plan,
+    build_r10_1_evidence_packet,
+    sanitize_batch_planning_diagnostics,
+)
+from src.modules.production_llm_analysis.batching import (
+    BatchPolicy,
+    tokenizer_from_environment,
+)
+from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
+from src.modules.production_llm_analysis.schemas import (
+    BudgetLimits,
+    BudgetPolicy,
+    EvidenceFragmentInput,
+    ProviderPricing,
+)
+from src.shared.config.settings import get_settings
+from src.shared.db.session import SessionLocal
+from src.tender_research.models import TenderAnalysisRun
+
+
+def _policy(output_tokens: int) -> BudgetPolicy:
+    return BudgetPolicy(
+        limits=BudgetLimits(
+            max_input_tokens=1_000_000,
+            max_output_tokens=output_tokens,
+            timeout_ms=900_000,
+            max_retries=0,
+            max_total_latency_ms=1_200_000,
+            max_estimated_cost=1.0,
+        ),
+        pricing=ProviderPricing(
+            input_cost_per_1k_tokens=0,
+            output_cost_per_1k_tokens=0,
+            currency="USD",
+            pricing_table_version="plan-only-zero-cost-v1",
+        ),
+    )
+
+
+def _persisted_evidence_fragments(documents: list) -> list[EvidenceFragmentInput]:
+    """Return the resolver-owned chunk projection; never fall back to full text."""
+
+    fragments: list[EvidenceFragmentInput] = []
+    for document in documents:
+        chunks = getattr(document, "evidence_chunks", None)
+        if not chunks:
+            raise SystemExit("evidence_batch_plan_chunks_unavailable")
+        fragments.extend(EvidenceFragmentInput.model_validate(item) for item in chunks)
+    if not fragments:
+        raise SystemExit("evidence_batch_plan_chunks_unavailable")
+    return fragments
+
+
+def _plan(
+    args: argparse.Namespace,
+    *,
+    profile: str,
+    documents: list,
+    evidence_fragments: list[EvidenceFragmentInput],
+    identity: str,
+    run: TenderAnalysisRun,
+):
+    policy = (
+        BatchPolicy.approved_32k(tokenizer_identity=identity)
+        if profile == "32k"
+        else BatchPolicy.approved_64k(tokenizer_identity=identity)
+    )
+
+    output_tokens = policy.output_reserve
+    packet = build_r10_1_evidence_packet(
+        customer_id=str(run.customer_id),
+        project_id=str(run.project_id),
+        procurement_case_id=str(run.procurement_case_id),
+        run_id=str(run.id),
+        registry_number=args.registry_number,
+        documents=documents,
+        evidence_fragments=evidence_fragments,
+    )
+    settings = get_settings()
+    provider_name = os.environ.get(
+        "ARV003_PLAN_PROVIDER", settings.llm_provider or "openai_compatible"
+    )
+    model = os.environ.get("ARV003_PLAN_MODEL", settings.llm_model or "approved-model")
+    return build_r10_1_batch_plan(
+        packet=packet,
+        customer_id=str(run.customer_id),
+        project_id=str(run.project_id),
+        procurement_case_id=str(run.procurement_case_id),
+        registry_number=args.registry_number,
+        run_id=str(run.id),
+        documents=documents,
+        provider_name=provider_name,
+        model=model,
+        budget_policy=_policy(output_tokens),
+        token_counter=args.tokenizer,
+        batch_policy=policy,
+        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+        prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+        output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+        controlled=True,
+    )
+
+
+def _write_diagnostics(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.chmod(0o700)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False
+    ) as handle:
+        json.dump(payload, handle, ensure_ascii=False, sort_keys=True, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+    path.chmod(0o600)
+
+
+_FAILURE_REASONS = {
+    "evidence_batch_planning_convergence_failed": "planning_convergence",
+    "evidence_batch_max_batches_exceeded": "max_batches_exceeded",
+    "evidence_batch_candidate_not_convergent": "candidate_not_convergent",
+    "evidence_batch_remaining_slots_infeasible": "remaining_slots_infeasible",
+    "evidence_batch_remaining_corpus_infeasible": "remaining_corpus_infeasible",
+    "evidence_batch_capacity_invalid": "capacity_invalid",
+    "evidence_batch_tokenizer_invocation_limit_exceeded": "invocation_limit",
+    "evidence_batch_planning_timeout": "planning_deadline",
+    "evidence_batch_calibration_capacity_invalid": "calibration_capacity",
+    "evidence_batch_request_measurement_invalid": "request_measurement",
+    "evidence_batch_request_envelope_invalid": "request_envelope",
+    "evidence_batch_oversized_chunk": "oversized_chunk",
+}
+
+
+def _source_head() -> str:
+    """Return only the checked-out revision, never a repository path."""
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+    ).strip()
+
+
+def _diagnostic_payload(*, diagnostic_only: bool, profiles: list[dict]) -> dict:
+    return {
+        "diagnostics_version": "arv003-batch-planning-diagnostics-v3",
+        "source_head": _source_head(),
+        "diagnostic_only": diagnostic_only,
+        "profiles": profiles,
+    }
+
+
+def _failure_record(exc: R10_1BatchPlanningRejectedError) -> dict:
+    policy = (
+        BatchPolicy.approved_32k(tokenizer_identity="diagnostics")
+        if exc.profile == "32k"
+        else BatchPolicy.approved_64k(tokenizer_identity="diagnostics")
+    )
+    metrics = dict(exc.planning_diagnostics)
+    metrics.update(
+        {
+            "remaining_batch_slots": max(
+                0, policy.max_batches - int(metrics.get("completed_batch_count", 0))
+            ),
+            "max_batches": policy.max_batches,
+            "max_http_tokenizer_requests": policy.max_http_tokenizer_requests,
+        }
+    )
+    return {
+        "profile": exc.profile,
+        "status": "failed",
+        "sanitized_error_code": exc.sanitized_error_code,
+        "failure_stage": "planning",
+        "failure_reason": _FAILURE_REASONS.get(
+            exc.sanitized_error_code, "other_planning_failure"
+        ),
+        "plan_version": exc.plan_version,
+        "metrics": metrics,
+    }
+
+
+def _unexpected_failure_record() -> dict:
+    return {
+        "status": "unexpected_failure",
+        "sanitized_error_code": "diagnostic_unclassified_failure",
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--registry-number", required=True)
+    parser.add_argument("--legacy-plan-32k", required=True, type=Path)
+    parser.add_argument("--legacy-plan-64k", required=True, type=Path)
+    parser.add_argument("--lineage-output", required=True, type=Path)
+    parser.add_argument("--profile", choices=("32k", "64k", "both"), default="both")
+    parser.add_argument("--diagnostics-output", type=Path)
+    parser.add_argument("--diagnostic-only", action="store_true")
+    args = parser.parse_args()
+    args.tokenizer = tokenizer_from_environment()
+    started = time.monotonic()
+    with SessionLocal() as session:
+        run = session.scalar(
+            select(TenderAnalysisRun).where(
+                TenderAnalysisRun.registry_number == args.registry_number
+            )
+        )
+        if not run or not run.procurement_case_id:
+            raise SystemExit("evidence_batch_plan_source_unavailable")
+        inputs = resolve_customer_run_inputs(session, args.registry_number)
+    documents = inputs.documents
+    evidence_fragments = _persisted_evidence_fragments(documents)
+    if args.diagnostic_only and not args.diagnostics_output:
+        parser.error("--diagnostics-output is required with --diagnostic-only")
+    selected = ("32k", "64k") if args.profile == "both" else (args.profile,)
+    plans = {}
+    diagnostic_records = []
+    for profile in selected:
+        try:
+            plans[profile] = _plan(
+                args,
+                profile=profile,
+                documents=documents,
+                evidence_fragments=evidence_fragments,
+                identity=args.tokenizer.identity,
+                run=run,
+            )
+            diagnostic_records.append(
+                {
+                    "profile": profile,
+                    "status": "success",
+                    "sanitized_error_code": None,
+                    "plan_version": plans[profile].plan_version,
+                    "metrics": sanitize_batch_planning_diagnostics(
+                        plans[profile].planning_diagnostics
+                    ),
+                }
+            )
+        except R10_1BatchPlanningRejectedError as exc:
+            record = _failure_record(exc)
+            diagnostic_records.append(record)
+            if args.diagnostics_output:
+                _write_diagnostics(
+                    args.diagnostics_output,
+                    _diagnostic_payload(
+                        diagnostic_only=args.diagnostic_only,
+                        profiles=diagnostic_records,
+                    ),
+                )
+            print(
+                json.dumps(
+                    {
+                        "result": "failed",
+                        "profile": exc.profile,
+                        "sanitized_error_code": exc.sanitized_error_code,
+                        "diagnostics_written": bool(args.diagnostics_output),
+                    }
+                )
+            )
+            return 2
+        except Exception:  # noqa: BLE001 - this CLI must sanitize unknown failures.
+            if args.diagnostics_output:
+                _write_diagnostics(
+                    args.diagnostics_output,
+                    _diagnostic_payload(
+                        diagnostic_only=args.diagnostic_only,
+                        profiles=diagnostic_records + [_unexpected_failure_record()],
+                    ),
+                )
+            print(
+                json.dumps(
+                    {
+                        "result": "failed",
+                        "sanitized_error_code": "diagnostic_unclassified_failure",
+                        "diagnostics_written": bool(args.diagnostics_output),
+                    }
+                )
+            )
+            return 3
+    if args.diagnostic_only:
+        _write_diagnostics(
+            args.diagnostics_output,
+            _diagnostic_payload(diagnostic_only=True, profiles=diagnostic_records),
+        )
+        print(json.dumps({"result": "success", "profiles": list(plans)}))
+        return 0
+    if any(
+        len(plan.fragment_ids) != len(evidence_fragments) for plan in plans.values()
+    ):
+        raise SystemExit("evidence_batch_plan_coverage_mismatch")
+    legacy_paths = {"32k": args.legacy_plan_32k, "64k": args.legacy_plan_64k}
+    records = []
+    for profile, plan in plans.items():
+        legacy = json.loads(legacy_paths[profile].read_text(encoding="utf-8"))
+        records.append(
+            {
+                "context_profile": profile,
+                "legacy_audit_hash": legacy.get("plan_hash"),
+                "product_plan_hash": plan.plan_hash,
+                "corpus_source_hash": plan.corpus_evidence_hash,
+                "document_count": len(documents),
+                "chunk_count": len(evidence_fragments),
+                "coverage": {
+                    "assigned": len(plan.fragment_ids),
+                    "duplicate": 0,
+                    "unassigned": 0,
+                    "oversized": 0,
+                    "truncation": 0,
+                },
+                "batch_count": len(plan.batches),
+                "tokenizer_identity": plan.tokenizer_identity,
+                "chat_template_overhead": plan.policy.chat_template_overhead,
+                "execution_deadline_ms": plan.policy.execution_deadline_ms,
+                "hash_transition_reason": [
+                    "stable identity change",
+                    "numeric ordering",
+                    "new request contract",
+                    "new prompt/schema metadata",
+                ],
+                "plan_duration_ms": 0,
+                "tokenizer_invocations": 0,
+                "tokenizer_cache_hits": 0,
+                "tokenizer_mode": "unknown",
+                "tokenizer_subprocess_count": 0,
+                "tokenizer_request_duration_ms_total": 0,
+                "tokenizer_request_duration_ms_max": 0,
+                "adjustment_rounds_total": sum(
+                    batch.adjustment_rounds for batch in plan.batches
+                ),
+                "adjustment_rounds_max": max(
+                    (batch.adjustment_rounds for batch in plan.batches), default=0
+                ),
+                "planning_diagnostics": plan.planning_diagnostics,
+                "maxrss": 0,
+            }
+        )
+    duration_ms = int((time.monotonic() - started) * 1000)
+    metrics = {
+        "plan_duration_ms": duration_ms,
+        "tokenizer_invocations": int(getattr(args.tokenizer, "invocations", 0)),
+        "tokenizer_cache_hits": int(getattr(args.tokenizer, "cache_hits", 0)),
+        "tokenizer_logical_calls": int(getattr(args.tokenizer, "logical_calls", 0)),
+        "tokenizer_mode": str(getattr(args.tokenizer, "tokenizer_mode", "command")),
+        "tokenizer_subprocess_count": int(
+            getattr(args.tokenizer, "subprocess_count", 0)
+        ),
+        "tokenizer_request_duration_ms_total": int(
+            getattr(args.tokenizer, "request_duration_ms_total", 0)
+        ),
+        "tokenizer_request_duration_ms_max": int(
+            getattr(args.tokenizer, "request_duration_ms_max", 0)
+        ),
+        "maxrss": int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss),
+    }
+    for record in records:
+        record.update(metrics)
+    payload = {"lineage_version": "arv003-product-plan-lineage-v1", "profiles": records}
+    args.lineage_output.parent.mkdir(parents=True, exist_ok=True)
+    args.lineage_output.write_text(
+        json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    args.lineage_output.chmod(0o600)
+    print(
+        json.dumps(
+            {
+                "profiles": [
+                    {
+                        "context_profile": item["context_profile"],
+                        "legacy_audit_hash": item["legacy_audit_hash"],
+                        "product_plan_hash": item["product_plan_hash"],
+                        "document_count": item["document_count"],
+                        "chunk_count": item["chunk_count"],
+                        "batch_count": item["batch_count"],
+                        "coverage": item["coverage"],
+                        "plan_duration_ms": item["plan_duration_ms"],
+                        "tokenizer_invocations": item["tokenizer_invocations"],
+                        "tokenizer_cache_hits": item["tokenizer_cache_hits"],
+                        "maxrss": item["maxrss"],
+                    }
+                    for item in records
+                ]
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

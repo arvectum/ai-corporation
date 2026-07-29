@@ -107,7 +107,19 @@ def build_evidence_packet(
     if not built:
         raise ValueError("Evidence packet requires at least one fragment")
 
-    built.sort(key=lambda fragment: (fragment.document_id, fragment.chunk_id, fragment.fragment_id))
+    def source_order(fragment: EvidenceFragment) -> tuple[int, int, str, str]:
+        locator = fragment.locator or {}
+        try:
+            document_order = int(locator.get("document_order", 2**31 - 1))
+        except (TypeError, ValueError):
+            document_order = 2**31 - 1
+        try:
+            chunk_index = int(locator.get("chunk_index", 2**63 - 1))
+        except (TypeError, ValueError):
+            chunk_index = 2**63 - 1
+        return document_order, chunk_index, fragment.document_id, fragment.fragment_id
+
+    built.sort(key=source_order)
     fragment_ids = [fragment.fragment_id for fragment in built]
     if len(fragment_ids) != len(set(fragment_ids)):
         raise ValueError("Evidence packet contains duplicate fragments")

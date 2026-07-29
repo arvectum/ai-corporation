@@ -6,6 +6,7 @@ command writes customer canonical files locally and a separate sanitized,
 quote-free manifest suitable for review. It never publishes into the general
 customer workflow and never accepts a credential as a command-line argument.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,6 +22,7 @@ from src.modules.customer_pilot.models import ProcurementCase
 from src.modules.procurement_analysis.r10_1_producer import (
     R10_1CanonicalProductionError,
 )
+from src.modules.production_llm_analysis.batching import tokenizer_from_environment
 from src.modules.production_llm_analysis.controlled_evidence import (
     ControlledEvidenceError,
     load_approved_provider_policy,
@@ -180,7 +182,10 @@ def main() -> int:
                 raise ControlledRunnerConfigurationError(
                     "procurement_case_identity_mismatch"
                 )
-            if case.procurement_number and case.procurement_number != run.registry_number:
+            if (
+                case.procurement_number
+                and case.procurement_number != run.registry_number
+            ):
                 raise ControlledRunnerConfigurationError(
                     "procurement_case_registry_mismatch"
                 )
@@ -221,6 +226,11 @@ def main() -> int:
                 )
             )
 
+        token_counter = tokenizer_from_environment()
+        if not bool(getattr(token_counter, "persistent", False)):
+            raise ControlledRunnerConfigurationError(
+                "exact_persistent_tokenizer_not_configured"
+            )
         bundle = run_controlled_provider_evidence(
             output_root=output_root,
             customer_id=str(run.customer_id),
@@ -230,6 +240,13 @@ def main() -> int:
             run_id=run.id,
             metadata=metadata,
             documents=inputs.documents,
+            evidence_chunks=[
+                chunk
+                for document in inputs.documents
+                for chunk in (document.evidence_chunks or [])
+            ],
+            token_counter=token_counter,
+            controlled=True,
             provider_factory=provider_factory,
             policy=policy,
         )

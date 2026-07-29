@@ -91,6 +91,30 @@ class EvidenceReference(ContractModel):
     quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class CompactWireEvidenceFragment(ContractModel):
+    fragment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    document_order: int = Field(strict=True, ge=0)
+    chunk_index: int = Field(strict=True, ge=0)
+    text: str = Field(min_length=1)
+
+
+class CompactWireEvidenceReference(ContractModel):
+    fragment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    quote: str = Field(min_length=1)
+
+
+class CompactWireProviderClaim(ContractModel):
+    claim_id: str = Field(min_length=1)
+    field_path: str = Field(min_length=1)
+    value: Any
+    provider_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence_references: list[CompactWireEvidenceReference] = Field(default_factory=list)
+
+
+class CompactWireProviderResponse(ContractModel):
+    claims: list[CompactWireProviderClaim] = Field(default_factory=list)
+
+
 class ProviderClaim(ContractModel):
     claim_id: str = Field(min_length=1)
     field_path: str = Field(min_length=1)
@@ -156,6 +180,7 @@ class ProductionLLMAnalysisRequest(ContractModel):
     run_id: str = Field(min_length=1)
     registry_number: str = Field(min_length=1)
     provider: str = Field(min_length=1)
+    provider_wire_contract_version: str = Field(default="full-v1", min_length=1)
     model: str = Field(min_length=1)
     prompt_id: str = Field(min_length=1)
     prompt_version: str = Field(min_length=1)
@@ -165,6 +190,20 @@ class ProductionLLMAnalysisRequest(ContractModel):
     temperature: float = Field(default=0.0, ge=0.0, le=0.0)
     evidence_packet: EvidencePacket
     budget_policy: BudgetPolicy
+    batch_plan_version: str | None = None
+    batch_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_ordinal: int | None = Field(default=None, ge=1)
+    batch_count: int | None = Field(default=None, ge=1)
+    corpus_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    map_mode: bool = False
+    max_claims: int | None = Field(default=None, ge=1)
+    allowed_field_paths: list[str] = Field(default_factory=list)
+    context_profile: str | None = None
+    tokenizer_identity: str | None = None
+    evidence_budget: int | None = Field(default=None, ge=1)
+    chat_template_overhead: int | None = Field(default=None, ge=1)
+    execution_deadline_ms: int | None = Field(default=None, ge=1)
 
 
 class ProviderAnalysisResponse(ContractModel):
@@ -184,6 +223,7 @@ class ProductionLLMAnalysisResult(ContractModel):
     canonical_input_eligible: bool = False
     request_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     provider: str
+    provider_wire_contract_version: str = "full-v1"
     model: str
     provider_request_id: str | None = None
     prompt_id: str
@@ -200,3 +240,22 @@ class ProductionLLMAnalysisResult(ContractModel):
     sanitized_error_code: str | None = None
     raw_response_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     validated_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    batch_plan_version: str | None = None
+    batch_plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    batch_ordinal: int | None = Field(default=None, ge=1)
+    batch_count: int | None = Field(default=None, ge=1)
+    corpus_evidence_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    map_empty: bool = False
+    batch_hashes: list[str] = Field(default_factory=list)
+    batch_result_hashes: list[str] = Field(default_factory=list)
+    provider_call_count: int = Field(default=0, ge=0)
+    empty_batch_count: int = Field(default=0, ge=0)
+    provider_request_ids: list[str] = Field(default_factory=list)
+    final_request_body_hashes: list[str] = Field(default_factory=list)
+    final_projected_request_tokens: list[int] = Field(default_factory=list)
+    tokenizer_identity: str | None = None
+    context_profile: str | None = None
+    evidence_budget: int | None = Field(default=None, ge=1)
+    chat_template_overhead: int | None = Field(default=None, ge=1)
+    execution_deadline_ms: int | None = Field(default=None, ge=1)

@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from src.modules.procurement_analysis.frozen_types import AnalyzedDocument
+from src.modules.procurement_analysis.r10_1_producer import R10_1AnalysisRejectedError
+from src.modules.production_llm_analysis import controlled_evidence
 from src.modules.production_llm_analysis.controlled_evidence import (
     ApprovedControlledProviderPolicy,
     ControlledEvidenceConflictError,
     ControlledEvidenceError,
+    build_sanitized_controlled_evidence_manifest,
     load_approved_provider_policy,
     run_controlled_provider_evidence,
 )
@@ -22,7 +26,6 @@ from src.modules.production_llm_analysis.schemas import (
     ProviderClaim,
     ProviderPricing,
 )
-
 
 CUSTOMER_ID = "customer-1"
 PROJECT_ID = "project-1"
@@ -198,13 +201,56 @@ def test_matching_semantics_publish_despite_volatile_provider_metadata(tmp_path)
     bundle = _run(output_root, provider_factory)
 
     assert bundle.manifest_path.exists()
+    assert (
+        bundle.manifest["manifest_version"] == "r10.1-controlled-provider-evidence-v3"
+    )
     assert bundle.manifest["repeat_count"] == 2
     assert bundle.manifest["repeat_identity_verified"] is True
-    assert bundle.manifest["stable_identity"]["request_id"] == bundle.first.llm_result.request_id
-    assert bundle.manifest["stable_identity"]["evidence_packet_hash"] == bundle.second.llm_result.evidence_packet_hash
+    assert (
+        bundle.manifest["stable_identity"]["request_id"]
+        == bundle.first.llm_result.request_id
+    )
+    assert (
+        bundle.manifest["stable_identity"]["evidence_packet_hash"]
+        == bundle.second.llm_result.evidence_packet_hash
+    )
     assert bundle.manifest["stable_identity"]["grounded_claims_hash"]
-    assert bundle.manifest["executions"][0]["provider_request_id"] != bundle.manifest["executions"][1]["provider_request_id"]
-    assert bundle.manifest["executions"][0]["validated_result_hash"] != bundle.manifest["executions"][1]["validated_result_hash"]
+    for field in (
+        "provider_wire_contract_version",
+        "prompt_id",
+        "prompt_version",
+        "output_schema_id",
+        "output_schema_version",
+        "grounding_policy_version",
+        "batch_plan_version",
+    ):
+        assert bundle.manifest["stable_identity"][field] == getattr(
+            bundle.first.llm_result, field
+        )
+        assert bundle.manifest["stable_identity"][field] == getattr(
+            bundle.second.llm_result, field
+        )
+    assert bundle.manifest["wire_contract"] == {
+        "provider_wire_contract_version": "compact-safe-v1",
+        "input_fragment_schema": [
+            "fragment_id",
+            "document_order",
+            "chunk_index",
+            "text",
+        ],
+        "output_reference_schema": ["fragment_id", "quote"],
+        "server_side_reference_expansion": True,
+        "full_grounding_revalidation": True,
+        "provider_metadata_authority": False,
+    }
+    assert (
+        bundle.manifest["executions"][0]["provider_request_id"]
+        != bundle.manifest["executions"][1]["provider_request_id"]
+    )
+    assert (
+        bundle.manifest["executions"][0]["validated_result_hash"]
+        != bundle.manifest["executions"][1]["validated_result_hash"]
+    )
     assert bundle.manifest["executions"][0]["budget"]["actual_input_tokens"] == 100
     assert bundle.manifest["executions"][1]["budget"]["actual_input_tokens"] == 101
     assert bundle.manifest["executions"][0]["raw_response_stored"] is False
@@ -217,6 +263,76 @@ def test_matching_semantics_publish_despite_volatile_provider_metadata(tmp_path)
     assert "quote_sha256" in text
     assert (output_root / "execution-1" / "canonical_report.json").exists()
     assert (output_root / "execution-2" / "canonical_report.json").exists()
+
+
+def test_manifest_is_sanitized_and_hash_is_deterministic(tmp_path):
+    bundle = _run(tmp_path / "controlled", StableProvider)
+    repeat = build_sanitized_controlled_evidence_manifest(
+        policy=_policy(),
+        productions=[bundle.first, bundle.second],
+    )
+
+    serialized = json.dumps(bundle.manifest, sort_keys=True)
+    assert bundle.manifest["manifest_hash"]
+    assert bundle.manifest["manifest_hash"] == repeat["manifest_hash"]
+    for prohibited in (
+        DOCUMENT_TEXT,
+        "Cable AVVG-P is required.",
+        DOCUMENT_ID,
+        "specification.txt",
+        REGISTRY_NUMBER,
+        CUSTOMER_ID,
+        PROJECT_ID,
+        RUN_ID,
+        "/Users/",
+        "postgresql://",
+        "sensitive-api-key",
+    ):
+        assert prohibited not in serialized
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "provider_wire_contract_version",
+        "prompt_id",
+        "prompt_version",
+        "output_schema_id",
+        "output_schema_version",
+        "grounding_policy_version",
+        "batch_plan_version",
+    ],
+)
+def test_execution_contract_drift_fails_closed_without_publication(
+    tmp_path, monkeypatch, field
+):
+    source = _run(tmp_path / "source", StableProvider)
+    changed_value = "drift-value"
+    mutated_result = source.second.llm_result.model_copy(update={field: changed_value})
+    productions = iter(
+        (source.first, replace(source.second, llm_result=mutated_result))
+    )
+    monkeypatch.setattr(
+        controlled_evidence,
+        "produce_r10_1_canonical_analysis",
+        lambda **_kwargs: next(productions),
+    )
+    output_root = tmp_path / "controlled"
+
+    with pytest.raises(
+        ControlledEvidenceConflictError,
+        match="controlled_evidence_execution_contract_mismatch",
+    ) as raised:
+        _run(output_root, StableProvider)
+
+    message = str(raised.value)
+    assert changed_value not in message
+    assert all(
+        value not in message
+        for value in (CUSTOMER_ID, CASE_ID, REGISTRY_NUMBER, "/Users/")
+    )
+    assert not output_root.exists()
+    assert not list(tmp_path.glob(".controlled.partial.*"))
 
 
 def test_divergent_provider_outputs_fail_closed_without_publication(tmp_path):
@@ -236,7 +352,7 @@ def test_divergent_provider_outputs_fail_closed_without_publication(tmp_path):
 def test_provider_failure_removes_partial_customer_outputs(tmp_path):
     output_root = tmp_path / "controlled"
 
-    with pytest.raises(Exception):
+    with pytest.raises(R10_1AnalysisRejectedError):
         _run(output_root, TimeoutProvider)
 
     assert not output_root.exists()
@@ -249,7 +365,9 @@ def test_approved_policy_rejects_credentials_and_unknown_fields(tmp_path):
     payload["api_key"] = "must-not-be-accepted"
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(ControlledEvidenceError, match="approved_provider_policy_invalid"):
+    with pytest.raises(
+        ControlledEvidenceError, match="approved_provider_policy_invalid"
+    ):
         load_approved_provider_policy(path)
 
 

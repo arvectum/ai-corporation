@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,12 +15,16 @@ from src.modules.procurement_analysis.r10_1_producer import (
     R10_1CanonicalProduction,
     produce_r10_1_canonical_analysis,
 )
+from src.modules.production_llm_analysis.contracts import (
+    R10_1_COMPACT_INPUT_FRAGMENT_FIELDS,
+    R10_1_COMPACT_OUTPUT_REFERENCE_FIELDS,
+    R10_1_CONTROLLED_MAP_CONTRACT,
+)
 from src.modules.production_llm_analysis.evidence import canonical_sha256
 from src.modules.production_llm_analysis.schemas import BudgetPolicy
 from src.modules.production_llm_analysis.service import ProductionLLMProvider
 
-
-MANIFEST_VERSION = "r10.1-controlled-provider-evidence-v1"
+MANIFEST_VERSION = "r10.1-controlled-provider-evidence-v3"
 
 
 class ControlledEvidenceError(RuntimeError):
@@ -64,13 +69,12 @@ def load_approved_provider_policy(path: Path) -> ApprovedControlledProviderPolic
 
 def _reference_summary(reference: Any) -> dict[str, Any]:
     return {
-        "procurement_case_id": reference.procurement_case_id,
-        "registry_number": reference.registry_number,
-        "fragment_id": reference.fragment_id,
-        "document_id": reference.document_id,
-        "document_name": reference.document_name,
-        "chunk_id": reference.chunk_id,
-        "locator": reference.locator,
+        "reference_identity_hash": canonical_sha256({
+            "fragment_id": reference.fragment_id,
+            "document_id": reference.document_id,
+            "chunk_id": reference.chunk_id,
+            "locator": reference.locator,
+        }),
         "quote_sha256": reference.quote_sha256,
     }
 
@@ -142,17 +146,50 @@ def _grounded_claims_hash(production: R10_1CanonicalProduction) -> str:
 
 
 def _stable_semantic_identity(production: R10_1CanonicalProduction) -> dict[str, Any]:
-    """Identity that must remain stable despite request IDs, timing and usage variance."""
+    """Identity that is deterministic across repeated map executions."""
 
     result = production.llm_result
     return {
+        "provider_wire_contract_version": result.provider_wire_contract_version,
+        "prompt_id": result.prompt_id,
+        "prompt_version": result.prompt_version,
+        "output_schema_id": result.output_schema_id,
+        "output_schema_version": result.output_schema_version,
+        "grounding_policy_version": result.grounding_policy_version,
         "request_id": result.request_id,
         "evidence_packet_hash": result.evidence_packet_hash,
+        "batch_plan_hash": production.batch_plan_hash,
+        "corpus_evidence_hash": production.corpus_evidence_hash,
+        "batch_count": production.batch_count,
+        "batch_plan_version": result.batch_plan_version,
+        "ordered_batch_hashes": list(result.batch_hashes),
+        "ordered_batch_result_hashes": list(result.batch_result_hashes),
         "grounded_claims_hash": _grounded_claims_hash(production),
+        "merged_grounded_claims_hash": _grounded_claims_hash(production),
         "source_analysis_run_id": production.source_analysis_run_id,
         "source_graph_hash": production.source_graph_hash,
         "production_model_hash": production.production_model_hash,
+        "provider": result.provider,
+        "model": result.model,
+        "tokenizer_identity": production.tokenizer_identity,
+        "context_profile": production.context_profile,
     }
+
+
+def _validate_controlled_result_contract(result: Any) -> None:
+    actual = (
+        result.provider_wire_contract_version, result.prompt_id, result.prompt_version,
+        result.output_schema_id, result.output_schema_version,
+        result.grounding_policy_version, result.batch_plan_version,
+    )
+    expected = (
+        R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
+        R10_1_CONTROLLED_MAP_CONTRACT.prompt_id, R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id, R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version, R10_1_CONTROLLED_MAP_CONTRACT.plan_version,
+    )
+    if actual != expected:
+        raise ControlledEvidenceConflictError("controlled_evidence_execution_contract_mismatch")
 
 
 def _publication_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
@@ -172,7 +209,7 @@ def _execution_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
     return {
         "status": result.status.value,
         "canonical_input_eligible": result.canonical_input_eligible,
-        "provider_request_id": result.provider_request_id,
+        "provider_request_id": canonical_sha256(result.provider_request_ids),
         "validated_result_hash": result.validated_result_hash,
         "accepted_claim_count": len(result.accepted_claims),
         "rejected_claim_count": len(result.rejected_claims),
@@ -184,6 +221,11 @@ def _execution_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
         "sanitized_error_code": result.sanitized_error_code,
         "raw_response_sha256": result.raw_response_sha256,
         "raw_response_stored": False,
+        "batch_count": result.batch_count,
+        "empty_batch_count": result.empty_batch_count,
+        "batch_hashes": list(result.batch_hashes),
+        "batch_result_hashes": list(result.batch_result_hashes),
+        "provider_call_count": result.provider_call_count,
         "publication": _publication_summary(production),
     }
 
@@ -202,6 +244,8 @@ def build_sanitized_controlled_evidence_manifest(
         raise ControlledEvidenceError("controlled_evidence_provider_policy_mismatch")
     if first_result.model != policy.model or second_result.model != policy.model:
         raise ControlledEvidenceError("controlled_evidence_model_policy_mismatch")
+    _validate_controlled_result_contract(first_result)
+    _validate_controlled_result_contract(second_result)
 
     first_identity = _stable_semantic_identity(first)
     second_identity = _stable_semantic_identity(second)
@@ -226,6 +270,14 @@ def build_sanitized_controlled_evidence_manifest(
     payload = {
         "manifest_version": MANIFEST_VERSION,
         "stable_identity": stable,
+        "wire_contract": {
+            "provider_wire_contract_version": first_result.provider_wire_contract_version,
+            "input_fragment_schema": list(R10_1_COMPACT_INPUT_FRAGMENT_FIELDS),
+            "output_reference_schema": list(R10_1_COMPACT_OUTPUT_REFERENCE_FIELDS),
+            "server_side_reference_expansion": True,
+            "full_grounding_revalidation": True,
+            "provider_metadata_authority": False,
+        },
         "repeat_count": 2,
         "repeat_identity_verified": True,
         "executions": [_execution_summary(first), _execution_summary(second)],
@@ -276,6 +328,9 @@ def run_controlled_provider_evidence(
     documents: list[Any],
     provider_factory: Callable[[], ProductionLLMProvider],
     policy: ApprovedControlledProviderPolicy,
+    evidence_chunks: list[dict[str, Any]] | None = None,
+    token_counter: Any | None = None,
+    controlled: bool = False,
 ) -> ControlledEvidenceBundle:
     """Execute the same approved input twice and publish only matching evidence.
 
@@ -306,6 +361,9 @@ def run_controlled_provider_evidence(
                 output_dir=stage / f"execution-{index}",
                 metadata=metadata,
                 documents=documents,
+                evidence_chunks=evidence_chunks,
+                token_counter=token_counter,
+                controlled=controlled,
                 provider=provider_factory(),
                 budget_policy=policy.budget,
                 provider_name=policy.provider,

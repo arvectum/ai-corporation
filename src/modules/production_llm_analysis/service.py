@@ -39,6 +39,7 @@ def build_production_llm_request(
     *,
     evidence_packet: EvidencePacket,
     provider: str,
+    provider_wire_contract_version: str = "full-v1",
     model: str,
     prompt_id: str,
     prompt_version: str,
@@ -46,6 +47,20 @@ def build_production_llm_request(
     output_schema_version: str,
     grounding_policy_version: str,
     budget_policy: Any,
+    batch_plan_version: str | None = None,
+    batch_plan_hash: str | None = None,
+    batch_hash: str | None = None,
+    batch_ordinal: int | None = None,
+    batch_count: int | None = None,
+    corpus_evidence_hash: str | None = None,
+    map_mode: bool = False,
+    max_claims: int | None = None,
+    allowed_field_paths: list[str] | None = None,
+    context_profile: str | None = None,
+    tokenizer_identity: str | None = None,
+    evidence_budget: int | None = None,
+    chat_template_overhead: int | None = None,
+    execution_deadline_ms: int | None = None,
 ) -> ProductionLLMAnalysisRequest:
     identity = {
         "customer_id": evidence_packet.customer_id,
@@ -55,6 +70,7 @@ def build_production_llm_request(
         "registry_number": evidence_packet.registry_number,
         "evidence_packet_hash": evidence_packet.packet_hash,
         "provider": provider,
+        "provider_wire_contract_version": provider_wire_contract_version,
         "model": model,
         "prompt_id": prompt_id,
         "prompt_version": prompt_version,
@@ -63,6 +79,20 @@ def build_production_llm_request(
         "grounding_policy_version": grounding_policy_version,
         "temperature": 0.0,
         "budget_policy": budget_policy.model_dump(mode="json") if hasattr(budget_policy, "model_dump") else budget_policy,
+        "batch_plan_version": batch_plan_version,
+        "batch_plan_hash": batch_plan_hash,
+        "batch_hash": batch_hash,
+        "batch_ordinal": batch_ordinal,
+        "batch_count": batch_count,
+        "corpus_evidence_hash": corpus_evidence_hash,
+        "map_mode": map_mode,
+        "max_claims": max_claims,
+        "allowed_field_paths": allowed_field_paths or [],
+        "context_profile": context_profile,
+        "tokenizer_identity": tokenizer_identity,
+        "evidence_budget": evidence_budget,
+        "chat_template_overhead": chat_template_overhead,
+        "execution_deadline_ms": execution_deadline_ms,
     }
     return ProductionLLMAnalysisRequest(
         request_id=canonical_sha256(identity),
@@ -72,6 +102,7 @@ def build_production_llm_request(
         run_id=evidence_packet.run_id,
         registry_number=evidence_packet.registry_number,
         provider=provider,
+        provider_wire_contract_version=provider_wire_contract_version,
         model=model,
         prompt_id=prompt_id,
         prompt_version=prompt_version,
@@ -80,6 +111,20 @@ def build_production_llm_request(
         grounding_policy_version=grounding_policy_version,
         evidence_packet=evidence_packet,
         budget_policy=budget_policy,
+        batch_plan_version=batch_plan_version,
+        batch_plan_hash=batch_plan_hash,
+        batch_hash=batch_hash,
+        batch_ordinal=batch_ordinal,
+        batch_count=batch_count,
+        corpus_evidence_hash=corpus_evidence_hash,
+        map_mode=map_mode,
+        max_claims=max_claims,
+        allowed_field_paths=allowed_field_paths or [],
+        context_profile=context_profile,
+        tokenizer_identity=tokenizer_identity,
+        evidence_budget=evidence_budget,
+        chat_template_overhead=chat_template_overhead,
+        execution_deadline_ms=execution_deadline_ms,
     )
 
 
@@ -104,6 +149,7 @@ def _failure_result(
         canonical_input_eligible=False,
         request_id=request.request_id,
         provider=request.provider,
+        provider_wire_contract_version=request.provider_wire_contract_version,
         model=request.model,
         prompt_id=request.prompt_id,
         prompt_version=request.prompt_version,
@@ -118,6 +164,18 @@ def _failure_result(
         retry_count=retry_count,
         sanitized_error_code=error_code,
         raw_response_sha256=raw_response_sha256,
+        batch_plan_version=request.batch_plan_version,
+        batch_plan_hash=request.batch_plan_hash,
+        batch_hash=request.batch_hash,
+        batch_ordinal=request.batch_ordinal,
+        batch_count=request.batch_count,
+        corpus_evidence_hash=request.corpus_evidence_hash,
+        map_empty=False,
+        tokenizer_identity=request.tokenizer_identity,
+        evidence_budget=request.evidence_budget,
+        chat_template_overhead=request.chat_template_overhead,
+        execution_deadline_ms=request.execution_deadline_ms,
+        context_profile=request.context_profile,
     )
 
 
@@ -229,7 +287,7 @@ def run_production_llm_analysis(
             error_code="provider_unavailable",
             limitation="Provider was unavailable; no stub or positive fallback was used.",
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - transport boundary must sanitize unknown failures.
         return _failure_result(
             request,
             status=AnalysisStatus.PROVIDER_UNAVAILABLE,
@@ -253,6 +311,25 @@ def run_production_llm_analysis(
             limitation="Provider response did not satisfy the versioned output schema.",
         )
 
+    if request.max_claims is not None and len(response.claims) > request.max_claims:
+        return _failure_result(
+            request,
+            status=AnalysisStatus.INVALID_RESPONSE,
+            budget=preflight,
+            error_code="evidence_batch_output_budget_exceeded",
+            limitation="Provider returned more claims than the approved batch contract allows.",
+        )
+    if request.allowed_field_paths and any(
+        claim.field_path not in request.allowed_field_paths for claim in response.claims
+    ):
+        return _failure_result(
+            request,
+            status=AnalysisStatus.VALIDATION_FAILED,
+            budget=preflight,
+            error_code="evidence_batch_grounding_failed",
+            limitation="Provider returned a field path outside the approved map contract.",
+        )
+
     runtime_budget = reconcile_runtime_budget(request, response, preflight)
     grounded = validate_provider_claims(request.evidence_packet, response.claims)
     accepted = [claim for claim in grounded if claim.support_status == SupportStatus.SUPPORTED]
@@ -263,6 +340,9 @@ def run_production_llm_analysis(
     if runtime_budget.status == BudgetStatus.EXCEEDED:
         status = AnalysisStatus.BUDGET_EXCEEDED
         limitations.append("Runtime token, latency, retry or cost budget was exceeded.")
+    elif not grounded and request.map_mode:
+        status = AnalysisStatus.SUCCESS
+        limitations.append("map_batch_empty; absence in this batch is not a corpus-wide negative conclusion.")
     elif not grounded:
         status = AnalysisStatus.INSUFFICIENT_EVIDENCE
         limitations.append("Provider returned no claims.")
@@ -287,6 +367,7 @@ def run_production_llm_analysis(
         canonical_input_eligible=canonical_input_eligible,
         request_id=request.request_id,
         provider=request.provider,
+        provider_wire_contract_version=request.provider_wire_contract_version,
         model=request.model,
         provider_request_id=response.provider_request_id,
         prompt_id=request.prompt_id,
@@ -302,4 +383,16 @@ def run_production_llm_analysis(
         retry_count=response.retry_count,
         sanitized_error_code=error_code,
         raw_response_sha256=response.raw_response_sha256,
+        batch_plan_version=request.batch_plan_version,
+        batch_plan_hash=request.batch_plan_hash,
+        batch_hash=request.batch_hash,
+        batch_ordinal=request.batch_ordinal,
+        batch_count=request.batch_count,
+        corpus_evidence_hash=request.corpus_evidence_hash,
+        map_empty=request.map_mode and not grounded,
+        tokenizer_identity=request.tokenizer_identity,
+        evidence_budget=request.evidence_budget,
+        chat_template_overhead=request.chat_template_overhead,
+        execution_deadline_ms=request.execution_deadline_ms,
+        context_profile=request.context_profile,
     )

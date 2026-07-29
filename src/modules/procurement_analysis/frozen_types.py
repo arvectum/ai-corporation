@@ -15,3 +15,6 @@ class AnalyzedDocument:
     source: str
     file_id: str
     raw_content: bytes | None = None
+    # Optional persisted chunk projection for R10.1.  The frozen R9 producer
+    # intentionally ignores this field and therefore keeps its input contract.
+    evidence_chunks: list[dict] | None = None
