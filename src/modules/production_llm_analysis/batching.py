@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import math
 import os
 import shlex
 import subprocess
@@ -77,6 +79,18 @@ class TokenizerPolicyStructurallyInvalid(BatchPlanningError):
     code = "evidence_batch_tokenizer_policy_structurally_invalid"
 
 
+class RequestMeasurementInvalid(BatchPlanningError):
+    code = "evidence_batch_request_measurement_invalid"
+
+
+class RequestEnvelopeInvalid(BatchPlanningError):
+    code = "evidence_batch_request_envelope_invalid"
+
+
+class CalibrationCapacityInvalid(BatchPlanningError):
+    code = "evidence_batch_calibration_capacity_invalid"
+
+
 class PlanningConvergenceFailed(BatchPlanningError):
     code = "evidence_batch_planning_convergence_failed"
 
@@ -106,7 +120,7 @@ class BatchPolicy:
     """One of the two approved context profiles; arbitrary defaults are forbidden."""
 
     profile: str = "32k"
-    plan_version: str = "arv003-map-plan-v3"
+    plan_version: str = "arv003-map-plan-v4"
     context_window: int = 32768
     evidence_budget: int = 24488
     output_reserve: int = 4096
@@ -122,8 +136,11 @@ class BatchPolicy:
     max_total_output_tokens: int = 262_144
     max_total_retries: int = 32
     max_total_cost: float = 1.0
-    planning_algorithm_version: str = "prefix-calibrated-bounded-v2"
-    calibration_policy_version: str = "profile-prefix-calibration-v2"
+    planning_algorithm_version: str = "serialized-payload-prefix-bounded-v3"
+    calibration_policy_version: str = "representative-one-batch-envelope-v3"
+    measurement_contract_version: str = "openai-request-measurement-v2"
+    calibration_max_budget_fraction: float = 0.25
+    calibration_max_nominal_batches: int = 1
     max_batches: int = 32
     exact_measurements_per_batch: int = 2
     profile_calibration_requests: int = 2
@@ -158,6 +175,8 @@ class BatchPolicy:
             max_http_tokenizer_requests=80,
             max_candidate_evaluations=3,
             max_tokenizer_invocations=80,
+            calibration_max_budget_fraction=0.25,
+            calibration_max_nominal_batches=1,
             max_adjustments_per_batch=3,
             max_planning_duration_ms=120_000,
             _approved=True,
@@ -185,6 +204,8 @@ class BatchPolicy:
             max_http_tokenizer_requests=48,
             max_candidate_evaluations=3,
             max_tokenizer_invocations=48,
+            calibration_max_budget_fraction=0.25,
+            calibration_max_nominal_batches=1,
             max_adjustments_per_batch=3,
             max_planning_duration_ms=120_000,
             _approved=True,
@@ -261,6 +282,7 @@ class BatchPolicy:
                 self.profile_calibration_requests,
                 self.max_http_tokenizer_requests,
                 self.max_candidate_evaluations,
+                self.calibration_max_nominal_batches,
                 self.max_adjustments_per_batch,
                 self.max_planning_duration_ms,
             )
@@ -268,6 +290,8 @@ class BatchPolicy:
             or self.max_total_cost < 0
         ):
             raise BatchPolicyInvalid("execution budget contains invalid limits")
+        if not 0 < self.calibration_max_budget_fraction <= 1:
+            raise BatchPolicyInvalid("calibration fraction is invalid")
         structural_minimum = (
             self.max_batches * self.exact_measurements_per_batch
             + self.profile_calibration_requests
@@ -307,6 +331,58 @@ class EvidenceBatch:
     adjustment_rounds: int = 0
     calibration_ratio: float = 1.0
     final_request_body_hash: str = ""
+    serialized_evidence_hash: str = ""
+    fixed_envelope_tokens: int = 0
+
+
+@dataclass(frozen=True)
+class ExactRequestMeasurement:
+    full_request_tokens: int
+    request_body_hash: str
+    serialized_evidence_tokens: int
+    serialized_evidence_hash: str
+    fixed_envelope_tokens: int
+    chat_template_overhead: int
+
+    def __post_init__(self) -> None:
+        if (
+            self.full_request_tokens <= 0
+            or self.serialized_evidence_tokens <= 0
+            or self.fixed_envelope_tokens
+            != self.full_request_tokens - self.serialized_evidence_tokens
+            or self.fixed_envelope_tokens < 0
+            or len(self.request_body_hash) != 64
+            or len(self.serialized_evidence_hash) != 64
+        ):
+            raise RequestMeasurementInvalid("exact request measurement is invalid")
+
+
+def measure_openai_request_tokens(
+    request_body: dict[str, Any],
+    *,
+    tokenizer: ExactTokenCounter | Callable[[str], int],
+    chat_template_overhead: int,
+) -> ExactRequestMeasurement:
+    """Measure the canonical request and its serialized evidence in one domain."""
+    try:
+        task = json.loads(request_body["messages"][1]["content"])
+        evidence = task["evidence_fragments"]
+        evidence_bytes = canonical_json_bytes(evidence)
+    except (IndexError, KeyError, TypeError, ValueError) as exc:
+        raise RequestMeasurementInvalid("request evidence payload is invalid") from exc
+    full_tokens = (
+        int(tokenizer(canonical_json_bytes(request_body).decode("utf-8")))
+        + chat_template_overhead
+    )
+    evidence_tokens = int(tokenizer(evidence_bytes.decode("utf-8")))
+    return ExactRequestMeasurement(
+        full_request_tokens=full_tokens,
+        request_body_hash=canonical_sha256(request_body),
+        serialized_evidence_tokens=evidence_tokens,
+        serialized_evidence_hash=hashlib.sha256(evidence_bytes).hexdigest(),
+        fixed_envelope_tokens=full_tokens - evidence_tokens,
+        chat_template_overhead=chat_template_overhead,
+    )
 
     @property
     def request_hash(self) -> str:
@@ -393,6 +469,9 @@ def _batch_hash(
             "adjustment_rounds": adjustment_rounds,
             "planning_algorithm_version": policy.planning_algorithm_version,
             "calibration_policy_version": policy.calibration_policy_version,
+            "measurement_contract_version": policy.measurement_contract_version,
+            "calibration_max_budget_fraction": policy.calibration_max_budget_fraction,
+            "calibration_max_nominal_batches": policy.calibration_max_nominal_batches,
             "output_reserve": policy.output_reserve,
             "safety_margin": policy.safety_margin,
             "chat_template_overhead": policy.chat_template_overhead,
@@ -410,7 +489,7 @@ def build_evidence_batch_plan(
     *,
     tokenizer: ExactTokenCounter | Callable[[str], int] | None,
     policy: BatchPolicy = _DEFAULT_BATCH_POLICY,
-    request_measure: Callable[[list[EvidenceFragmentInput]], tuple[int, str]]
+    request_measure: Callable[[list[EvidenceFragmentInput]], ExactRequestMeasurement]
     | None = None,
     request_measurement_identity: dict[str, str] | None = None,
     request_token_overhead: int | None = None,
@@ -480,10 +559,19 @@ def build_evidence_batch_plan(
         "last_candidate_rough_tokens": 0,
         "last_candidate_exact_evidence_tokens": 0,
         "last_candidate_exact_request_tokens": 0,
-        "calibration_request_overhead": 0,
+        "calibration_fragment_count": 0,
+        "calibration_rough_tokens": 0,
+        "calibration_serialized_evidence_tokens": 0,
+        "calibration_full_request_tokens": 0,
+        "calibration_fixed_envelope_tokens": 0,
+        "current_fixed_envelope_tokens": 0,
+        "payload_ratio": 1.05,
+        "context_payload_capacity": 0,
+        "rough_batch_limit": 0,
+        "envelope_drift_max": 0,
         "conservative_ratio": 1.05,
     }
-    measurement_cache: dict[str, tuple[int, str] | int] = {}
+    measurement_cache: dict[str, ExactRequestMeasurement] = {}
     conservative_ratio = 1.05
 
     def update_diagnostics() -> None:
@@ -545,46 +633,52 @@ def build_evidence_batch_plan(
             }
         )
 
-    def exact_evidence(candidate: list[EvidenceFragmentInput]) -> int:
-        key = cache_key("evidence", candidate)
-        cached = measurement_cache.get(key)
-        if cached is not None:
-            diagnostics["planner_cache_hits"] = (
-                int(diagnostics["planner_cache_hits"]) + 1
-            )
-            return int(cached)
-        ensure_deadline()
-        ensure_invocation_capacity()
-        value = int(tokenizer("\n".join(item.text for item in candidate)))
-        measurement_cache[key] = value
-        diagnostics["exact_evidence_measurements"] = (
-            int(diagnostics["exact_evidence_measurements"]) + 1
-        )
-        diagnostics["evidence_tokenization_count"] = (
-            int(diagnostics["evidence_tokenization_count"]) + 1
-        )
-        return value
-
-    def exact_request(candidate: list[EvidenceFragmentInput]) -> tuple[int, str]:
+    def exact_request(
+        candidate: list[EvidenceFragmentInput],
+    ) -> ExactRequestMeasurement:
         if request_measure is None:
-            evidence = exact_evidence(candidate)
-            return evidence + int(request_token_overhead or 0), ""
-        key = cache_key("full_request", candidate)
+            if controlled:
+                fail(
+                    RequestMeasurementInvalid(
+                        "controlled planning requires request measurement"
+                    )
+                )
+            evidence_payload = [item.model_dump(mode="json") for item in candidate]
+            evidence = int(tokenizer("\n".join(item.text for item in candidate)))
+            return ExactRequestMeasurement(
+                evidence + int(request_token_overhead or 0),
+                canonical_sha256(
+                    {"offline": [fragment_id(item) for item in candidate]}
+                ),
+                evidence,
+                canonical_sha256(evidence_payload),
+                int(request_token_overhead or 0),
+                0,
+            )
+        key = cache_key(policy.measurement_contract_version, candidate)
         cached = measurement_cache.get(key)
         if cached is not None:
             diagnostics["planner_cache_hits"] = (
                 int(diagnostics["planner_cache_hits"]) + 1
             )
-            return cached  # type: ignore[return-value]
+            return cached
         ensure_deadline()
         ensure_invocation_capacity()
         value = request_measure(candidate)
+        if not isinstance(value, ExactRequestMeasurement):
+            fail(RequestMeasurementInvalid("request measurement contract is required"))
         measurement_cache[key] = value
         diagnostics["exact_request_measurements"] = (
             int(diagnostics["exact_request_measurements"]) + 1
         )
         diagnostics["request_tokenization_count"] = (
             int(diagnostics["request_tokenization_count"]) + 1
+        )
+        diagnostics["exact_evidence_measurements"] = (
+            int(diagnostics["exact_evidence_measurements"]) + 1
+        )
+        diagnostics["evidence_tokenization_count"] = (
+            int(diagnostics["evidence_tokenization_count"]) + 1
         )
         if measured_invocations() > policy.max_http_tokenizer_requests:
             fail(
@@ -599,18 +693,70 @@ def build_evidence_batch_plan(
         end = bisect_right(rough_prefix, target, lo=start + 1, hi=stop + 1) - 1
         return max(start + 1, min(stop, end))
 
-    # One profile-level, source-ordered calibration. Its measurement cache is reused
-    # when that exact prefix becomes a packing candidate.
-    calibration_end = max_end(0, len(items), int(policy.max_evidence_tokens / 1.05))
-    calibration_candidate = items[:calibration_end]
-    calibration_rough = rough_prefix[calibration_end]
-    calibration_evidence = exact_evidence(calibration_candidate)
-    calibration_request, _ = exact_request(calibration_candidate)
-    request_overhead = max(0, calibration_request - calibration_evidence)
-    diagnostics["calibration_request_overhead"] = request_overhead
-    conservative_ratio = max(
-        calibration_evidence / max(1, calibration_rough) * 1.05, 1.05
-    )
+    calibration_envelope = 0
+    if request_measure is None:
+        request_overhead = int(request_token_overhead or 0)
+        context_payload_capacity = (
+            policy.context_window
+            - policy.output_reserve
+            - policy.safety_margin
+            - request_overhead
+        )
+        rough_batch_limit = policy.evidence_budget
+    else:
+        nominal_fragments = max(
+            1,
+            math.ceil(len(items) / policy.max_batches)
+            * policy.calibration_max_nominal_batches,
+        )
+        calibration_cap = int(
+            policy.evidence_budget * policy.calibration_max_budget_fraction
+        )
+        calibration_end = max_end(
+            0, min(len(items), nominal_fragments), calibration_cap
+        )
+        calibration_candidate = items[:calibration_end]
+        calibration_rough = rough_prefix[calibration_end]
+        calibration = exact_request(calibration_candidate)
+        request_overhead = calibration.fixed_envelope_tokens
+        calibration_envelope = request_overhead
+        context_payload_capacity = (
+            policy.context_window
+            - policy.output_reserve
+            - policy.safety_margin
+            - request_overhead
+        )
+        if context_payload_capacity <= 0:
+            fail(
+                CalibrationCapacityInvalid(
+                    "calibration context payload capacity is invalid"
+                )
+            )
+        conservative_ratio = max(
+            calibration.serialized_evidence_tokens / max(1, calibration_rough) * 1.05,
+            1.05,
+        )
+        rough_batch_limit = math.floor(
+            min(
+                policy.evidence_budget / conservative_ratio,
+                context_payload_capacity / conservative_ratio,
+            )
+            * 0.95
+        )
+        if rough_batch_limit <= 0:
+            fail(CalibrationCapacityInvalid("calibration rough capacity is invalid"))
+        rough_batch_limit = max(rough_batch_limit, calibration_rough)
+        diagnostics.update(
+            calibration_fragment_count=len(calibration_candidate),
+            calibration_rough_tokens=calibration_rough,
+            calibration_serialized_evidence_tokens=calibration.serialized_evidence_tokens,
+            calibration_full_request_tokens=calibration.full_request_tokens,
+            calibration_fixed_envelope_tokens=request_overhead,
+            current_fixed_envelope_tokens=request_overhead,
+            context_payload_capacity=context_payload_capacity,
+            payload_ratio=conservative_ratio,
+            rough_batch_limit=rough_batch_limit,
+        )
 
     while cursor < len(items):
         ensure_deadline()
@@ -619,16 +765,7 @@ def build_evidence_batch_plan(
         end = max_end(
             cursor,
             len(items),
-            int(
-                min(
-                    policy.max_evidence_tokens,
-                    policy.context_window
-                    - policy.output_reserve
-                    - policy.safety_margin
-                    - request_overhead,
-                )
-                / conservative_ratio
-            ),
+            rough_batch_limit,
         )
         candidate_evaluations = 0
         adjustment_rounds = 0
@@ -640,8 +777,19 @@ def build_evidence_batch_plan(
                 last_candidate_fragment_count=len(selected),
                 last_candidate_rough_tokens=rough_evidence_tokens,
             )
-            projected, request_hash = exact_request(selected)
-            evidence_tokens = exact_evidence(selected)
+            measurement = exact_request(selected)
+            projected = measurement.full_request_tokens
+            request_hash = measurement.request_body_hash
+            evidence_tokens = measurement.serialized_evidence_tokens
+            observed_envelope = measurement.fixed_envelope_tokens
+            if observed_envelope < 0:
+                fail(RequestEnvelopeInvalid("request envelope is invalid"))
+            request_overhead = max(request_overhead, observed_envelope)
+            diagnostics["current_fixed_envelope_tokens"] = request_overhead
+            diagnostics["envelope_drift_max"] = max(
+                int(diagnostics["envelope_drift_max"]),
+                observed_envelope - calibration_envelope,
+            )
             candidate_evaluations += 1
             diagnostics["candidate_evaluation_count"] = (
                 int(diagnostics["candidate_evaluation_count"]) + 1
@@ -717,6 +865,8 @@ def build_evidence_batch_plan(
                 exact_projected_request_tokens=projected,
                 adjustment_rounds=adjustment_rounds,
                 calibration_ratio=conservative_ratio,
+                serialized_evidence_hash=measurement.serialized_evidence_hash,
+                fixed_envelope_tokens=measurement.fixed_envelope_tokens,
             )
         )
         cursor = end
@@ -750,6 +900,9 @@ def build_evidence_batch_plan(
         "max_total_cost": policy.max_total_cost,
         "planning_algorithm_version": policy.planning_algorithm_version,
         "calibration_policy_version": policy.calibration_policy_version,
+        "measurement_contract_version": policy.measurement_contract_version,
+        "calibration_max_budget_fraction": policy.calibration_max_budget_fraction,
+        "calibration_max_nominal_batches": policy.calibration_max_nominal_batches,
         "max_batches": policy.max_batches,
         "exact_measurements_per_batch": policy.exact_measurements_per_batch,
         "profile_calibration_requests": policy.profile_calibration_requests,

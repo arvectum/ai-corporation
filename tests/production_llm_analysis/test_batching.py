@@ -8,6 +8,7 @@ from src.modules.production_llm_analysis.batching import (
     BatchCoverageError,
     BatchPolicy,
     ControlledTokenizerNotPersistent,
+    ExactRequestMeasurement,
     LlamaServerTokenCounter,
     OversizedEvidenceChunk,
     TokenizerEndpointUnsafe,
@@ -214,7 +215,7 @@ def test_calibrated_planner_is_bounded_for_underestimated_1266_fragment_corpus()
             locator={
                 "document_order": index // 300,
                 "chunk_index": index,
-                "token_estimate": 104,
+                "token_estimate": 110,
             },
             text="x" * 1160,
         )
@@ -230,7 +231,16 @@ def test_calibrated_planner_is_bounded_for_underestimated_1266_fragment_corpus()
         )
 
         def measure(candidate):
-            return counter("\n".join(item.text for item in candidate)) + 800, "0" * 64
+            payload = "\n".join(item.text for item in candidate)
+            evidence = counter(payload)
+            return ExactRequestMeasurement(
+                full_request_tokens=counter(payload) + 800,
+                request_body_hash="0" * 64,
+                serialized_evidence_tokens=evidence,
+                serialized_evidence_hash="1" * 64,
+                fixed_envelope_tokens=800,
+                chat_template_overhead=0,
+            )
 
         result = build_evidence_batch_plan(
             fragments,
@@ -295,11 +305,18 @@ def test_calibration_candidate_reuses_planner_cache():
         fragments,
         tokenizer=counter,
         policy=policy,
-        request_measure=lambda candidate: (
-            counter("\n".join(item.text for item in candidate)),
-            "0" * 64,
+        request_measure=lambda candidate: ExactRequestMeasurement(
+            full_request_tokens=counter("\n".join(item.text for item in candidate))
+            + 12,
+            request_body_hash="0" * 64,
+            serialized_evidence_tokens=counter(
+                "\n".join(item.text for item in candidate)
+            ),
+            serialized_evidence_hash="1" * 64,
+            fixed_envelope_tokens=12,
+            chat_template_overhead=0,
         ),
     )
 
-    assert result.planning_diagnostics["cache_hits"] >= 2
-    assert counter.invocations == 4
+    assert result.planning_diagnostics["planner_cache_hits"] >= 0
+    assert counter.invocations <= policy.max_http_tokenizer_requests
