@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Build and verify product R10.1 plans through the production code path.
 
 This is plan-only: it resolves persisted input read-only, invokes the same
@@ -12,7 +11,9 @@ import argparse
 import json
 import os
 import resource
+import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -22,8 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
 from src.modules.procurement_analysis.r10_1_producer import (
+    R10_1BatchPlanningRejectedError,
     build_r10_1_batch_plan,
     build_r10_1_evidence_packet,
+    sanitize_batch_planning_diagnostics,
 )
 from src.modules.production_llm_analysis.batching import (
     BatchPolicy,
@@ -87,6 +90,7 @@ def _plan(
         if profile == "32k"
         else BatchPolicy.approved_64k(tokenizer_identity=identity)
     )
+
     output_tokens = policy.output_reserve
     packet = build_r10_1_evidence_packet(
         customer_id=str(run.customer_id),
@@ -124,12 +128,94 @@ def _plan(
     )
 
 
+def _write_diagnostics(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.chmod(0o700)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False
+    ) as handle:
+        json.dump(payload, handle, ensure_ascii=False, sort_keys=True, indent=2)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = Path(handle.name)
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+    path.chmod(0o600)
+
+
+_FAILURE_REASONS = {
+    "evidence_batch_planning_convergence_failed": "planning_convergence",
+    "evidence_batch_tokenizer_invocation_limit_exceeded": "invocation_limit",
+    "evidence_batch_planning_timeout": "planning_deadline",
+    "evidence_batch_calibration_capacity_invalid": "calibration_capacity",
+    "evidence_batch_request_measurement_invalid": "request_measurement",
+    "evidence_batch_request_envelope_invalid": "request_envelope",
+    "evidence_batch_oversized_chunk": "oversized_chunk",
+}
+
+
+def _source_head() -> str:
+    """Return only the checked-out revision, never a repository path."""
+    return subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+    ).strip()
+
+
+def _diagnostic_payload(*, diagnostic_only: bool, profiles: list[dict]) -> dict:
+    return {
+        "diagnostics_version": "arv003-batch-planning-diagnostics-v1",
+        "source_head": _source_head(),
+        "diagnostic_only": diagnostic_only,
+        "profiles": profiles,
+    }
+
+
+def _failure_record(exc: R10_1BatchPlanningRejectedError) -> dict:
+    policy = (
+        BatchPolicy.approved_32k(tokenizer_identity="diagnostics")
+        if exc.profile == "32k"
+        else BatchPolicy.approved_64k(tokenizer_identity="diagnostics")
+    )
+    metrics = dict(exc.planning_diagnostics)
+    metrics.update(
+        {
+            "remaining_batch_slots": max(
+                0, policy.max_batches - int(metrics.get("completed_batch_count", 0))
+            ),
+            "max_batches": policy.max_batches,
+            "max_http_tokenizer_requests": policy.max_http_tokenizer_requests,
+        }
+    )
+    return {
+        "profile": exc.profile,
+        "status": "failed",
+        "sanitized_error_code": exc.sanitized_error_code,
+        "failure_stage": "planning",
+        "failure_reason": _FAILURE_REASONS.get(
+            exc.sanitized_error_code, "other_planning_failure"
+        ),
+        "plan_version": exc.plan_version,
+        "metrics": metrics,
+    }
+
+
+def _unexpected_failure_record() -> dict:
+    return {
+        "status": "unexpected_failure",
+        "sanitized_error_code": "diagnostic_unclassified_failure",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--registry-number", required=True)
     parser.add_argument("--legacy-plan-32k", required=True, type=Path)
     parser.add_argument("--legacy-plan-64k", required=True, type=Path)
     parser.add_argument("--lineage-output", required=True, type=Path)
+    parser.add_argument("--profile", choices=("32k", "64k", "both"), default="both")
+    parser.add_argument("--diagnostics-output", type=Path)
+    parser.add_argument("--diagnostic-only", action="store_true")
     args = parser.parse_args()
     args.tokenizer = tokenizer_from_environment()
     started = time.monotonic()
@@ -144,24 +230,80 @@ def main() -> int:
         inputs = resolve_customer_run_inputs(session, args.registry_number)
     documents = inputs.documents
     evidence_fragments = _persisted_evidence_fragments(documents)
-    plans = {
-        "32k": _plan(
-            args,
-            profile="32k",
-            documents=documents,
-            evidence_fragments=evidence_fragments,
-            identity=args.tokenizer.identity,
-            run=run,
-        ),
-        "64k": _plan(
-            args,
-            profile="64k",
-            documents=documents,
-            evidence_fragments=evidence_fragments,
-            identity=args.tokenizer.identity,
-            run=run,
-        ),
-    }
+    if args.diagnostic_only and not args.diagnostics_output:
+        parser.error("--diagnostics-output is required with --diagnostic-only")
+    selected = ("32k", "64k") if args.profile == "both" else (args.profile,)
+    plans = {}
+    diagnostic_records = []
+    for profile in selected:
+        try:
+            plans[profile] = _plan(
+                args,
+                profile=profile,
+                documents=documents,
+                evidence_fragments=evidence_fragments,
+                identity=args.tokenizer.identity,
+                run=run,
+            )
+            diagnostic_records.append(
+                {
+                    "profile": profile,
+                    "status": "success",
+                    "sanitized_error_code": None,
+                    "plan_version": plans[profile].plan_version,
+                    "metrics": sanitize_batch_planning_diagnostics(
+                        plans[profile].planning_diagnostics
+                    ),
+                }
+            )
+        except R10_1BatchPlanningRejectedError as exc:
+            record = _failure_record(exc)
+            diagnostic_records.append(record)
+            if args.diagnostics_output:
+                _write_diagnostics(
+                    args.diagnostics_output,
+                    _diagnostic_payload(
+                        diagnostic_only=args.diagnostic_only,
+                        profiles=diagnostic_records,
+                    ),
+                )
+            print(
+                json.dumps(
+                    {
+                        "result": "failed",
+                        "profile": exc.profile,
+                        "sanitized_error_code": exc.sanitized_error_code,
+                        "diagnostics_written": bool(args.diagnostics_output),
+                    }
+                )
+            )
+            return 2
+        except Exception:  # noqa: BLE001 - this CLI must sanitize unknown failures.
+            if args.diagnostics_output:
+                _write_diagnostics(
+                    args.diagnostics_output,
+                    _diagnostic_payload(
+                        diagnostic_only=args.diagnostic_only,
+                        profiles=diagnostic_records + [_unexpected_failure_record()],
+                    ),
+                )
+            print(
+                json.dumps(
+                    {
+                        "result": "failed",
+                        "sanitized_error_code": "diagnostic_unclassified_failure",
+                        "diagnostics_written": bool(args.diagnostics_output),
+                    }
+                )
+            )
+            return 3
+    if args.diagnostic_only:
+        _write_diagnostics(
+            args.diagnostics_output,
+            _diagnostic_payload(diagnostic_only=True, profiles=diagnostic_records),
+        )
+        print(json.dumps({"result": "success", "profiles": list(plans)}))
+        return 0
     if any(
         len(plan.fragment_ids) != len(evidence_fragments) for plan in plans.values()
     ):

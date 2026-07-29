@@ -68,6 +68,84 @@ class R10_1AnalysisRejectedError(R10_1CanonicalProductionError):
     """The provider result is not eligible for canonical publication."""
 
 
+_PLANNING_DIAGNOSTIC_KEYS = frozenset(
+    {
+        "profile",
+        "completed_batch_count",
+        "cursor",
+        "remaining_fragment_count",
+        "tokenizer_http_requests",
+        "http_tokenizer_request_count",
+        "exact_request_measurements",
+        "exact_evidence_measurements",
+        "request_tokenization_count",
+        "evidence_tokenization_count",
+        "candidate_evaluation_count",
+        "adjustment_evaluation_count",
+        "adjustment_rounds_total",
+        "adjustment_rounds_max",
+        "cache_hits",
+        "planner_cache_hits",
+        "tokenizer_cache_hits",
+        "planning_duration_ms",
+        "last_candidate_fragment_count",
+        "last_candidate_rough_tokens",
+        "last_candidate_exact_evidence_tokens",
+        "last_candidate_exact_request_tokens",
+        "calibration_fragment_count",
+        "calibration_rough_tokens",
+        "calibration_serialized_evidence_tokens",
+        "calibration_full_request_tokens",
+        "calibration_fixed_envelope_tokens",
+        "current_fixed_envelope_tokens",
+        "payload_ratio",
+        "context_payload_capacity",
+        "rough_batch_limit",
+        "envelope_drift_max",
+        "conservative_ratio",
+    }
+)
+
+
+def sanitize_batch_planning_diagnostics(
+    value: object,
+) -> dict[str, int | float | bool | str]:
+    """Keep only approved scalar planner aggregates for public diagnostics."""
+    if not isinstance(value, dict):
+        return {}
+    clean: dict[str, int | float | bool | str] = {}
+    for key, item in value.items():
+        if key not in _PLANNING_DIAGNOSTIC_KEYS or isinstance(
+            item, (dict, list, tuple)
+        ):
+            continue
+        if isinstance(item, (int, float, bool)) or (
+            isinstance(item, str)
+            and len(item) <= 64
+            and item.replace("_", "").isalnum()
+        ):
+            clean[key] = item
+    return clean
+
+
+class R10_1BatchPlanningRejectedError(R10_1AnalysisRejectedError):
+    """Fail-closed planner rejection with allow-listed aggregate diagnostics."""
+
+    def __init__(
+        self,
+        *,
+        sanitized_error_code: str,
+        profile: str,
+        plan_version: str,
+        planning_diagnostics: dict[str, int | float | bool | str],
+    ):
+        self.sanitized_error_code = sanitized_error_code
+        self.profile = profile
+        self.plan_version = plan_version
+        self.planning_diagnostics = planning_diagnostics
+        super().__init__(sanitized_error_code)
+
+
 class R10_1ClaimMappingError(R10_1CanonicalProductionError):
     """A grounded claim cannot be mapped through the explicit allow-list."""
 
@@ -676,7 +754,14 @@ def build_r10_1_batch_plan(
             controlled=controlled,
         )
     except BatchPlanningError as exc:
-        raise R10_1AnalysisRejectedError(exc.code) from None
+        raise R10_1BatchPlanningRejectedError(
+            sanitized_error_code=exc.code,
+            profile=batch_policy.profile,
+            plan_version=batch_policy.plan_version,
+            planning_diagnostics=sanitize_batch_planning_diagnostics(
+                getattr(exc, "diagnostics", {})
+            ),
+        ) from exc
 
 
 def produce_r10_1_canonical_analysis(
