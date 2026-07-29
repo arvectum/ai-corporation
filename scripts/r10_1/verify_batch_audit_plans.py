@@ -169,7 +169,7 @@ def _source_head() -> str:
 
 def _diagnostic_payload(*, diagnostic_only: bool, profiles: list[dict]) -> dict:
     return {
-        "diagnostics_version": "arv003-batch-planning-diagnostics-v2",
+        "diagnostics_version": "arv003-batch-planning-diagnostics-v3",
         "source_head": _source_head(),
         "diagnostic_only": diagnostic_only,
         "profiles": profiles,

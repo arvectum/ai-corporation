@@ -39,6 +39,7 @@ def build_production_llm_request(
     *,
     evidence_packet: EvidencePacket,
     provider: str,
+    provider_wire_contract_version: str = "full-v1",
     model: str,
     prompt_id: str,
     prompt_version: str,
@@ -69,6 +70,7 @@ def build_production_llm_request(
         "registry_number": evidence_packet.registry_number,
         "evidence_packet_hash": evidence_packet.packet_hash,
         "provider": provider,
+        "provider_wire_contract_version": provider_wire_contract_version,
         "model": model,
         "prompt_id": prompt_id,
         "prompt_version": prompt_version,
@@ -100,6 +102,7 @@ def build_production_llm_request(
         run_id=evidence_packet.run_id,
         registry_number=evidence_packet.registry_number,
         provider=provider,
+        provider_wire_contract_version=provider_wire_contract_version,
         model=model,
         prompt_id=prompt_id,
         prompt_version=prompt_version,
@@ -146,6 +149,7 @@ def _failure_result(
         canonical_input_eligible=False,
         request_id=request.request_id,
         provider=request.provider,
+        provider_wire_contract_version=request.provider_wire_contract_version,
         model=request.model,
         prompt_id=request.prompt_id,
         prompt_version=request.prompt_version,
@@ -283,7 +287,7 @@ def run_production_llm_analysis(
             error_code="provider_unavailable",
             limitation="Provider was unavailable; no stub or positive fallback was used.",
         )
-    except Exception:
+    except Exception:  # noqa: BLE001 - transport boundary must sanitize unknown failures.
         return _failure_result(
             request,
             status=AnalysisStatus.PROVIDER_UNAVAILABLE,
@@ -363,6 +367,7 @@ def run_production_llm_analysis(
         canonical_input_eligible=canonical_input_eligible,
         request_id=request.request_id,
         provider=request.provider,
+        provider_wire_contract_version=request.provider_wire_contract_version,
         model=request.model,
         provider_request_id=response.provider_request_id,
         prompt_id=request.prompt_id,

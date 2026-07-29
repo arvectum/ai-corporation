@@ -96,7 +96,7 @@ def test_product_wrapper_preserves_only_sanitized_planner_diagnostics(
     error = raised.value
     assert error.sanitized_error_code == planning_error.code
     assert error.profile == "32k"
-    assert error.plan_version == "arv003-map-plan-v5"
+    assert error.plan_version == "arv003-map-plan-v6"
     assert error.planning_diagnostics == {
         "completed_batch_count": 3,
         "remaining_fragment_count": 12,

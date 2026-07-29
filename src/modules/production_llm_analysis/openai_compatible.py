@@ -4,14 +4,21 @@ import hashlib
 import json
 import math
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping
+from typing import Any
 from urllib.parse import urlparse
 
 from pydantic import ValidationError as PydanticValidationError
 
-from src.modules.production_llm_analysis.evidence import canonical_json_bytes
+from src.modules.production_llm_analysis.evidence import (
+    canonical_json_bytes,
+    text_sha256,
+)
 from src.modules.production_llm_analysis.schemas import (
+    CompactWireProviderClaim,
+    CompactWireProviderResponse,
+    EvidenceReference,
     ProductionLLMAnalysisRequest,
     ProviderAnalysisResponse,
     ProviderClaim,
@@ -154,7 +161,7 @@ class OpenAICompatibleProductionLLMProvider:
                 )
 
             return self._parse_success_response(
-                response=response,
+                response=response, request=request,
                 attempt_latencies_ms=attempt_latencies_ms,
                 retry_count=attempt_index,
                 analysis_started=analysis_started,
@@ -175,7 +182,12 @@ class OpenAICompatibleProductionLLMProvider:
         return headers
 
     def _build_request_body(self, request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
-        claim_schema = ProviderClaim.model_json_schema()
+        compact = request.provider_wire_contract_version == "compact-safe-v1"
+        if request.provider_wire_contract_version not in {"full-v1", "compact-safe-v1"}:
+            raise ValueError("provider_wire_contract_unsupported")
+        if request.map_mode and request.provider_wire_contract_version != "compact-safe-v1":
+            raise ValueError("provider_wire_contract_unsupported")
+        claim_schema = CompactWireProviderClaim.model_json_schema() if compact else ProviderClaim.model_json_schema()
         if request.allowed_field_paths:
             claim_schema.setdefault("properties", {}).setdefault("field_path", {})[
                 "enum"
@@ -192,6 +204,16 @@ class OpenAICompatibleProductionLLMProvider:
             }
             for fragment in request.evidence_packet.fragments
         ]
+        if compact:
+            evidence = []
+            for fragment in request.evidence_packet.fragments:
+                locator = fragment.locator
+                for key, code in (("document_order", "provider_wire_document_order"), ("chunk_index", "provider_wire_chunk_index")):
+                    if key not in locator: raise ValueError(f"{code}_missing")
+                    try: value = int(locator[key])
+                    except (TypeError, ValueError): raise ValueError(f"{code}_invalid") from None
+                    if value < 0: raise ValueError(f"{code}_invalid")
+                evidence.append({"fragment_id":fragment.fragment_id,"document_order":int(locator["document_order"]),"chunk_index":int(locator["chunk_index"]),"text":fragment.text})
         output_contract = {
             "type": "object",
             "additionalProperties": False,
@@ -211,6 +233,7 @@ class OpenAICompatibleProductionLLMProvider:
             "output_schema_id": request.output_schema_id,
             "output_schema_version": request.output_schema_version,
             "grounding_policy_version": request.grounding_policy_version,
+            "provider_wire_contract_version": request.provider_wire_contract_version,
             "procurement_case_id": request.procurement_case_id,
             "registry_number": request.registry_number,
             "evidence_packet_hash": request.evidence_packet.packet_hash,
@@ -231,6 +254,9 @@ class OpenAICompatibleProductionLLMProvider:
                 "absence_is_not_corpus_negative": True,
             },
         }
+        if compact:
+            task.pop("procurement_case_id")
+            task.pop("registry_number")
         return {
             "model": request.model,
             "temperature": 0,
@@ -242,8 +268,8 @@ class OpenAICompatibleProductionLLMProvider:
                     "content": (
                         "You are a controlled internal procurement analysis component. "
                         "Return exactly one valid JSON object matching the supplied output contract. "
-                        "Use only supplied evidence fragments. Every factual claim must copy exact evidence "
-                        "identities, locator and quote. Return an empty claims array when evidence is insufficient. "
+                        "Use only supplied evidence fragments. Every factual claim must copy exact fragment_id and quote. "
+                        "Never return document metadata or a locator. Return an empty claims array when evidence is insufficient. "
                         "Analyze only the current batch; absence in this batch is not absence in the corpus. "
                         "Use only allowed field paths, return no more than max_claims, and never make GO/NO-GO "
                         "or other corpus-wide negative conclusions. "
@@ -261,6 +287,7 @@ class OpenAICompatibleProductionLLMProvider:
         self,
         *,
         response: HTTPResponse,
+        request: ProductionLLMAnalysisRequest,
         attempt_latencies_ms: list[int],
         retry_count: int,
         analysis_started: float,
@@ -306,9 +333,26 @@ class OpenAICompatibleProductionLLMProvider:
                 provider_request_id = self._header_value(response.headers, "x-request-id")
                 provider_request_id = provider_request_id or self._header_value(response.headers, "request-id")
 
+            if request.provider_wire_contract_version == "compact-safe-v1":
+                compact = CompactWireProviderResponse.model_validate(content)
+                fragments = {item.fragment_id: item for item in request.evidence_packet.fragments}
+                claims=[]; seen_claims=set()
+                for claim in compact.claims:
+                    if claim.claim_id in seen_claims: raise InvalidProviderResponseError("provider_wire_claim_schema_invalid")
+                    seen_claims.add(claim.claim_id); refs=[]; seen_refs=set()
+                    for ref in claim.evidence_references:
+                        if ref.fragment_id in seen_refs: raise InvalidProviderResponseError("provider_wire_duplicate_reference")
+                        seen_refs.add(ref.fragment_id); fragment=fragments.get(ref.fragment_id)
+                        if fragment is None: raise InvalidProviderResponseError("provider_wire_fragment_not_found")
+                        if not ref.quote: raise InvalidProviderResponseError("provider_wire_quote_empty")
+                        if ref.quote not in fragment.text: raise InvalidProviderResponseError("provider_wire_quote_not_found")
+                        refs.append(EvidenceReference(procurement_case_id=request.procurement_case_id,registry_number=request.registry_number,fragment_id=fragment.fragment_id,document_id=fragment.document_id,document_name=fragment.document_name,chunk_id=fragment.chunk_id,locator=fragment.locator,quote=ref.quote,quote_sha256=text_sha256(ref.quote)))
+                    claims.append(ProviderClaim(claim_id=claim.claim_id,field_path=claim.field_path,value=claim.value,provider_confidence=claim.provider_confidence,evidence_references=refs))
+            else:
+                claims=content["claims"]
             return ProviderAnalysisResponse(
                 provider_request_id=provider_request_id,
-                claims=content["claims"],
+                claims=claims,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 attempt_latencies_ms=attempt_latencies_ms,
@@ -386,4 +430,4 @@ class OpenAICompatibleProductionLLMProvider:
         return max(self._elapsed_ms(analysis_started), sum(attempt_latencies_ms))
 
     def _elapsed_ms(self, started: float) -> int:
-        return max(0, int(round((self._clock() - started) * 1000)))
+        return max(0, round((self._clock() - started) * 1000))

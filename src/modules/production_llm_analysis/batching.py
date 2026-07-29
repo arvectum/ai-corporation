@@ -140,7 +140,8 @@ class BatchPolicy:
     """One of the two approved context profiles; arbitrary defaults are forbidden."""
 
     profile: str = "32k"
-    plan_version: str = "arv003-map-plan-v5"
+    plan_version: str = "arv003-map-plan-v6"
+    provider_wire_contract_version: str = "compact-safe-v1"
     context_window: int = 32768
     evidence_budget: int = 24488
     output_reserve: int = 4096
@@ -239,6 +240,8 @@ class BatchPolicy:
     def validate(
         self, budget_policy: BudgetPolicy | None = None, *, controlled: bool = False
     ) -> None:
+        if self.provider_wire_contract_version != "compact-safe-v1":
+            raise BatchPolicyInvalid("provider wire contract is not approved")
         if not 0 < self.packing_target_utilization <= 1:
             raise BatchPolicyInvalid("packing target utilization is invalid")
         expected = {
@@ -481,6 +484,7 @@ def _batch_hash(
     return canonical_sha256(
         {
             "plan_version": policy.plan_version,
+            "provider_wire_contract_version": policy.provider_wire_contract_version,
             "profile": policy.profile,
             "batch_ordinal": batch_number,
             "fragment_ids": [fragment_id(item) for item in fragments],
@@ -562,6 +566,10 @@ def build_evidence_batch_plan(
     counter_start = int(getattr(tokenizer, "invocations", 0))
     diagnostics: dict[str, int | float | str] = {
         "profile": policy.profile,
+        "provider_wire_contract_version": policy.provider_wire_contract_version,
+        "input_fragment_wire_fields_count": 4,
+        "output_reference_wire_fields_count": 2,
+        "compact_wire_enabled": True,
         "completed_batch_count": 0,
         "cursor": 0,
         "remaining_fragment_count": len(items),
@@ -671,6 +679,7 @@ def build_evidence_batch_plan(
                 "fragment_ids": [fragment_id(item) for item in candidate],
                 "prompt_schema": {
                     "plan_version": policy.plan_version,
+                    "provider_wire_contract_version": policy.provider_wire_contract_version,
                     "planning_algorithm_version": policy.planning_algorithm_version,
                 },
                 "provider_model": request_measurement_identity
@@ -1062,6 +1071,7 @@ def build_evidence_batch_plan(
     )
     unsigned = {
         "plan_version": policy.plan_version,
+        "provider_wire_contract_version": policy.provider_wire_contract_version,
         "profile": policy.profile,
         "tokenizer_identity": tokenizer_identity,
         "context_window": policy.context_window,

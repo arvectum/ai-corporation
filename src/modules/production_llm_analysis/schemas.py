@@ -91,6 +91,30 @@ class EvidenceReference(ContractModel):
     quote_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class CompactWireEvidenceFragment(ContractModel):
+    fragment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    document_order: int = Field(ge=0)
+    chunk_index: int = Field(ge=0)
+    text: str = Field(min_length=1)
+
+
+class CompactWireEvidenceReference(ContractModel):
+    fragment_id: str = Field(pattern=r"^[0-9a-f]{64}$")
+    quote: str = Field(min_length=1)
+
+
+class CompactWireProviderClaim(ContractModel):
+    claim_id: str = Field(min_length=1)
+    field_path: str = Field(min_length=1)
+    value: Any
+    provider_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    evidence_references: list[CompactWireEvidenceReference] = Field(default_factory=list)
+
+
+class CompactWireProviderResponse(ContractModel):
+    claims: list[CompactWireProviderClaim] = Field(default_factory=list)
+
+
 class ProviderClaim(ContractModel):
     claim_id: str = Field(min_length=1)
     field_path: str = Field(min_length=1)
@@ -156,6 +180,7 @@ class ProductionLLMAnalysisRequest(ContractModel):
     run_id: str = Field(min_length=1)
     registry_number: str = Field(min_length=1)
     provider: str = Field(min_length=1)
+    provider_wire_contract_version: str = Field(default="full-v1", min_length=1)
     model: str = Field(min_length=1)
     prompt_id: str = Field(min_length=1)
     prompt_version: str = Field(min_length=1)
@@ -198,6 +223,7 @@ class ProductionLLMAnalysisResult(ContractModel):
     canonical_input_eligible: bool = False
     request_id: str = Field(pattern=r"^[0-9a-f]{64}$")
     provider: str
+    provider_wire_contract_version: str = "full-v1"
     model: str
     provider_request_id: str | None = None
     prompt_id: str

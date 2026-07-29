@@ -71,6 +71,10 @@ class R10_1AnalysisRejectedError(R10_1CanonicalProductionError):
 _PLANNING_DIAGNOSTIC_KEYS = frozenset(
     {
         "profile",
+        "provider_wire_contract_version",
+        "input_fragment_wire_fields_count",
+        "output_reference_wire_fields_count",
+        "compact_wire_enabled",
         "completed_batch_count",
         "cursor",
         "remaining_fragment_count",
@@ -268,7 +272,19 @@ def _evidence_packet_from_documents(
     documents: list[Any],
     evidence_fragments: list[EvidenceFragmentInput] | None = None,
 ):
-    fragments: list[EvidenceFragmentInput] = list(evidence_fragments or [])
+    fragments: list[EvidenceFragmentInput] = []
+    for ordinal, raw_fragment in enumerate(evidence_fragments or [], 1):
+        fragment = (
+            raw_fragment
+            if isinstance(raw_fragment, EvidenceFragmentInput)
+            else EvidenceFragmentInput.model_validate(raw_fragment)
+        )
+        # The resolver owns source ordering. Legacy in-memory callers may omit
+        # it, but never get to choose another document or chunk identity.
+        locator = dict(fragment.locator)
+        locator.setdefault("document_order", ordinal)
+        locator.setdefault("chunk_index", ordinal - 1)
+        fragments.append(fragment.model_copy(update={"locator": locator}))
     if fragments:
         return build_evidence_packet(
             customer_id=customer_id,
@@ -731,6 +747,7 @@ def build_r10_1_batch_plan(
         request = build_production_llm_request(
             evidence_packet=candidate_packet,
             provider=provider_name,
+            provider_wire_contract_version=batch_policy.provider_wire_contract_version,
             model=model,
             prompt_id=prompt_id,
             prompt_version=prompt_version,
@@ -806,7 +823,7 @@ def produce_r10_1_canonical_analysis(
     provider_name: str,
     model: str,
     prompt_id: str = "procurement-analysis",
-    prompt_version: str = "r10.1-batched-v1",
+    prompt_version: str = "r10.1-batched-compact-v2",
     output_schema_id: str = "production-llm-analysis",
     output_schema_version: str = "v1",
     grounding_policy_version: str = "grounding-v1",
@@ -899,6 +916,7 @@ def produce_r10_1_canonical_analysis(
         request = build_production_llm_request(
             evidence_packet=batch_packet,
             provider=provider_name,
+            provider_wire_contract_version=batch_policy.provider_wire_contract_version,
             model=model,
             prompt_id=prompt_id,
             prompt_version=prompt_version,
