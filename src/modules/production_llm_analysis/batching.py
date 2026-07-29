@@ -7,6 +7,7 @@ import os
 import shlex
 import subprocess
 import time
+from bisect import bisect_right
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -72,6 +73,10 @@ class TokenizerInvocationLimitExceeded(BatchPlanningError):
     code = "evidence_batch_tokenizer_invocation_limit_exceeded"
 
 
+class TokenizerPolicyStructurallyInvalid(BatchPlanningError):
+    code = "evidence_batch_tokenizer_policy_structurally_invalid"
+
+
 class PlanningConvergenceFailed(BatchPlanningError):
     code = "evidence_batch_planning_convergence_failed"
 
@@ -101,7 +106,7 @@ class BatchPolicy:
     """One of the two approved context profiles; arbitrary defaults are forbidden."""
 
     profile: str = "32k"
-    plan_version: str = "arv003-map-plan-v2"
+    plan_version: str = "arv003-map-plan-v3"
     context_window: int = 32768
     evidence_budget: int = 24488
     output_reserve: int = 4096
@@ -117,9 +122,16 @@ class BatchPolicy:
     max_total_output_tokens: int = 262_144
     max_total_retries: int = 32
     max_total_cost: float = 1.0
-    planning_algorithm_version: str = "calibrated-bounded-v1"
-    calibration_policy_version: str = "rolling-conservative-v1"
-    max_tokenizer_invocations: int = 65
+    planning_algorithm_version: str = "prefix-calibrated-bounded-v2"
+    calibration_policy_version: str = "profile-prefix-calibration-v2"
+    max_batches: int = 32
+    exact_measurements_per_batch: int = 2
+    profile_calibration_requests: int = 2
+    correction_request_reserve: int = 14
+    max_http_tokenizer_requests: int = 80
+    max_candidate_evaluations: int = 3
+    # Compatibility field retained for existing callers; mirrors the HTTP budget.
+    max_tokenizer_invocations: int = 80
     max_adjustments_per_batch: int = 3
     max_planning_duration_ms: int = 120_000
     _approved: bool = field(default=False, repr=False, compare=False)
@@ -139,7 +151,13 @@ class BatchPolicy:
             measured_overhead=measured_overhead,
             chat_template_overhead=32,
             execution_deadline_ms=7_200_000,
-            max_tokenizer_invocations=65,
+            max_batches=32,
+            exact_measurements_per_batch=2,
+            profile_calibration_requests=2,
+            correction_request_reserve=14,
+            max_http_tokenizer_requests=80,
+            max_candidate_evaluations=3,
+            max_tokenizer_invocations=80,
             max_adjustments_per_batch=3,
             max_planning_duration_ms=120_000,
             _approved=True,
@@ -160,7 +178,13 @@ class BatchPolicy:
             measured_overhead=measured_overhead,
             chat_template_overhead=32,
             execution_deadline_ms=7_200_000,
-            max_tokenizer_invocations=35,
+            max_batches=18,
+            exact_measurements_per_batch=2,
+            profile_calibration_requests=2,
+            correction_request_reserve=10,
+            max_http_tokenizer_requests=48,
+            max_candidate_evaluations=3,
+            max_tokenizer_invocations=48,
             max_adjustments_per_batch=3,
             max_planning_duration_ms=120_000,
             _approved=True,
@@ -232,6 +256,11 @@ class BatchPolicy:
                 self.max_total_output_tokens,
                 self.max_total_retries,
                 self.max_tokenizer_invocations,
+                self.max_batches,
+                self.exact_measurements_per_batch,
+                self.profile_calibration_requests,
+                self.max_http_tokenizer_requests,
+                self.max_candidate_evaluations,
                 self.max_adjustments_per_batch,
                 self.max_planning_duration_ms,
             )
@@ -239,6 +268,17 @@ class BatchPolicy:
             or self.max_total_cost < 0
         ):
             raise BatchPolicyInvalid("execution budget contains invalid limits")
+        structural_minimum = (
+            self.max_batches * self.exact_measurements_per_batch
+            + self.profile_calibration_requests
+        )
+        if (
+            self.max_http_tokenizer_requests < structural_minimum
+            or self.max_tokenizer_invocations != self.max_http_tokenizer_requests
+        ):
+            raise TokenizerPolicyStructurallyInvalid(
+                "tokenizer HTTP budget is below the structural minimum"
+            )
         if controlled and not self.tokenizer_identity:
             raise ExactTokenizerUnavailable("tokenizer identity is required")
         if (
@@ -282,6 +322,7 @@ class EvidenceBatchPlan:
     batches: tuple[EvidenceBatch, ...]
     plan_hash: str
     tokenizer_identity: str
+    planning_diagnostics: dict[str, int | float | str] = field(default_factory=dict)
 
     @property
     def fragment_ids(self) -> tuple[str, ...]:
@@ -371,6 +412,7 @@ def build_evidence_batch_plan(
     policy: BatchPolicy = _DEFAULT_BATCH_POLICY,
     request_measure: Callable[[list[EvidenceFragmentInput]], tuple[int, str]]
     | None = None,
+    request_measurement_identity: dict[str, str] | None = None,
     request_token_overhead: int | None = None,
     budget_policy: BudgetPolicy | None = None,
     controlled: bool = False,
@@ -399,35 +441,6 @@ def build_evidence_batch_plan(
     if len(identities) != len(set(identities)):
         raise DuplicateAssignment("Duplicate evidence fragment identity")
     corpus_hash = canonical_sha256({"fragment_ids": identities})
-    batches: list[EvidenceBatch] = []
-    cursor = 0
-    started = clock()
-    exact_calls = 0
-    counter_start = int(getattr(tokenizer, "invocations", 0))
-    conservative_ratio = 1.05
-
-    def ensure_deadline() -> None:
-        if (clock() - started) * 1000 > policy.max_planning_duration_ms:
-            raise PlanningTimeout("bounded planning deadline exceeded")
-
-    def measured_invocations() -> int:
-        return max(
-            exact_calls,
-            int(getattr(tokenizer, "invocations", counter_start)) - counter_start,
-        )
-
-    def ensure_invocation_capacity() -> None:
-        if measured_invocations() >= policy.max_tokenizer_invocations:
-            raise TokenizerInvocationLimitExceeded(
-                "bounded tokenizer invocation limit exceeded"
-            )
-
-    def exact(text: str) -> int:
-        nonlocal exact_calls
-        ensure_deadline()
-        ensure_invocation_capacity()
-        exact_calls += 1
-        return int(tokenizer(text))
 
     def rough_tokens(item: EvidenceFragmentInput) -> int:
         estimate = (
@@ -435,110 +448,263 @@ def build_evidence_batch_plan(
         )
         return estimate if estimate > 0 else max(1, len(item.text.encode("utf-8")) // 3)
 
+    rough_values = [rough_tokens(item) for item in items]
+    rough_prefix = [0]
+    for value in rough_values:
+        rough_prefix.append(rough_prefix[-1] + value)
+
+    batches: list[EvidenceBatch] = []
+    cursor = 0
+    started = clock()
+    counter_start = int(getattr(tokenizer, "invocations", 0))
+    diagnostics: dict[str, int | float | str] = {
+        "profile": policy.profile,
+        "completed_batch_count": 0,
+        "cursor": 0,
+        "remaining_fragment_count": len(items),
+        "tokenizer_http_requests": 0,
+        "exact_request_measurements": 0,
+        "exact_evidence_measurements": 0,
+        "request_tokenization_count": 0,
+        "evidence_tokenization_count": 0,
+        "candidate_evaluation_count": 0,
+        "adjustment_evaluation_count": 0,
+        "http_tokenizer_request_count": 0,
+        "adjustment_rounds_total": 0,
+        "adjustment_rounds_max": 0,
+        "cache_hits": 0,
+        "planner_cache_hits": 0,
+        "tokenizer_cache_hits": 0,
+        "planning_duration_ms": 0,
+        "last_candidate_fragment_count": 0,
+        "last_candidate_rough_tokens": 0,
+        "last_candidate_exact_evidence_tokens": 0,
+        "last_candidate_exact_request_tokens": 0,
+        "calibration_request_overhead": 0,
+        "conservative_ratio": 1.05,
+    }
+    measurement_cache: dict[str, tuple[int, str] | int] = {}
+    conservative_ratio = 1.05
+
+    def update_diagnostics() -> None:
+        diagnostics.update(
+            completed_batch_count=len(batches),
+            cursor=cursor,
+            remaining_fragment_count=len(items) - cursor,
+            tokenizer_http_requests=int(getattr(tokenizer, "invocations", 0))
+            - counter_start,
+            http_tokenizer_request_count=int(getattr(tokenizer, "invocations", 0))
+            - counter_start,
+            tokenizer_cache_hits=int(getattr(tokenizer, "cache_hits", 0)),
+            planning_duration_ms=int((clock() - started) * 1000),
+            conservative_ratio=conservative_ratio,
+        )
+        diagnostics["cache_hits"] = int(diagnostics["planner_cache_hits"]) + int(
+            diagnostics["tokenizer_cache_hits"]
+        )
+
+    def fail(error: BatchPlanningError) -> None:
+        update_diagnostics()
+        error.diagnostics = diagnostics.copy()  # type: ignore[attr-defined]
+        raise error
+
+    def ensure_deadline() -> None:
+        if (clock() - started) * 1000 > policy.max_planning_duration_ms:
+            fail(PlanningTimeout("bounded planning deadline exceeded"))
+
+    def measured_invocations() -> int:
+        return int(getattr(tokenizer, "invocations", counter_start)) - counter_start
+
+    def ensure_invocation_capacity() -> None:
+        if measured_invocations() >= policy.max_http_tokenizer_requests:
+            fail(
+                TokenizerInvocationLimitExceeded(
+                    "bounded tokenizer invocation limit exceeded"
+                )
+            )
+
+    def cache_key(kind: str, candidate: list[EvidenceFragmentInput]) -> str:
+        return canonical_sha256(
+            {
+                "kind": kind,
+                "profile": policy.profile,
+                "fragment_ids": [fragment_id(item) for item in candidate],
+                "prompt_schema": {
+                    "plan_version": policy.plan_version,
+                    "planning_algorithm_version": policy.planning_algorithm_version,
+                },
+                "provider_model": request_measurement_identity
+                or {"provider": "request-builder"},
+                "tokenizer_identity": policy.tokenizer_identity,
+                "context_policy": {
+                    "context_window": policy.context_window,
+                    "evidence_budget": policy.evidence_budget,
+                    "output_reserve": policy.output_reserve,
+                    "safety_margin": policy.safety_margin,
+                },
+            }
+        )
+
+    def exact_evidence(candidate: list[EvidenceFragmentInput]) -> int:
+        key = cache_key("evidence", candidate)
+        cached = measurement_cache.get(key)
+        if cached is not None:
+            diagnostics["planner_cache_hits"] = (
+                int(diagnostics["planner_cache_hits"]) + 1
+            )
+            return int(cached)
+        ensure_deadline()
+        ensure_invocation_capacity()
+        value = int(tokenizer("\n".join(item.text for item in candidate)))
+        measurement_cache[key] = value
+        diagnostics["exact_evidence_measurements"] = (
+            int(diagnostics["exact_evidence_measurements"]) + 1
+        )
+        diagnostics["evidence_tokenization_count"] = (
+            int(diagnostics["evidence_tokenization_count"]) + 1
+        )
+        return value
+
+    def exact_request(candidate: list[EvidenceFragmentInput]) -> tuple[int, str]:
+        if request_measure is None:
+            evidence = exact_evidence(candidate)
+            return evidence + int(request_token_overhead or 0), ""
+        key = cache_key("full_request", candidate)
+        cached = measurement_cache.get(key)
+        if cached is not None:
+            diagnostics["planner_cache_hits"] = (
+                int(diagnostics["planner_cache_hits"]) + 1
+            )
+            return cached  # type: ignore[return-value]
+        ensure_deadline()
+        ensure_invocation_capacity()
+        value = request_measure(candidate)
+        measurement_cache[key] = value
+        diagnostics["exact_request_measurements"] = (
+            int(diagnostics["exact_request_measurements"]) + 1
+        )
+        diagnostics["request_tokenization_count"] = (
+            int(diagnostics["request_tokenization_count"]) + 1
+        )
+        if measured_invocations() > policy.max_http_tokenizer_requests:
+            fail(
+                TokenizerInvocationLimitExceeded(
+                    "bounded tokenizer invocation limit exceeded"
+                )
+            )
+        return value
+
+    def max_end(start: int, stop: int, rough_limit: int) -> int:
+        target = rough_prefix[start] + max(1, rough_limit)
+        end = bisect_right(rough_prefix, target, lo=start + 1, hi=stop + 1) - 1
+        return max(start + 1, min(stop, end))
+
+    # One profile-level, source-ordered calibration. Its measurement cache is reused
+    # when that exact prefix becomes a packing candidate.
+    calibration_end = max_end(0, len(items), int(policy.max_evidence_tokens / 1.05))
+    calibration_candidate = items[:calibration_end]
+    calibration_rough = rough_prefix[calibration_end]
+    calibration_evidence = exact_evidence(calibration_candidate)
+    calibration_request, _ = exact_request(calibration_candidate)
+    request_overhead = max(0, calibration_request - calibration_evidence)
+    diagnostics["calibration_request_overhead"] = request_overhead
+    conservative_ratio = max(
+        calibration_evidence / max(1, calibration_rough) * 1.05, 1.05
+    )
+
     while cursor < len(items):
         ensure_deadline()
-        calibrated_limit = max(1, int(policy.max_evidence_tokens / conservative_ratio))
-        selected: list[EvidenceFragmentInput] = []
-        rough_evidence_tokens = 0
-        while cursor + len(selected) < len(items):
-            item = items[cursor + len(selected)]
-            item_tokens = rough_tokens(item)
-            if selected and rough_evidence_tokens + item_tokens > calibrated_limit:
-                break
-            if not selected and item_tokens > calibrated_limit:
-                # The exact check below decides whether this source chunk is genuinely oversized.
-                selected.append(item)
-                rough_evidence_tokens += item_tokens
-                break
-            selected.append(item)
-            rough_evidence_tokens += item_tokens
-        ordinal = len(batches) + 1
-        adjustment_rounds = 0
-        if request_measure is not None:
-            while True:
-                ensure_deadline()
-                ensure_invocation_capacity()
-                projected, request_hash = request_measure(selected)
-                if measured_invocations() > policy.max_tokenizer_invocations:
-                    raise TokenizerInvocationLimitExceeded(
-                        "bounded tokenizer invocation limit exceeded"
-                    )
-                evidence_tokens = exact("\n".join(item.text for item in selected))
-                fits = (
-                    evidence_tokens <= policy.max_evidence_tokens
-                    and projected + policy.output_reserve + policy.safety_margin
-                    <= policy.context_window
-                )
-                if fits:
-                    break
-                if len(selected) == 1:
-                    raise OversizedEvidenceChunk(
-                        "One source chunk exceeds the safe context budget"
-                    )
-                if adjustment_rounds >= policy.max_adjustments_per_batch:
-                    raise PlanningConvergenceFailed(
-                        "bounded batch adjustment did not converge"
-                    )
-                available = min(
+        if len(batches) >= policy.max_batches:
+            fail(PlanningConvergenceFailed("maximum batch count exceeded"))
+        end = max_end(
+            cursor,
+            len(items),
+            int(
+                min(
                     policy.max_evidence_tokens,
                     policy.context_window
                     - policy.output_reserve
-                    - policy.safety_margin,
+                    - policy.safety_margin
+                    - request_overhead,
                 )
-                observed = max(evidence_tokens, projected)
-                target_count = max(
-                    1, int(len(selected) * available / max(1, observed) * 0.95)
-                )
-                required_drop = max(1, int(len(selected) * 0.05))
-                target_count = min(target_count, len(selected) - required_drop)
-                selected = selected[:target_count]
-                rough_evidence_tokens = sum(rough_tokens(item) for item in selected)
-                adjustment_rounds += 1
-        else:
-            request_hash = ""
-            while True:
-                evidence_tokens = exact("\n".join(item.text for item in selected))
-                projected = evidence_tokens + int(request_token_overhead or 0)
-                if evidence_tokens <= policy.max_evidence_tokens:
-                    break
-                if len(selected) == 1:
-                    raise OversizedEvidenceChunk(
+                / conservative_ratio
+            ),
+        )
+        candidate_evaluations = 0
+        adjustment_rounds = 0
+        while True:
+            ensure_deadline()
+            selected = items[cursor:end]
+            rough_evidence_tokens = rough_prefix[end] - rough_prefix[cursor]
+            diagnostics.update(
+                last_candidate_fragment_count=len(selected),
+                last_candidate_rough_tokens=rough_evidence_tokens,
+            )
+            projected, request_hash = exact_request(selected)
+            evidence_tokens = exact_evidence(selected)
+            candidate_evaluations += 1
+            diagnostics["candidate_evaluation_count"] = (
+                int(diagnostics["candidate_evaluation_count"]) + 1
+            )
+            diagnostics.update(
+                last_candidate_exact_evidence_tokens=evidence_tokens,
+                last_candidate_exact_request_tokens=projected,
+            )
+            fits = (
+                evidence_tokens <= policy.max_evidence_tokens
+                and projected + policy.output_reserve + policy.safety_margin
+                <= policy.context_window
+            )
+            if fits:
+                break
+            if len(selected) == 1:
+                fail(
+                    OversizedEvidenceChunk(
                         "One source chunk exceeds the safe context budget"
                     )
-                if adjustment_rounds >= policy.max_adjustments_per_batch:
-                    raise PlanningConvergenceFailed(
+                )
+            if (
+                candidate_evaluations >= policy.max_candidate_evaluations
+                or adjustment_rounds >= policy.max_adjustments_per_batch
+            ):
+                fail(
+                    PlanningConvergenceFailed(
                         "bounded batch adjustment did not converge"
                     )
-                target_count = max(
-                    1,
-                    int(
-                        len(selected)
-                        * policy.max_evidence_tokens
-                        / evidence_tokens
-                        * 0.95
-                    ),
                 )
-                target_count = min(
-                    target_count, len(selected) - max(1, int(len(selected) * 0.05))
-                )
-                selected = selected[:target_count]
-                rough_evidence_tokens = sum(rough_tokens(item) for item in selected)
-                adjustment_rounds += 1
-        if request_measure is not None:
-            conservative_ratio = max(
-                conservative_ratio,
-                evidence_tokens / max(1, rough_evidence_tokens) * 1.05,
+            available = min(
+                policy.max_evidence_tokens,
+                policy.context_window
+                - policy.output_reserve
+                - policy.safety_margin
+                - request_overhead,
             )
+            observed = max(evidence_tokens, projected)
+            rough_target = max(
+                1, int(rough_evidence_tokens * available / max(1, observed) * 0.95)
+            )
+            next_end = max_end(cursor, end - 1, rough_target)
+            if next_end >= end:
+                next_end = end - 1
+            end = max(cursor + 1, next_end)
+            adjustment_rounds += 1
+            diagnostics["adjustment_evaluation_count"] = (
+                int(diagnostics["adjustment_evaluation_count"]) + 1
+            )
+        conservative_ratio = max(
+            conservative_ratio,
+            evidence_tokens / max(1, rough_evidence_tokens) * 1.05,
+        )
         batches.append(
             EvidenceBatch(
-                ordinal,
+                len(batches) + 1,
                 tuple(selected),
                 evidence_tokens,
                 projected,
                 policy.output_reserve,
                 policy.safety_margin,
                 _batch_hash(
-                    ordinal,
+                    len(batches) + 1,
                     selected,
                     exact_evidence_tokens=evidence_tokens,
                     exact_projected_request_tokens=projected,
@@ -553,7 +719,13 @@ def build_evidence_batch_plan(
                 calibration_ratio=conservative_ratio,
             )
         )
-        cursor += len(selected)
+        cursor = end
+        diagnostics["adjustment_rounds_total"] = (
+            int(diagnostics["adjustment_rounds_total"]) + adjustment_rounds
+        )
+        diagnostics["adjustment_rounds_max"] = max(
+            int(diagnostics["adjustment_rounds_max"]), adjustment_rounds
+        )
     assigned = [fragment_id(item) for batch in batches for item in batch.fragments]
     if assigned != identities:
         raise BatchCoverageError("Batch coverage is not exactly one-to-one")
@@ -578,6 +750,12 @@ def build_evidence_batch_plan(
         "max_total_cost": policy.max_total_cost,
         "planning_algorithm_version": policy.planning_algorithm_version,
         "calibration_policy_version": policy.calibration_policy_version,
+        "max_batches": policy.max_batches,
+        "exact_measurements_per_batch": policy.exact_measurements_per_batch,
+        "profile_calibration_requests": policy.profile_calibration_requests,
+        "correction_request_reserve": policy.correction_request_reserve,
+        "max_http_tokenizer_requests": policy.max_http_tokenizer_requests,
+        "max_candidate_evaluations": policy.max_candidate_evaluations,
         "max_tokenizer_invocations": policy.max_tokenizer_invocations,
         "max_adjustments_per_batch": policy.max_adjustments_per_batch,
         "max_planning_duration_ms": policy.max_planning_duration_ms,
@@ -589,6 +767,7 @@ def build_evidence_batch_plan(
             for batch in batches
         ],
     }
+    update_diagnostics()
     return EvidenceBatchPlan(
         policy.plan_version,
         policy,
@@ -596,6 +775,7 @@ def build_evidence_batch_plan(
         tuple(batches),
         canonical_sha256(unsigned),
         tokenizer_identity,
+        diagnostics.copy(),
     )
 
 
@@ -610,11 +790,13 @@ class CommandTokenCounter:
         self.subprocess_count = 0
         self.invocations = 0
         self.cache_hits = 0
+        self.logical_calls = 0
         self._cache: dict[str, int] = {}
         if not self.command or not identity or timeout_seconds <= 0:
             raise ExactTokenizerUnavailable("tokenizer configuration is incomplete")
 
     def __call__(self, text: str) -> int:
+        self.logical_calls += 1
         cache_key = hashlib.sha256(text.encode("utf-8")).hexdigest()
         if cache_key in self._cache:
             self.cache_hits += 1
@@ -683,6 +865,7 @@ class LlamaServerTokenCounter:
         self.tokenizer_mode = "server-tokenize-v2"
         self.invocations = 0
         self.cache_hits = 0
+        self.logical_calls = 0
         self.request_duration_ms_total = 0
         self.request_duration_ms_max = 0
         self.bytes_submitted_total = 0
@@ -690,6 +873,7 @@ class LlamaServerTokenCounter:
         self._opener = opener or build_opener(ProxyHandler({}), _NoRedirect()).open
 
     def __call__(self, text: str) -> int:
+        self.logical_calls += 1
         data = text.encode("utf-8")
         cache_key = hashlib.sha256(data).hexdigest()
         if cache_key in self._cache:

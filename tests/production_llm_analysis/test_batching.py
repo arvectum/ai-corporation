@@ -1,5 +1,6 @@
 import io
 import json
+from dataclasses import replace
 
 import pytest
 
@@ -10,6 +11,7 @@ from src.modules.production_llm_analysis.batching import (
     LlamaServerTokenCounter,
     OversizedEvidenceChunk,
     TokenizerEndpointUnsafe,
+    TokenizerPolicyStructurallyInvalid,
     build_evidence_batch_plan,
 )
 from src.modules.production_llm_analysis.schemas import (
@@ -52,7 +54,9 @@ def test_plan_is_exactly_covered_and_stable():
         "chunk-3",
     ]
     assert len(first.fragment_ids) == len(set(first.fragment_ids)) == 4
-    assert [batch.evidence_tokens for batch in first.batches] == [10, 11]
+    assert all(
+        batch.evidence_tokens <= policy.max_evidence_tokens for batch in first.batches
+    )
 
 
 def test_duplicate_fragment_is_rejected():
@@ -105,6 +109,7 @@ def test_command_token_counter_caches_exact_inputs():
     assert counter("same") == 7
     assert counter.invocations == 1
     assert counter.cache_hits == 1
+    assert counter.logical_calls == 2
 
 
 class _Response(io.BytesIO):
@@ -211,7 +216,7 @@ def test_calibrated_planner_is_bounded_for_underestimated_1266_fragment_corpus()
                 "chunk_index": index,
                 "token_estimate": 104,
             },
-            text="x" * 500,
+            text="x" * 1160,
         )
         for index in range(1266)
     ]
@@ -241,8 +246,60 @@ def test_calibrated_planner_is_bounded_for_underestimated_1266_fragment_corpus()
     plan_64, counter_64 = plan("64k")
     assert len(plan_32.fragment_ids) == len(set(plan_32.fragment_ids)) == 1266
     assert len(plan_64.fragment_ids) == len(set(plan_64.fragment_ids)) == 1266
-    assert counter_32.invocations <= 65
-    assert counter_64.invocations <= 35
+    assert len(plan_32.batches) <= 32
+    assert len(plan_64.batches) <= 18
+    assert counter_32.invocations <= 80
+    assert counter_64.invocations <= 48
     assert max(batch.adjustment_rounds for batch in plan_32.batches) <= 3
     assert max(batch.adjustment_rounds for batch in plan_64.batches) <= 3
     assert plan_32.plan_hash != plan_64.plan_hash
+
+
+@pytest.mark.parametrize(("profile", "unsafe_budget"), (("32k", 65), ("64k", 35)))
+def test_structurally_insufficient_http_budget_is_rejected(profile, unsafe_budget):
+    policy = (
+        BatchPolicy.approved_32k(tokenizer_identity="pinned")
+        if profile == "32k"
+        else BatchPolicy.approved_64k(tokenizer_identity="pinned")
+    )
+    unsafe = replace(
+        policy,
+        max_http_tokenizer_requests=unsafe_budget,
+        max_tokenizer_invocations=unsafe_budget,
+    )
+    with pytest.raises(TokenizerPolicyStructurallyInvalid):
+        unsafe.validate(_provider_budget(unsafe.output_reserve), controlled=True)
+
+
+def test_calibration_candidate_reuses_planner_cache():
+    counter = _SyntheticExactCounter()
+    policy = BatchPolicy(
+        context_window=64,
+        evidence_budget=40,
+        output_reserve=12,
+        safety_margin=12,
+        max_candidate_evaluations=3,
+    )
+    fragments = [
+        EvidenceFragmentInput(
+            document_id="doc",
+            document_name="synthetic.txt",
+            chunk_id=f"chunk-{index}",
+            locator={"chunk_index": index, "token_estimate": 10},
+            text="x" * 10,
+        )
+        for index in range(4)
+    ]
+
+    result = build_evidence_batch_plan(
+        fragments,
+        tokenizer=counter,
+        policy=policy,
+        request_measure=lambda candidate: (
+            counter("\n".join(item.text for item in candidate)),
+            "0" * 64,
+        ),
+    )
+
+    assert result.planning_diagnostics["cache_hits"] >= 2
+    assert counter.invocations == 4

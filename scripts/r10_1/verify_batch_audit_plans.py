@@ -208,6 +208,7 @@ def main() -> int:
                 "adjustment_rounds_max": max(
                     (batch.adjustment_rounds for batch in plan.batches), default=0
                 ),
+                "planning_diagnostics": plan.planning_diagnostics,
                 "maxrss": 0,
             }
         )
@@ -216,6 +217,7 @@ def main() -> int:
         "plan_duration_ms": duration_ms,
         "tokenizer_invocations": int(getattr(args.tokenizer, "invocations", 0)),
         "tokenizer_cache_hits": int(getattr(args.tokenizer, "cache_hits", 0)),
+        "tokenizer_logical_calls": int(getattr(args.tokenizer, "logical_calls", 0)),
         "tokenizer_mode": str(getattr(args.tokenizer, "tokenizer_mode", "command")),
         "tokenizer_subprocess_count": int(
             getattr(args.tokenizer, "subprocess_count", 0)

@@ -24,21 +24,22 @@ from src.modules.procurement_analysis.frozen_producer import (
     FrozenCanonicalProduction,
     produce_frozen_canonical_analysis,
 )
-from src.modules.production_llm_analysis.evidence import build_evidence_packet, canonical_json_bytes
 from src.modules.production_llm_analysis.batching import (
-    BatchPolicy,
-    BatchExecutionTimeout,
     BatchPlanningError,
+    BatchPolicy,
     EvidenceBatchPlan,
     build_evidence_batch_plan,
+)
+from src.modules.production_llm_analysis.evidence import (
+    build_evidence_packet,
+    canonical_json_bytes,
+    canonical_sha256,
 )
 from src.modules.production_llm_analysis.schemas import (
     AnalysisStatus,
     BudgetPolicy,
-    BudgetEvaluation,
     BudgetStatus,
     EvidenceFragmentInput,
-    GroundedClaim,
     ProductionLLMAnalysisResult,
     SupportStatus,
 )
@@ -47,7 +48,6 @@ from src.modules.production_llm_analysis.service import (
     build_production_llm_request,
     run_production_llm_analysis,
 )
-from src.modules.production_llm_analysis.evidence import canonical_sha256
 
 
 class CanonicalAnalysisMode(StrEnum):
@@ -504,7 +504,9 @@ def build_r10_1_batch_plan(
             chunk_id=fragment.chunk_id, locator=fragment.locator, text=fragment.text,
         ) for fragment in packet.fragments
     ]
-    from src.modules.production_llm_analysis.openai_compatible import OpenAICompatibleProductionLLMProvider
+    from src.modules.production_llm_analysis.openai_compatible import (
+        OpenAICompatibleProductionLLMProvider,
+    )
 
     def measure_request(candidate: list[EvidenceFragmentInput]) -> tuple[int, str]:
         candidate_packet = _evidence_packet_from_documents(
@@ -537,7 +539,16 @@ def build_r10_1_batch_plan(
     try:
         return build_evidence_batch_plan(
             plan_fragments, tokenizer=token_counter, policy=batch_policy,
-            request_measure=measure_request, budget_policy=budget_policy,
+            request_measure=measure_request,
+            request_measurement_identity={
+                "provider": provider_name,
+                "model": model,
+                "prompt_id": prompt_id,
+                "prompt_version": prompt_version,
+                "output_schema_id": output_schema_id,
+                "output_schema_version": output_schema_version,
+            },
+            budget_policy=budget_policy,
             controlled=controlled,
         )
     except BatchPlanningError as exc:
@@ -615,7 +626,9 @@ def produce_r10_1_canonical_analysis(
         grounding_policy_version=grounding_policy_version, controlled=controlled,
     )
     started = time.monotonic()
-    from src.modules.production_llm_analysis.openai_compatible import OpenAICompatibleProductionLLMProvider
+    from src.modules.production_llm_analysis.openai_compatible import (
+        OpenAICompatibleProductionLLMProvider,
+    )
     batch_results: list[ProductionLLMAnalysisResult] = []
     final_request_body_hashes: list[str] = []
     final_projected_tokens: list[int] = []
