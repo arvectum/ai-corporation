@@ -32,6 +32,7 @@ from src.modules.production_llm_analysis.batching import (
     build_evidence_batch_plan,
     measure_openai_request_tokens,
 )
+from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
 from src.modules.production_llm_analysis.evidence import (
     build_evidence_packet,
     canonical_sha256,
@@ -711,6 +712,16 @@ def build_r10_1_batch_plan(
     controlled: bool,
 ) -> EvidenceBatchPlan:
     """Build the sole product plan used by both producer and offline verifier."""
+    if controlled and (
+        (prompt_id, prompt_version, output_schema_id, output_schema_version, grounding_policy_version,
+         batch_policy.provider_wire_contract_version, batch_policy.plan_version)
+        != (R10_1_CONTROLLED_MAP_CONTRACT.prompt_id, R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+            R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id, R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+            R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+            R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
+            R10_1_CONTROLLED_MAP_CONTRACT.plan_version)
+    ):
+        raise R10_1BatchPlanningRejectedError(sanitized_error_code="r10_1_controlled_map_contract_mismatch", profile=batch_policy.profile, plan_version=batch_policy.plan_version, planning_diagnostics={})
     plan_fragments = [
         EvidenceFragmentInput(
             document_id=fragment.document_id,
@@ -822,11 +833,11 @@ def produce_r10_1_canonical_analysis(
     budget_policy: BudgetPolicy,
     provider_name: str,
     model: str,
-    prompt_id: str = "procurement-analysis",
-    prompt_version: str = "r10.1-batched-compact-v2",
-    output_schema_id: str = "production-llm-analysis",
-    output_schema_version: str = "v1",
-    grounding_policy_version: str = "grounding-v1",
+    prompt_id: str = R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+    prompt_version: str = R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+    output_schema_id: str = R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+    output_schema_version: str = R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+    grounding_policy_version: str = R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
     source_analysis_run_id: str | None = None,
     evidence_chunks: list[dict[str, Any]] | None = None,
     token_counter: Any | None = None,

@@ -12,6 +12,7 @@ from src.modules.procurement_analysis.r10_1_producer import (
     sanitize_batch_planning_diagnostics,
 )
 from src.modules.production_llm_analysis.batching import BatchPlanningError, BatchPolicy
+from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
 
 
 def test_sanitize_batch_planning_diagnostics_drops_unapproved_and_unsafe_values() -> (
@@ -85,11 +86,11 @@ def test_product_wrapper_preserves_only_sanitized_planner_diagnostics(
             budget_policy=verifier._policy(4096),
             token_counter=SimpleNamespace(identity="fake-tokenizer"),
             batch_policy=BatchPolicy.approved_32k(tokenizer_identity="fake-tokenizer"),
-            prompt_id="prompt",
-            prompt_version="v1",
-            output_schema_id="schema",
-            output_schema_version="v1",
-            grounding_policy_version="v1",
+            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
             controlled=True,
         )
 

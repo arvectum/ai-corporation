@@ -32,6 +32,7 @@ from src.modules.production_llm_analysis.batching import (
     BatchPolicy,
     tokenizer_from_environment,
 )
+from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
 from src.modules.production_llm_analysis.schemas import (
     BudgetLimits,
     BudgetPolicy,
@@ -119,11 +120,11 @@ def _plan(
         budget_policy=_policy(output_tokens),
         token_counter=args.tokenizer,
         batch_policy=policy,
-        prompt_id="procurement-analysis",
-        prompt_version="r10.1-batched-v1",
-        output_schema_id="production-llm-analysis",
-        output_schema_version="v1",
-        grounding_policy_version="grounding-v1",
+        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+        prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+        output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
         controlled=True,
     )
 

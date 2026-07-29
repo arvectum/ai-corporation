@@ -17,6 +17,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
+from src.modules.production_llm_analysis.contracts import (
+    R10_1_BATCH_PLAN_VERSION,
+    R10_1_PROVIDER_WIRE_CONTRACT_VERSION,
+)
 from src.modules.production_llm_analysis.evidence import (
     build_evidence_packet,
     canonical_json_bytes,
@@ -140,8 +144,8 @@ class BatchPolicy:
     """One of the two approved context profiles; arbitrary defaults are forbidden."""
 
     profile: str = "32k"
-    plan_version: str = "arv003-map-plan-v6"
-    provider_wire_contract_version: str = "compact-safe-v1"
+    plan_version: str = R10_1_BATCH_PLAN_VERSION
+    provider_wire_contract_version: str = R10_1_PROVIDER_WIRE_CONTRACT_VERSION
     context_window: int = 32768
     evidence_budget: int = 24488
     output_reserve: int = 4096
@@ -240,7 +244,7 @@ class BatchPolicy:
     def validate(
         self, budget_policy: BudgetPolicy | None = None, *, controlled: bool = False
     ) -> None:
-        if self.provider_wire_contract_version != "compact-safe-v1":
+        if self.provider_wire_contract_version != R10_1_PROVIDER_WIRE_CONTRACT_VERSION:
             raise BatchPolicyInvalid("provider wire contract is not approved")
         if not 0 < self.packing_target_utilization <= 1:
             raise BatchPolicyInvalid("packing target utilization is invalid")
