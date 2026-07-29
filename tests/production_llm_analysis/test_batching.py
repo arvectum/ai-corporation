@@ -320,3 +320,161 @@ def test_calibration_candidate_reuses_planner_cache():
 
     assert result.planning_diagnostics["planner_cache_hits"] >= 0
     assert counter.invocations <= policy.max_http_tokenizer_requests
+
+
+def _slot_balanced_fragments(count: int) -> list[EvidenceFragmentInput]:
+    return [
+        EvidenceFragmentInput(
+            document_id="synthetic",
+            document_name="synthetic.txt",
+            chunk_id=f"slot-{index}",
+            locator={"chunk_index": index, "token_estimate": 10},
+            text="x" * 10,
+        )
+        for index in range(count)
+    ]
+
+
+def _slot_balanced_policy(max_batches: int) -> BatchPolicy:
+    request_budget = 2 + max_batches * 2
+    return BatchPolicy(
+        context_window=100,
+        evidence_budget=40,
+        output_reserve=20,
+        safety_margin=10,
+        max_batches=max_batches,
+        max_http_tokenizer_requests=request_budget,
+        max_tokenizer_invocations=request_budget,
+        correction_request_reserve=0,
+        packing_target_utilization=0.98,
+    )
+
+
+def _slot_balanced_measure(counter, candidate):
+    rough = sum(int(item.locator["token_estimate"]) for item in candidate)
+    counter("request")
+    counter("evidence")
+    return ExactRequestMeasurement(
+        full_request_tokens=rough + 5,
+        request_body_hash="0" * 64,
+        serialized_evidence_tokens=rough,
+        serialized_evidence_hash="1" * 64,
+        fixed_envelope_tokens=5,
+        chat_template_overhead=0,
+    )
+
+
+def test_slot_balanced_v5_prevents_v4_style_max_batches_underfill():
+    fragments = _slot_balanced_fragments(12)
+    policy = _slot_balanced_policy(max_batches=3)
+    counter = _SyntheticExactCounter()
+    plan = build_evidence_batch_plan(
+        fragments,
+        tokenizer=counter,
+        policy=policy,
+        request_measure=lambda candidate: _slot_balanced_measure(counter, candidate),
+    )
+
+    # A v4-style fixed target of 30 rough tokens would leave three fragments
+    # after its three allowed batches.  V5 derives 40 from remaining slots.
+    assert 3 * 3 == 9 < len(fragments)
+    assert len(plan.fragment_ids) == 12
+    assert len(plan.batches) == 3
+    assert [len(batch.fragments) for batch in plan.batches] == [4, 4, 4]
+    assert counter.invocations == 8
+    assert plan.planning_diagnostics["capacity_recalculation_count"] >= 4
+    assert plan.planning_diagnostics["required_average_rough_tokens"] == 40
+    assert plan.planning_diagnostics["planning_payload_ratio"] == 1
+
+
+def test_realistic_1266_fragment_underfill_regression_is_slot_balanced():
+    fragments = [
+        EvidenceFragmentInput(
+            document_id=f"doc-{index // 250}",
+            document_name="synthetic.txt",
+            chunk_id=f"realistic-{index}",
+            locator={
+                "document_order": index // 250,
+                "chunk_index": index,
+                "token_estimate": 50,
+            },
+            text="x" * 50,
+        )
+        for index in range(1266)
+    ]
+    # V4's fixed 1,600 rough-token boundary accepts 32 fragments per batch,
+    # reproducing a 32-slot underfill with 242 fragments left behind.
+    assert 32 * (1600 // 50) == 1024
+    assert len(fragments) - 1024 == 242
+
+    counter = _SyntheticExactCounter()
+
+    def measure(candidate):
+        rough = sum(int(item.locator["token_estimate"]) for item in candidate)
+        counter("request")
+        counter("evidence")
+        evidence = rough * 12
+        return ExactRequestMeasurement(
+            full_request_tokens=evidence + 1390,
+            request_body_hash="0" * 64,
+            serialized_evidence_tokens=evidence,
+            serialized_evidence_hash="1" * 64,
+            fixed_envelope_tokens=1390,
+            chat_template_overhead=0,
+        )
+
+    plan = build_evidence_batch_plan(
+        fragments,
+        tokenizer=counter,
+        policy=BatchPolicy.approved_32k(tokenizer_identity=counter.identity),
+        request_measure=measure,
+        budget_policy=_provider_budget(4096),
+        controlled=True,
+    )
+
+    assert len(plan.fragment_ids) == len(set(plan.fragment_ids)) == 1266
+    assert len(plan.batches) == 32
+    assert counter.invocations <= 80
+    assert plan.planning_diagnostics["planner_cache_hits"] >= 1
+    assert plan.planning_diagnostics["remaining_fragment_count"] == 0
+    assert plan.planning_diagnostics["grow_attempt_count"] == 0
+    assert plan.planning_diagnostics["adjustment_rounds_max"] <= 3
+
+
+def test_slot_balanced_v5_last_slot_measures_all_remaining_fragments():
+    counter = _SyntheticExactCounter()
+    plan = build_evidence_batch_plan(
+        _slot_balanced_fragments(5),
+        tokenizer=counter,
+        policy=_slot_balanced_policy(max_batches=2),
+        request_measure=lambda candidate: _slot_balanced_measure(counter, candidate),
+    )
+
+    assert len(plan.batches) == 2
+    assert len(plan.batches[-1].fragments) == 2
+    assert len(plan.fragment_ids) == 5
+    assert counter.invocations == 6
+
+
+def test_packing_target_utilization_is_validated_and_hashes_plan():
+    policy = _slot_balanced_policy(max_batches=3)
+    counter = _SyntheticExactCounter()
+    first = build_evidence_batch_plan(
+        _slot_balanced_fragments(12),
+        tokenizer=counter,
+        policy=policy,
+        request_measure=lambda candidate: _slot_balanced_measure(counter, candidate),
+    )
+    changed = replace(policy, packing_target_utilization=0.9)
+    second = build_evidence_batch_plan(
+        _slot_balanced_fragments(12),
+        tokenizer=_SyntheticExactCounter(),
+        policy=changed,
+        request_measure=lambda candidate: _slot_balanced_measure(
+            _SyntheticExactCounter(), candidate
+        ),
+    )
+
+    assert first.plan_hash != second.plan_hash
+    with pytest.raises(Exception, match="packing target utilization"):
+        replace(policy, packing_target_utilization=0).validate()
