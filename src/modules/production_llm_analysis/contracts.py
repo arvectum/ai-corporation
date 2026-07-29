@@ -8,6 +8,8 @@ R10_1_OUTPUT_SCHEMA_VERSION = "v1"
 R10_1_GROUNDING_POLICY_VERSION = "grounding-v1"
 R10_1_PROVIDER_WIRE_CONTRACT_VERSION = "compact-safe-v1"
 R10_1_BATCH_PLAN_VERSION = "arv003-map-plan-v6"
+R10_1_COMPACT_INPUT_FRAGMENT_FIELDS = ("fragment_id", "document_order", "chunk_index", "text")
+R10_1_COMPACT_OUTPUT_REFERENCE_FIELDS = ("fragment_id", "quote")
 
 
 @dataclass(frozen=True)

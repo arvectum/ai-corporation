@@ -15,7 +15,11 @@ from src.modules.procurement_analysis.r10_1_producer import (
     R10_1CanonicalProduction,
     produce_r10_1_canonical_analysis,
 )
-from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
+from src.modules.production_llm_analysis.contracts import (
+    R10_1_COMPACT_INPUT_FRAGMENT_FIELDS,
+    R10_1_COMPACT_OUTPUT_REFERENCE_FIELDS,
+    R10_1_CONTROLLED_MAP_CONTRACT,
+)
 from src.modules.production_llm_analysis.evidence import canonical_sha256
 from src.modules.production_llm_analysis.schemas import BudgetPolicy
 from src.modules.production_llm_analysis.service import ProductionLLMProvider
@@ -146,12 +150,12 @@ def _stable_semantic_identity(production: R10_1CanonicalProduction) -> dict[str,
 
     result = production.llm_result
     return {
-        "provider_wire_contract_version": R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
-        "prompt_id": R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
-        "prompt_version": R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
-        "output_schema_id": R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
-        "output_schema_version": R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
-        "grounding_policy_version": R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+        "provider_wire_contract_version": result.provider_wire_contract_version,
+        "prompt_id": result.prompt_id,
+        "prompt_version": result.prompt_version,
+        "output_schema_id": result.output_schema_id,
+        "output_schema_version": result.output_schema_version,
+        "grounding_policy_version": result.grounding_policy_version,
         "request_id": result.request_id,
         "evidence_packet_hash": result.evidence_packet_hash,
         "batch_plan_hash": production.batch_plan_hash,
@@ -170,6 +174,22 @@ def _stable_semantic_identity(production: R10_1CanonicalProduction) -> dict[str,
         "tokenizer_identity": production.tokenizer_identity,
         "context_profile": production.context_profile,
     }
+
+
+def _validate_controlled_result_contract(result: Any) -> None:
+    actual = (
+        result.provider_wire_contract_version, result.prompt_id, result.prompt_version,
+        result.output_schema_id, result.output_schema_version,
+        result.grounding_policy_version, result.batch_plan_version,
+    )
+    expected = (
+        R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
+        R10_1_CONTROLLED_MAP_CONTRACT.prompt_id, R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id, R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version, R10_1_CONTROLLED_MAP_CONTRACT.plan_version,
+    )
+    if actual != expected:
+        raise ControlledEvidenceConflictError("controlled_evidence_execution_contract_mismatch")
 
 
 def _publication_summary(production: R10_1CanonicalProduction) -> dict[str, Any]:
@@ -224,6 +244,8 @@ def build_sanitized_controlled_evidence_manifest(
         raise ControlledEvidenceError("controlled_evidence_provider_policy_mismatch")
     if first_result.model != policy.model or second_result.model != policy.model:
         raise ControlledEvidenceError("controlled_evidence_model_policy_mismatch")
+    _validate_controlled_result_contract(first_result)
+    _validate_controlled_result_contract(second_result)
 
     first_identity = _stable_semantic_identity(first)
     second_identity = _stable_semantic_identity(second)
@@ -249,9 +271,9 @@ def build_sanitized_controlled_evidence_manifest(
         "manifest_version": MANIFEST_VERSION,
         "stable_identity": stable,
         "wire_contract": {
-            "provider_wire_contract_version": R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
-            "input_fragment_schema": ["fragment_id", "document_order", "chunk_index", "text"],
-            "output_reference_schema": ["fragment_id", "quote"],
+            "provider_wire_contract_version": first_result.provider_wire_contract_version,
+            "input_fragment_schema": list(R10_1_COMPACT_INPUT_FRAGMENT_FIELDS),
+            "output_reference_schema": list(R10_1_COMPACT_OUTPUT_REFERENCE_FIELDS),
             "server_side_reference_expansion": True,
             "full_grounding_revalidation": True,
             "provider_metadata_authority": False,
