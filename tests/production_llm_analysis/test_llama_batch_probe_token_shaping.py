@@ -11,12 +11,15 @@ from scripts.r10_1.probe_llama_batch_shape import (
     _sanitized_server_error_type,
     _shape_request,
 )
-from src.modules.production_llm_analysis.batching import ExactRequestMeasurement
+from src.modules.production_llm_analysis.batching import (
+    BatchPolicy,
+    ExactRequestMeasurement,
+)
 from src.modules.production_llm_analysis.llama_reasoning_control import (
-    install_llama_non_reasoning_mode,
+    apply_llama_non_reasoning_mode,
 )
 from src.modules.production_llm_analysis.llama_schema_constraint import (
-    install_llama_schema_constraint,
+    build_llama_schema_constrained_request_body,
 )
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
@@ -37,6 +40,17 @@ class _ExactFakeTokenizer:
         return max(1, len(text.encode("utf-8")) // 5)
 
 
+class _ProbeRequestBuilder:
+    def __init__(self) -> None:
+        self._adapter = OpenAICompatibleProductionLLMProvider.__new__(
+            OpenAICompatibleProductionLLMProvider
+        )
+
+    def _build_request_body(self, request):
+        body = build_llama_schema_constrained_request_body(self._adapter, request)
+        return apply_llama_non_reasoning_mode(body, request)
+
+
 def _policy():
     return SimpleNamespace(
         provider="openai_compatible",
@@ -46,11 +60,7 @@ def _policy():
 
 
 def test_batch_probe_shapes_request_with_exact_full_envelope_measurement():
-    install_llama_schema_constraint()
-    install_llama_non_reasoning_mode()
-    provider = OpenAICompatibleProductionLLMProvider.__new__(
-        OpenAICompatibleProductionLLMProvider
-    )
+    provider = _ProbeRequestBuilder()
     tokenizer = _ExactFakeTokenizer()
 
     request, measurement, fragment_count, batch_policy = _shape_request(
@@ -73,8 +83,6 @@ def test_batch_probe_shapes_request_with_exact_full_envelope_measurement():
 
 
 def test_measurement_fit_rejects_context_and_evidence_overflow():
-    from src.modules.production_llm_analysis.batching import BatchPolicy
-
     policy = BatchPolicy.approved_32k(tokenizer_identity="fake")
     fitting = ExactRequestMeasurement(
         full_request_tokens=25000,
@@ -116,7 +124,10 @@ def test_probe_http_diagnostics_are_status_only_and_sanitized():
         )
         == "invalid_request_error"
     )
-    assert _sanitized_server_error_type(b'{"error":{"type":"bad value /tmp/x"}}') is None
+    assert (
+        _sanitized_server_error_type(b'{"error":{"type":"bad value /tmp/x"}}')
+        is None
+    )
 
 
 def test_batch_request_builder_preserves_requested_fragment_count():
