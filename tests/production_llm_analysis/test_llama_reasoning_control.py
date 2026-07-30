@@ -69,7 +69,7 @@ def test_batch_shaped_probe_matches_real_map_shape_without_customer_data():
 
     assert len(request.evidence_packet.fragments) == _FRAGMENT_COUNT == 96
     assert request.batch_count == 17
-    assert request.batch_ordinal == 0
+    assert request.batch_ordinal == 1
     assert request.max_claims == 3
     assert request.context_profile == "32k"
     assert request.evidence_budget == 24488
