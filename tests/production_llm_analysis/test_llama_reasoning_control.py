@@ -75,8 +75,14 @@ def test_batch_shaped_probe_matches_real_map_shape_without_customer_data():
     assert request.evidence_budget == 24488
     assert request.budget_policy.limits.max_output_tokens == 4096
     assert request.budget_policy.limits.max_retries == 0
-    assert sum(len(item.text) for item in request.evidence_packet.fragments) > 90_000
-    assert all(item.document_id.startswith("synthetic-") for item in request.evidence_packet.fragments)
+    total_chars = sum(
+        len(item.text) for item in request.evidence_packet.fragments
+    )
+    assert total_chars > 90_000
+    assert all(
+        item.document_id.startswith("synthetic-")
+        for item in request.evidence_packet.fragments
+    )
 
 
 def test_batch_shaped_request_body_uses_schema_and_disables_thinking():
@@ -89,5 +95,6 @@ def test_batch_shaped_request_body_uses_schema_and_disables_thinking():
     body = apply_llama_non_reasoning_mode(body, request)
 
     assert body["response_format"]["type"] == "json_object"
-    assert body["response_format"]["schema"]["properties"]["claims"]["maxItems"] == 3
+    claims_schema = body["response_format"]["schema"]["properties"]["claims"]
+    assert claims_schema["maxItems"] == 3
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
