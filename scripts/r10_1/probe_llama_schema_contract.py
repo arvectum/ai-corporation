@@ -56,10 +56,14 @@ _SAFE_INVALID_RESPONSE_CODES = frozenset(
         "provider_usage_invalid",
         "provider_wire_claim_schema_invalid",
         "provider_wire_duplicate_reference",
+        "provider_wire_field_path_not_extractive",
         "provider_wire_fragment_not_found",
         "provider_wire_quote_empty",
         "provider_wire_quote_not_found",
+        "provider_wire_quote_sentinel_invalid",
+        "provider_wire_reference_count_invalid",
         "provider_wire_reference_schema_invalid",
+        "provider_wire_value_sentinel_invalid",
     }
 )
 
@@ -168,10 +172,13 @@ def main() -> int:
         claim = response.claims[0]
         if claim.field_path != _ALLOWED_FIELD_PATH:
             raise RuntimeError("probe_field_path_invalid")
-        if not claim.evidence_references:
-            raise RuntimeError("probe_reference_missing")
-        if any(reference.quote not in _SYNTHETIC_TEXT for reference in claim.evidence_references):
-            raise RuntimeError("probe_quote_not_grounded")
+        if claim.value != _SYNTHETIC_TEXT:
+            raise RuntimeError("probe_server_value_expansion_invalid")
+        if len(claim.evidence_references) != 1:
+            raise RuntimeError("probe_reference_count_invalid")
+        reference = claim.evidence_references[0]
+        if reference.quote != _SYNTHETIC_TEXT:
+            raise RuntimeError("probe_server_quote_expansion_invalid")
 
         print(
             json.dumps(
@@ -179,9 +186,10 @@ def main() -> int:
                     "status": "full_compact_contract_passed",
                     "provider_call_count": 1,
                     "claim_count": 1,
-                    "reference_count": len(claim.evidence_references),
+                    "reference_count": 1,
                     "model": policy.model,
                     "retry_count": response.retry_count,
+                    "server_owned_grounding": True,
                 },
                 sort_keys=True,
             )
