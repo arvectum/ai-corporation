@@ -4,6 +4,9 @@ from typing import Any
 
 from src.modules.production_llm_analysis import controlled_evidence
 from src.modules.production_llm_analysis.evidence import canonical_sha256
+from src.modules.production_llm_analysis.llama_reasoning_control import (
+    _LLAMA_REASONING_PROFILE,
+)
 from src.modules.production_llm_analysis.llama_schema_constraint import (
     _LLAMA_SCHEMA_PROFILE,
 )
@@ -11,7 +14,7 @@ from src.modules.production_llm_analysis.llama_schema_constraint import (
 _ORIGINAL_BUILD_MANIFEST = (
     controlled_evidence.build_sanitized_controlled_evidence_manifest
 )
-_PATCH_MARKER = "_arv003_llama_manifest_profile_v1"
+_PATCH_MARKER = "_arv003_llama_manifest_profile_v2"
 
 
 def _decorate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
@@ -20,12 +23,15 @@ def _decorate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     payload = {key: value for key, value in manifest.items() if key != "manifest_hash"}
     stable_identity = dict(payload.get("stable_identity") or {})
     stable_identity["llama_schema_profile"] = _LLAMA_SCHEMA_PROFILE
+    stable_identity["llama_reasoning_profile"] = _LLAMA_REASONING_PROFILE
     payload["stable_identity"] = stable_identity
 
     wire_contract = dict(payload.get("wire_contract") or {})
     wire_contract.update(
         {
             "llama_schema_profile": _LLAMA_SCHEMA_PROFILE,
+            "llama_reasoning_profile": _LLAMA_REASONING_PROFILE,
+            "provider_reasoning_enabled": False,
             "provider_claim_id_authority": False,
             "provider_claim_value_authority": False,
             "server_side_claim_identity": True,
