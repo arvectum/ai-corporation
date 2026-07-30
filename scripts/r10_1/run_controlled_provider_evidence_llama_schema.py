@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Run the controlled Gate 5 flow with llama.cpp schema-constrained JSON."""
+"""Run the controlled Gate 5 flow with llama.cpp server-owned grounding."""
 
 from __future__ import annotations
 
 from scripts.r10_1.run_controlled_provider_evidence import main
+from src.modules.production_llm_analysis.llama_manifest_profile import (
+    install_llama_manifest_profile,
+)
 from src.modules.production_llm_analysis.llama_schema_constraint import (
     install_llama_schema_constraint,
 )
@@ -11,4 +14,5 @@ from src.modules.production_llm_analysis.llama_schema_constraint import (
 
 if __name__ == "__main__":
     install_llama_schema_constraint()
+    install_llama_manifest_profile()
     raise SystemExit(main())
