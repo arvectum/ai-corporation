@@ -1,4 +1,4 @@
-.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean
+.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean
 
 check:
 	python -m compileall -q src scripts
@@ -27,6 +27,9 @@ test-r8-acceptance:
 
 test-arv076:
 	python -m pytest -q tests/ops/test_arv076_runtime_backup.py
+
+audit-external-runtime-paths:
+	python scripts/ops/audit_external_runtime_paths.py --json
 
 ci: check test
 
