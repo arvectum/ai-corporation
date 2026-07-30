@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+import json
+
+import pytest
+
+from src.modules.procurement_analysis.r10_1_producer import R10_1AnalysisRejectedError
 from src.modules.production_llm_analysis.evidence import build_evidence_packet
 from src.modules.production_llm_analysis.llama_schema_constraint import (
+    _parse_success_response_with_safe_diagnostics,
+    _run_production_analysis_with_safe_diagnostics,
     build_llama_schema_constrained_request_body,
     compact_response_schema,
 )
@@ -10,6 +17,7 @@ from src.modules.production_llm_analysis.openai_compatible import (
 )
 from src.modules.production_llm_analysis.schemas import EvidenceFragmentInput
 from src.modules.production_llm_analysis.service import build_production_llm_request
+from src.shared.llm.transport import HTTPResponse
 
 from .conftest import make_policy
 
@@ -112,6 +120,65 @@ def test_llama_compact_body_uses_flat_schema_constrained_json():
         _ALLOWED_FIELD
     ]
     assert all("$ref" not in item for item in _walk(schema) if isinstance(item, dict))
+
+
+def test_safe_llama_diagnostic_preserves_only_repository_owned_code():
+    request = _request()
+    fragment_id = request.evidence_packet.fragments[0].fragment_id
+    payload = {
+        "id": "local-request",
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "claims": [
+                                {
+                                    "claim_id": "claim-1",
+                                    "field_path": _ALLOWED_FIELD,
+                                    "value": "not present",
+                                    "provider_confidence": 0.9,
+                                    "evidence_references": [
+                                        {
+                                            "fragment_id": fragment_id,
+                                            "quote": "not present",
+                                        }
+                                    ],
+                                }
+                            ]
+                        }
+                    )
+                }
+            }
+        ],
+    }
+
+    class _Provider:
+        def generate(self, provider_request):
+            adapter = OpenAICompatibleProductionLLMProvider.__new__(
+                OpenAICompatibleProductionLLMProvider
+            )
+            adapter._clock = lambda: 0.0
+            return _parse_success_response_with_safe_diagnostics(
+                adapter,
+                response=HTTPResponse(
+                    status_code=200,
+                    headers={},
+                    body=json.dumps(payload).encode(),
+                ),
+                request=provider_request,
+                attempt_latencies_ms=[1],
+                retry_count=0,
+                analysis_started=0.0,
+            )
+
+    with pytest.raises(
+        R10_1AnalysisRejectedError,
+        match=(
+            "evidence_batch_invalid_response:provider_wire_quote_not_found"
+        ),
+    ):
+        _run_production_analysis_with_safe_diagnostics(request, _Provider())
 
 
 def test_non_compact_body_keeps_existing_json_mode():
