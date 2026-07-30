@@ -13,7 +13,9 @@ import json
 import sys
 from pathlib import Path
 
-from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
+from src.modules.production_llm_analysis.contracts import (
+    R10_1_CONTROLLED_MAP_CONTRACT,
+)
 from src.modules.production_llm_analysis.controlled_evidence import (
     load_approved_provider_policy,
 )
@@ -29,7 +31,9 @@ from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleTransportConfig,
 )
 from src.modules.production_llm_analysis.schemas import EvidenceFragmentInput
-from src.modules.production_llm_analysis.service import build_production_llm_request
+from src.modules.production_llm_analysis.service import (
+    build_production_llm_request,
+)
 from src.shared.config.settings import get_settings
 from src.shared.llm.transport import (
     InvalidProviderResponseError,
@@ -170,7 +174,8 @@ def _validate_response(request, response) -> tuple[int, int]:
         raise RuntimeError("batch_probe_claim_count_invalid")
 
     fragments = {
-        fragment.fragment_id: fragment for fragment in request.evidence_packet.fragments
+        fragment.fragment_id: fragment
+        for fragment in request.evidence_packet.fragments
     }
     reference_count = 0
     for claim in response.claims:
@@ -200,7 +205,10 @@ def main() -> int:
             OpenAICompatibleTransportConfig(base_url=base_url, api_key=api_key)
         )
         request_body = provider._build_request_body(request)
-        if request_body.get("chat_template_kwargs", {}).get("enable_thinking") is not False:
+        thinking_enabled = request_body.get("chat_template_kwargs", {}).get(
+            "enable_thinking"
+        )
+        if thinking_enabled is not False:
             raise RuntimeError("batch_probe_thinking_not_disabled")
 
         response = provider.generate(request)
