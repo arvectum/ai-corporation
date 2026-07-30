@@ -10,6 +10,7 @@ from src.modules.production_llm_analysis.evidence import build_evidence_packet
 from src.modules.production_llm_analysis.grounding import validate_provider_claims
 from src.modules.production_llm_analysis.llama_schema_constraint import (
     _LLAMA_SCHEMA_PROFILE,
+    _SERVER_CLAIM_ID_SENTINEL,
     _SERVER_FRAGMENT_QUOTE_SENTINEL,
     _SERVER_FRAGMENT_VALUE_SENTINEL,
     _parse_success_response_with_safe_diagnostics,
@@ -67,6 +68,12 @@ def _request(*, wire: str = "compact-safe-v1"):
         output_schema_version="v2",
         grounding_policy_version="v1",
         budget_policy=make_policy(),
+        batch_plan_version="test-plan",
+        batch_plan_hash="1" * 64,
+        batch_hash="2" * 64,
+        batch_ordinal=1,
+        batch_count=1,
+        corpus_evidence_hash="3" * 64,
         map_mode=wire == "compact-safe-v1",
         max_claims=3,
         allowed_field_paths=[_ALLOWED_FIELD],
@@ -91,7 +98,7 @@ def _walk(value):
             yield from _walk(item)
 
 
-def _payload(*, fragment_id: str, value: str, quote: str):
+def _payload(*, fragment_id: str, value: str, quote: str, claim_id: str = _SERVER_CLAIM_ID_SENTINEL):
     return {
         "id": "local-request",
         "choices": [
@@ -101,7 +108,7 @@ def _payload(*, fragment_id: str, value: str, quote: str):
                         {
                             "claims": [
                                 {
-                                    "claim_id": "claim-1",
+                                    "claim_id": claim_id,
                                     "field_path": _ALLOWED_FIELD,
                                     "value": value,
                                     "provider_confidence": 0.9,
@@ -129,8 +136,11 @@ def test_compact_response_schema_is_flat_batch_bound_and_server_grounded():
     assert schema["properties"]["claims"]["maxItems"] == 3
     claim_schema = _claim_schema(schema)
     reference_schema = _reference_schema(schema)
+    assert claim_schema["properties"]["claim_id"] == {
+        "type": "string",
+        "const": _SERVER_CLAIM_ID_SENTINEL,
+    }
     assert claim_schema["properties"]["field_path"]["enum"] == [_ALLOWED_FIELD]
-    assert claim_schema["properties"]["claim_id"]["maxLength"] == 128
     assert claim_schema["properties"]["value"] == {
         "type": "string",
         "const": _SERVER_FRAGMENT_VALUE_SENTINEL,
@@ -162,13 +172,15 @@ def test_llama_compact_body_uses_same_server_grounded_contract_in_prompt():
     assert task["output_contract"] == schema
     assert task["map_contract"]["allowed_field_paths"] == [_ALLOWED_FIELD]
     assert task["map_contract"]["llama_schema_profile"] == _LLAMA_SCHEMA_PROFILE
+    assert task["map_contract"]["server_owned_claim_identity"] is True
     assert task["map_contract"]["server_owned_fragment_grounding"] is True
+    assert _SERVER_CLAIM_ID_SENTINEL in body["messages"][0]["content"]
     assert _SERVER_FRAGMENT_VALUE_SENTINEL in body["messages"][0]["content"]
     assert _SERVER_FRAGMENT_QUOTE_SENTINEL in body["messages"][0]["content"]
     assert all("$ref" not in item for item in _walk(schema) if isinstance(item, dict))
 
 
-def test_server_owned_sentinels_expand_to_exact_fragment_and_preserve_raw_hash():
+def test_server_owned_sentinels_expand_identity_value_quote_and_preserve_raw_hash():
     request = _request()
     fragment = request.evidence_packet.fragments[0]
     payload = _payload(
@@ -193,6 +205,21 @@ def test_server_owned_sentinels_expand_to_exact_fragment_and_preserve_raw_hash()
 
     claim = result.claims[0]
     reference = claim.evidence_references[0]
+    assert claim.claim_id != _SERVER_CLAIM_ID_SENTINEL
+    assert len(claim.claim_id) == 64
+    assert claim.claim_id == hashlib.sha256(
+        json.dumps(
+            {
+                "batch_hash": request.batch_hash,
+                "batch_ordinal": request.batch_ordinal,
+                "field_path": claim.field_path,
+                "fragment_id": fragment.fragment_id,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).hexdigest()
     assert claim.value == fragment.text
     assert reference.quote == fragment.text
     assert reference.fragment_id == fragment.fragment_id
