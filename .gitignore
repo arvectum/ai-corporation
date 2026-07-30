@@ -70,3 +70,8 @@ tmp/*_context.json
 
 # R9 test artifacts (backup/restore smoke tests)
 /output/
+
+# ARV-076 backup/restore artifacts must remain local and outside Git
+/arv076_backup_sets/
+/arv076_restore_runs/
+/arv076_acceptance/

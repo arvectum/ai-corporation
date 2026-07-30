@@ -16,6 +16,7 @@
 - [ ] [ARV-072 / #41](https://github.com/arutyunoveth/ai-corporation/issues/41) — execute the controlled competitive benchmark on identical real procurements; keep public-surface research separate from live output scoring
 - [ ] [ARV-073 / #71](https://github.com/arutyunoveth/ai-corporation/issues/71) — install and customize ODS on the Mac mini as the local AI infrastructure layer; keep Hermes as the required bounded agent runtime; connect `ai-corporation` through LiteLLM/`ods/current`; inventory, migrate and safely remove duplicated standalone services only after backup, replacement validation and rollback preparation; prepare the downstream on-premise design
 - [ ] [ARV-074 / #73](https://github.com/arutyunoveth/ai-corporation/issues/73) — run the isolated Obsidian Mind memory pilot outside production runtime and record an `ADOPT / ADOPT WITH LIMITS / REJECT` decision
+- [ ] [ARV-076 / #82](https://github.com/arutyunoveth/ai-corporation/issues/82) — create and validate an independent Docker/Colima backup set with PostgreSQL dump, cold named-volume archives, SHA-256 verification, isolated restore evidence and a tested lost-SSD recovery runbook
 - consolidate remaining absolute local links in historical governance/launch docs without rewriting historical decisions
 - add richer report export formats if customer demos require them
 - define paid-pilot packaging and onboarding constraints after `C6`
