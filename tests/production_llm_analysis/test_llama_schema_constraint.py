@@ -27,10 +27,17 @@ def _request(*, wire: str = "compact-safe-v1"):
             EvidenceFragmentInput(
                 document_id="document",
                 document_name="document.txt",
-                chunk_id="chunk",
+                chunk_id="chunk-1",
                 locator={"document_order": 0, "chunk_index": 0},
-                text="Exact source sentence.",
-            )
+                text="Exact source sentence one.",
+            ),
+            EvidenceFragmentInput(
+                document_id="document",
+                document_name="document.txt",
+                chunk_id="chunk-2",
+                locator={"document_order": 0, "chunk_index": 1},
+                text="Exact source sentence two.",
+            ),
         ],
     )
     return build_production_llm_request(
@@ -51,22 +58,46 @@ def _request(*, wire: str = "compact-safe-v1"):
 
 
 def _claim_schema(schema):
-    items = schema["properties"]["claims"]["items"]
-    reference = items["$ref"]
-    assert reference.startswith("#/$defs/")
-    return schema["$defs"][reference.rsplit("/", 1)[-1]]
+    return schema["properties"]["claims"]["items"]
 
 
-def test_compact_response_schema_applies_claim_and_field_limits():
-    schema = compact_response_schema(_request())
+def _reference_schema(schema):
+    return _claim_schema(schema)["properties"]["evidence_references"]["items"]
+
+
+def _walk(value):
+    yield value
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _walk(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk(item)
+
+
+def test_compact_response_schema_is_flat_and_batch_bound():
+    request = _request()
+    schema = compact_response_schema(request)
 
     assert schema["additionalProperties"] is False
     assert schema["properties"]["claims"]["maxItems"] == 3
-    claim_schema = _claim_schema(schema)
-    assert claim_schema["properties"]["field_path"]["enum"] == [_ALLOWED_FIELD]
+    assert _claim_schema(schema)["properties"]["field_path"]["enum"] == [
+        _ALLOWED_FIELD
+    ]
+    assert _claim_schema(schema)["properties"]["claim_id"]["maxLength"] == 128
+    assert (
+        _claim_schema(schema)["properties"]["evidence_references"]["minItems"]
+        == 1
+    )
+    assert _reference_schema(schema)["properties"]["fragment_id"]["enum"] == sorted(
+        fragment.fragment_id for fragment in request.evidence_packet.fragments
+    )
+    assert _reference_schema(schema)["properties"]["quote"]["maxLength"] == 1024
+    assert all("$ref" not in item for item in _walk(schema) if isinstance(item, dict))
+    assert all("$defs" not in item for item in _walk(schema) if isinstance(item, dict))
 
 
-def test_llama_compact_body_uses_schema_constrained_json():
+def test_llama_compact_body_uses_flat_schema_constrained_json():
     request = _request()
     adapter = OpenAICompatibleProductionLLMProvider.__new__(
         OpenAICompatibleProductionLLMProvider
@@ -80,6 +111,7 @@ def test_llama_compact_body_uses_schema_constrained_json():
     assert _claim_schema(schema)["properties"]["field_path"]["enum"] == [
         _ALLOWED_FIELD
     ]
+    assert all("$ref" not in item for item in _walk(schema) if isinstance(item, dict))
 
 
 def test_non_compact_body_keeps_existing_json_mode():
