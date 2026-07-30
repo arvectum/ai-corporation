@@ -146,7 +146,7 @@ def _build_batch_shaped_request(policy):
         batch_plan_version=contract.plan_version,
         batch_plan_hash="1" * 64,
         batch_hash="2" * 64,
-        batch_ordinal=0,
+        batch_ordinal=1,
         batch_count=17,
         corpus_evidence_hash="3" * 64,
         map_mode=True,
