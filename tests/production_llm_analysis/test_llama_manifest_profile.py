@@ -2,6 +2,9 @@ from src.modules.production_llm_analysis.evidence import canonical_sha256
 from src.modules.production_llm_analysis.llama_manifest_profile import (
     _decorate_manifest,
 )
+from src.modules.production_llm_analysis.llama_reasoning_control import (
+    _LLAMA_REASONING_PROFILE,
+)
 from src.modules.production_llm_analysis.llama_schema_constraint import (
     _LLAMA_SCHEMA_PROFILE,
 )
@@ -24,8 +27,13 @@ def test_llama_manifest_profile_is_sanitized_stable_and_rehashed():
     assert decorated["stable_identity"]["llama_schema_profile"] == (
         _LLAMA_SCHEMA_PROFILE
     )
+    assert decorated["stable_identity"]["llama_reasoning_profile"] == (
+        _LLAMA_REASONING_PROFILE
+    )
     wire = decorated["wire_contract"]
     assert wire["llama_schema_profile"] == _LLAMA_SCHEMA_PROFILE
+    assert wire["llama_reasoning_profile"] == _LLAMA_REASONING_PROFILE
+    assert wire["provider_reasoning_enabled"] is False
     assert wire["provider_claim_id_authority"] is False
     assert wire["provider_claim_value_authority"] is False
     assert wire["server_side_claim_identity"] is True
