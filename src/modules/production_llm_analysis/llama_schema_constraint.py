@@ -22,10 +22,11 @@ _ORIGINAL_PARSE_SUCCESS_RESPONSE = (
     OpenAICompatibleProductionLLMProvider._parse_success_response
 )
 _ORIGINAL_RUN_PRODUCTION_ANALYSIS = r10_1_producer.run_production_llm_analysis
-_SCHEMA_PATCH_MARKER = "_arv003_llama_schema_constraint_v3"
-_PARSE_PATCH_MARKER = "_arv003_llama_invalid_response_capture_v2"
+_SCHEMA_PATCH_MARKER = "_arv003_llama_schema_constraint_v4"
+_PARSE_PATCH_MARKER = "_arv003_llama_invalid_response_capture_v3"
 _RUN_PATCH_MARKER = "_arv003_llama_invalid_response_surface_v1"
-_LLAMA_SCHEMA_PROFILE = "fragment-grounded-extractive-v1"
+_LLAMA_SCHEMA_PROFILE = "fragment-grounded-extractive-v2"
+_SERVER_CLAIM_ID_SENTINEL = "__ARVECTUM_SERVER_CLAIM_ID__"
 _SERVER_FRAGMENT_VALUE_SENTINEL = "__ARVECTUM_SERVER_FRAGMENT_VALUE__"
 _SERVER_FRAGMENT_QUOTE_SENTINEL = "__ARVECTUM_SERVER_FRAGMENT_QUOTE__"
 _REQUIREMENT_FIELD_PATHS = (
@@ -51,6 +52,7 @@ _SAFE_INVALID_RESPONSE_CODES = frozenset(
         "provider_response_invalid_envelope",
         "provider_response_invalid_json",
         "provider_usage_invalid",
+        "provider_wire_claim_id_sentinel_invalid",
         "provider_wire_claim_schema_invalid",
         "provider_wire_duplicate_reference",
         "provider_wire_field_path_not_extractive",
@@ -157,6 +159,10 @@ def compact_response_schema(request: ProductionLLMAnalysisRequest) -> dict[str, 
     if request.max_claims is not None:
         claims_schema["maxItems"] = request.max_claims
 
+    claim_properties["claim_id"] = {
+        "type": "string",
+        "const": _SERVER_CLAIM_ID_SENTINEL,
+    }
     claim_properties["field_path"]["enum"] = _extractive_field_paths(request)
     claim_properties["value"] = {
         "type": "string",
@@ -174,7 +180,6 @@ def compact_response_schema(request: ProductionLLMAnalysisRequest) -> dict[str, 
         "const": _SERVER_FRAGMENT_QUOTE_SENTINEL,
     }
 
-    claim_properties["claim_id"]["maxLength"] = 128
     references_schema["minItems"] = 1
     references_schema["maxItems"] = 1
     return schema
@@ -197,15 +202,17 @@ def build_llama_schema_constrained_request_body(
         system_message["content"] = (
             f"{system_message['content']} "
             f"For the {_LLAMA_SCHEMA_PROFILE} profile, emit only requirement field paths. "
-            f"Set every claim value to {_SERVER_FRAGMENT_VALUE_SENTINEL}. "
-            "Return exactly one evidence reference per claim and set its quote to "
-            f"{_SERVER_FRAGMENT_QUOTE_SENTINEL}. The server will expand both sentinels "
-            "from the selected fragment and re-run exact lexical grounding."
+            f"Set every claim_id to {_SERVER_CLAIM_ID_SENTINEL} and every claim value "
+            f"to {_SERVER_FRAGMENT_VALUE_SENTINEL}. Return exactly one evidence reference "
+            f"per claim and set its quote to {_SERVER_FRAGMENT_QUOTE_SENTINEL}. The server "
+            "will derive the final claim identity, value and quote from the selected fragment "
+            "and re-run exact lexical grounding."
         )
         task = json.loads(body["messages"][1]["content"])
         task["output_contract"] = schema
         task["map_contract"]["allowed_field_paths"] = _extractive_field_paths(request)
         task["map_contract"]["llama_schema_profile"] = _LLAMA_SCHEMA_PROFILE
+        task["map_contract"]["server_owned_claim_identity"] = True
         task["map_contract"]["server_owned_fragment_grounding"] = True
         body["messages"][1]["content"] = canonical_json_bytes(task).decode("utf-8")
     return body
@@ -226,6 +233,24 @@ def _invalid_response(
         total_latency_ms=total_latency_ms,
         raw_response_sha256=raw_response_sha256,
     )
+
+
+def _server_claim_id(
+    request: ProductionLLMAnalysisRequest,
+    *,
+    field_path: str,
+    fragment_id: str,
+) -> str:
+    return hashlib.sha256(
+        canonical_json_bytes(
+            {
+                "batch_hash": request.batch_hash,
+                "batch_ordinal": request.batch_ordinal,
+                "field_path": field_path,
+                "fragment_id": fragment_id,
+            }
+        )
+    ).hexdigest()
 
 
 def _rewrite_server_grounded_response(
@@ -255,10 +280,20 @@ def _rewrite_server_grounded_response(
     fragments = {
         fragment.fragment_id: fragment for fragment in request.evidence_packet.fragments
     }
+    extractive_field_paths = _extractive_field_paths(request)
     for claim in content["claims"]:
         if not isinstance(claim, dict):
             return response, raw_response_sha256
-        if claim.get("field_path") not in _extractive_field_paths(request):
+        if claim.get("claim_id") != _SERVER_CLAIM_ID_SENTINEL:
+            raise _invalid_response(
+                "provider_wire_claim_id_sentinel_invalid",
+                raw_response_sha256=raw_response_sha256,
+                retry_count=retry_count,
+                attempt_latencies_ms=attempt_latencies_ms,
+                total_latency_ms=total_latency_ms,
+            )
+        field_path = claim.get("field_path")
+        if field_path not in extractive_field_paths:
             raise _invalid_response(
                 "provider_wire_field_path_not_extractive",
                 raw_response_sha256=raw_response_sha256,
@@ -294,7 +329,8 @@ def _rewrite_server_grounded_response(
                 attempt_latencies_ms=attempt_latencies_ms,
                 total_latency_ms=total_latency_ms,
             )
-        fragment = fragments.get(reference.get("fragment_id"))
+        fragment_id = reference.get("fragment_id")
+        fragment = fragments.get(fragment_id)
         if fragment is None:
             raise _invalid_response(
                 "provider_wire_fragment_not_found",
@@ -303,6 +339,11 @@ def _rewrite_server_grounded_response(
                 attempt_latencies_ms=attempt_latencies_ms,
                 total_latency_ms=total_latency_ms,
             )
+        claim["claim_id"] = _server_claim_id(
+            request,
+            field_path=field_path,
+            fragment_id=fragment_id,
+        )
         claim["value"] = fragment.text
         reference["quote"] = fragment.text
 
@@ -363,8 +404,7 @@ def _parse_success_response_with_safe_diagnostics(
             ),
             total_latency_ms=getattr(exc, "total_latency_ms", total_latency_ms),
             raw_response_sha256=(
-                raw_response_sha256
-                or getattr(exc, "raw_response_sha256", None)
+                raw_response_sha256 or getattr(exc, "raw_response_sha256", None)
             ),
         ) from None
 
