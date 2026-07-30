@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from scripts.ops.audit_external_runtime_paths import (
@@ -19,8 +21,10 @@ from scripts.ops.audit_external_runtime_paths import (
 
 def _policy(tmp_path: Path) -> RuntimePolicy:
     root = tmp_path / "external"
+    internal = tmp_path / "internal"
     root.mkdir()
-    return RuntimePolicy(external_root=root, internal_root=tmp_path / "internal")
+    internal.mkdir()
+    return RuntimePolicy(external_root=root, internal_root=internal)
 
 
 def _make_subroots(policy: RuntimePolicy) -> None:
@@ -52,7 +56,6 @@ def test_root_symlink_is_rejected(tmp_path: Path) -> None:
 
 def test_same_filesystem_is_rejected_when_required(tmp_path: Path) -> None:
     policy = _policy(tmp_path)
-    policy.internal_root.mkdir()
     _make_subroots(policy)
     assert validate_filesystem(policy) == [REASON_EXTERNAL_ROOT_SAME_FILESYSTEM]
 
@@ -85,8 +88,16 @@ def test_inventory_requires_one_postgres_and_redis() -> None:
     )
     reasons = validate_inventory(policy, RuntimeInventory(docker_contexts={"desktop-linux"}))
     assert "docker_context_unknown" in reasons
-    assert "duplicate_postgres" in reasons
-    assert "duplicate_redis" in reasons
+    assert "postgres_missing" not in reasons
+    assert "redis_missing" not in reasons
+
+
+def test_inventory_distinguishes_missing_and_duplicate() -> None:
+    policy = RuntimePolicy(external_root=Path("/external"), internal_root=Path("/internal"))
+    missing = validate_inventory(policy, RuntimeInventory(postgres_instances=0, redis_instances=0))
+    duplicate = validate_inventory(policy, RuntimeInventory(postgres_instances=2, redis_instances=3))
+    assert missing == ["postgres_missing", "redis_missing"]
+    assert duplicate == ["postgres_duplicate", "redis_duplicate"]
 
 
 def test_sanitized_json_contains_no_private_paths() -> None:
@@ -96,3 +107,92 @@ def test_sanitized_json_contains_no_private_paths() -> None:
     assert "/Users/private" not in encoded
     assert "<external-runtime-root>" in encoded
     assert result["read_only"] is True
+
+
+def _run_cli(tmp_path: Path, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    root = Path(__file__).resolve().parents[2]
+    command = [sys.executable, str(root / "scripts/ops/audit_external_runtime_paths.py"), *args]
+    return subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, check=False)
+
+
+def _runtime_env(tmp_path: Path) -> dict[str, str]:
+    external = tmp_path / "external"
+    internal = tmp_path / "internal"
+    external.mkdir(exist_ok=True)
+    internal.mkdir(exist_ok=True)
+    for name in RuntimePolicy(external, internal).required_subroots:
+        (external / name).mkdir(exist_ok=True)
+    environment = os.environ.copy()
+    environment.update(
+        ARVECTUM_STORAGE_ROOT=str(external),
+        ARVECTUM_INTERNAL_RUNTIME_ROOT=str(internal),
+        ARVECTUM_DOCKER_CONTEXT="colima",
+        ARVECTUM_REQUIRE_SEPARATE_FILESYSTEM="false",
+    )
+    return environment
+
+
+def test_cli_filesystem_only_can_return_zero(tmp_path: Path) -> None:
+    completed = _run_cli(tmp_path, "--filesystem-only", "--json", env=_runtime_env(tmp_path))
+    assert completed.returncode == 0
+    payload = json.loads(completed.stdout)
+    assert payload["mode"] == "filesystem-only"
+    assert payload["inventory_source"] == "not-checked"
+
+
+def test_cli_full_inventory_json_with_one_instance_each_returns_zero(tmp_path: Path) -> None:
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "docker_contexts": ["colima"],
+                "active_docker_context": "colima",
+                "postgres_instances": 1,
+                "redis_instances": 1,
+                "ollama_available": False,
+                "lmstudio_available": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    completed = _run_cli(tmp_path, "--inventory-json", str(inventory), "--json", env=_runtime_env(tmp_path))
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["mode"] == "full-read-only"
+
+
+def test_cli_inventory_zero_and_duplicate_are_distinct(tmp_path: Path) -> None:
+    for counts, expected in [((0, 0), {"postgres_missing", "redis_missing"}), ((2, 3), {"postgres_duplicate", "redis_duplicate"})]:
+        inventory = tmp_path / f"inventory-{counts[0]}-{counts[1]}.json"
+        inventory.write_text(
+            json.dumps(
+                {
+                    "docker_contexts": ["colima"],
+                    "active_docker_context": "colima",
+                    "postgres_instances": counts[0],
+                    "redis_instances": counts[1],
+                }
+            ),
+            encoding="utf-8",
+        )
+        completed = _run_cli(tmp_path, "--inventory-json", str(inventory), "--json", env=_runtime_env(tmp_path))
+        payload = json.loads(completed.stdout)
+        assert completed.returncode == 1
+        assert expected.issubset(payload["reason_codes"])
+
+
+def test_cli_missing_env_is_sanitized_without_traceback(tmp_path: Path) -> None:
+    environment = os.environ.copy()
+    for name in ("ARVECTUM_STORAGE_ROOT", "AI_CORP_ARVECTUM_STORAGE_ROOT", "ARVECTUM_INTERNAL_RUNTIME_ROOT"):
+        environment.pop(name, None)
+    completed = _run_cli(tmp_path, "--filesystem-only", "--json", env=environment)
+    assert completed.returncode == 1
+    assert "external_root_not_configured" in json.loads(completed.stdout)["reason_codes"]
+    assert "Traceback" not in completed.stdout + completed.stderr
+    assert "external_root_not_configured" in completed.stdout
+
+
+def test_cli_output_never_reveals_absolute_paths(tmp_path: Path) -> None:
+    environment = _runtime_env(tmp_path)
+    completed = _run_cli(tmp_path, "--filesystem-only", "--json", env=environment)
+    assert str(tmp_path) not in completed.stdout
+    assert str(tmp_path) not in completed.stderr
