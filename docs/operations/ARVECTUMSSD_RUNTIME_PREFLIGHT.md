@@ -12,6 +12,8 @@ Set these variables in a local, untracked runtime env file:
 - `ARVECTUM_STORAGE_ROOT` — canonical external storage root;
 - `ARVECTUM_INTERNAL_RUNTIME_ROOT` — label-only comparison root;
 - `ARVECTUM_DOCKER_CONTEXT` — expected Docker context;
+- `ARVECTUM_DOCKER_CONTEXTS` — optional comma-separated allowlist for the live
+  audit. Without it, every context returned by `docker context ls` is checked;
 - `ARVECTUM_OLLAMA_REQUIRED` and `ARVECTUM_LMSTUDIO_REQUIRED` — optional dependency policy.
 
 `ARVECTUM_STORAGE_ROOT` takes precedence over the compatibility alias
@@ -39,13 +41,22 @@ python scripts/ops/audit_external_runtime_paths.py \
 The inventory adapter accepts only `docker_contexts`,
 `active_docker_context`, `postgres_instances`, `redis_instances`,
 `ollama_available`, and `lmstudio_available`. Alternatively,
-`--live-runtime` collects Docker context/container metadata and process
-presence through read-only local commands. It does not call model endpoints.
+`--live-runtime` first lists Docker contexts, then runs
+`docker --context <name> ps` for every discovered context (or every context in
+`ARVECTUM_DOCKER_CONTEXTS`). This does not change the active context and does
+not start, stop, or restart containers. PostgreSQL and Redis counts are
+aggregated across contexts. Classification uses only the Compose service
+label, image repository, or narrowly tokenized container name; command text
+and arbitrary label values are ignored. Unavailable contexts produce the
+sanitized `docker_context_unavailable` reason code.
 
 The JSON is sanitized: physical paths, Docker endpoints, credentials, model
 paths, volume identifiers, and client identifiers are not emitted. Exit code
 `0` means all mandatory checks for the selected mode passed; optional
-dependencies are reported as degraded unless explicitly required.
+dependencies use three states: `not_checked`, `available`, and `unavailable`.
+Filesystem-only reports `not_checked` for Ollama and LM Studio; live runtime
+checks report `available` or `unavailable`. Optional dependencies are only
+fatal when explicitly required.
 
 The filesystem device check is mandatory by default. The test-only environment
 override `ARVECTUM_REQUIRE_SEPARATE_FILESYSTEM=false` is used only with

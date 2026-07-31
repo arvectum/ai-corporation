@@ -7,12 +7,15 @@ import sys
 from pathlib import Path
 
 from scripts.ops.audit_external_runtime_paths import (
+    REASON_DOCKER_CONTEXT_UNAVAILABLE,
     REASON_EXTERNAL_ROOT_MISSING,
     REASON_EXTERNAL_ROOT_SAME_FILESYSTEM,
     REASON_EXTERNAL_ROOT_SYMLINK,
     REASON_REQUIRED_SUBROOT_MISSING,
     RuntimeInventory,
     RuntimePolicy,
+    _live_inventory,
+    _parse_container_rows,
     sanitize_result,
     validate_filesystem,
     validate_inventory,
@@ -138,6 +141,8 @@ def test_cli_filesystem_only_can_return_zero(tmp_path: Path) -> None:
     payload = json.loads(completed.stdout)
     assert payload["mode"] == "filesystem-only"
     assert payload["inventory_source"] == "not-checked"
+    assert payload["inventory"]["ollama"] == "not_checked"
+    assert payload["inventory"]["lmstudio"] == "not_checked"
 
 
 def test_cli_full_inventory_json_with_one_instance_each_returns_zero(tmp_path: Path) -> None:
@@ -196,3 +201,111 @@ def test_cli_output_never_reveals_absolute_paths(tmp_path: Path) -> None:
     completed = _run_cli(tmp_path, "--filesystem-only", "--json", env=environment)
     assert str(tmp_path) not in completed.stdout
     assert str(tmp_path) not in completed.stderr
+
+
+def test_container_classifier_ignores_incidental_words() -> None:
+    rows = "\n".join(
+        json.dumps(row)
+        for row in (
+            {"Names": "worker", "Image": "example/worker:latest", "Command": "uses postgres and redis"},
+            {"Names": "worker-two", "Image": "example/worker:latest", "Labels": "note=redis"},
+            {"Names": "db", "Image": "postgres:16", "Command": "irrelevant"},
+            {"Names": "cache", "Image": "example/cache:latest", "Labels": "com.docker.compose.service=redis"},
+        )
+    )
+    assert _parse_container_rows(rows) == (1, 1)
+
+
+def test_live_inventory_aggregates_postgres_across_contexts(monkeypatch) -> None:
+    calls: list[list[str]] = []
+    context_rows = "default\tfalse\ncolima\ttrue\nother\tfalse\n"
+    outputs = {
+        "default": json.dumps({"Names": "db-default", "Image": "postgres:16"}) + "\n",
+        "colima": json.dumps({"Names": "db-colima", "Image": "postgres:16"}) + "\n",
+        "other": json.dumps({"Names": "worker", "Image": "example/worker", "Command": "redis"}) + "\n",
+    }
+
+    def fake_run(command: list[str]) -> str:
+        calls.append(command)
+        if command[:3] == ["docker", "context", "ls"]:
+            return context_rows
+        return outputs[command[2]]
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(RuntimePolicy(None, None))
+
+    assert inventory.postgres_instances == 2
+    assert inventory.redis_instances == 0
+    assert inventory.active_docker_context == "colima"
+    assert [call[2] for call in calls[1:]] == ["colima", "default", "other"]
+    assert all("--context" in call for call in calls[1:])
+
+
+def test_live_inventory_aggregates_redis_across_contexts(monkeypatch) -> None:
+    def fake_run(command: list[str]) -> str:
+        if command[:3] == ["docker", "context", "ls"]:
+            return "one\ttrue\ntwo\tfalse\n"
+        return json.dumps({"Names": f"cache-{command[3]}", "Image": "redis:7"}) + "\n"
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(RuntimePolicy(None, None))
+
+    assert inventory.redis_instances == 2
+    assert "redis_duplicate" in validate_inventory(RuntimePolicy(None, None), inventory)
+
+
+def test_live_inventory_allowlist_and_unavailable_context_are_sanitized(monkeypatch) -> None:
+    seen: list[list[str]] = []
+
+    def fake_run(command: list[str]) -> str:
+        seen.append(command)
+        if command[:3] == ["docker", "context", "ls"]:
+            return "colima\ttrue\n"
+        if command[2] == "missing":
+            raise RuntimeError
+        return json.dumps({"Names": "db", "Image": "postgres:16"}) + "\n"
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(
+        RuntimePolicy(None, None, docker_context_allowlist=("colima", "missing"))
+    )
+
+    assert inventory.postgres_instances == 1
+    assert REASON_DOCKER_CONTEXT_UNAVAILABLE in inventory.reason_codes
+    assert seen[1:] == [
+        ["docker", "--context", "colima", "ps", "--format", "{{json .}}"],
+        ["docker", "--context", "missing", "ps", "--format", "{{json .}}"],
+    ]
+    assert all("endpoint" not in " ".join(call).lower() for call in seen)
+
+
+def test_cli_unavailable_context_is_sanitized_without_traceback(tmp_path: Path) -> None:
+    docker_bin = tmp_path / "bin"
+    docker_bin.mkdir()
+    fake_docker = docker_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "if sys.argv[1:4] == ['context', 'ls', '--format']:\n"
+        "    print('colima\\ttrue')\n"
+        "    print('missing\\tfalse')\n"
+        "elif 'missing' in sys.argv:\n"
+        "    raise SystemExit(1)\n"
+        "else:\n"
+        "    print(json.dumps({'Names': 'db', 'Image': 'postgres:16'}))\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    environment = _runtime_env(tmp_path)
+    environment["PATH"] = f"{docker_bin}:{environment['PATH']}"
+    completed = _run_cli(tmp_path, "--live-runtime", "--json", env=environment)
+    payload = json.loads(completed.stdout)
+
+    assert completed.returncode == 1
+    assert REASON_DOCKER_CONTEXT_UNAVAILABLE in payload["reason_codes"]
+    assert "Traceback" not in completed.stdout + completed.stderr
+    assert str(tmp_path) not in completed.stdout + completed.stderr
+    assert "endpoint" not in completed.stdout.lower()

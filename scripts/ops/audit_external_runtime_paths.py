@@ -29,6 +29,7 @@ REASON_INTERNAL_ROOT_NOT_DIRECTORY = "internal_root_not_directory"
 REASON_REQUIRED_SUBROOT_MISSING = "required_subroot_missing"
 REASON_REQUIRED_SUBROOT_SYMLINK = "required_subroot_symlink"
 REASON_DOCKER_CONTEXT_UNKNOWN = "docker_context_unknown"
+REASON_DOCKER_CONTEXT_UNAVAILABLE = "docker_context_unavailable"
 REASON_POSTGRES_MISSING = "postgres_missing"
 REASON_POSTGRES_DUPLICATE = "postgres_duplicate"
 REASON_REDIS_MISSING = "redis_missing"
@@ -39,7 +40,6 @@ REASON_LIVE_DOCKER_UNAVAILABLE = "live_docker_unavailable"
 PUBLIC_LABELS = {
     "internal_root": "<internal-runtime-root>",
     "external_root": "<external-runtime-root>",
-    "docker_endpoint": "<docker-endpoint>",
 }
 
 
@@ -58,6 +58,7 @@ class RuntimePolicy:
         "temporary",
     )
     docker_context: str | None = None
+    docker_context_allowlist: tuple[str, ...] = ()
     require_separate_filesystem: bool = True
     required_ollama: bool = False
     required_lmstudio: bool = False
@@ -71,6 +72,7 @@ class RuntimeInventory:
     redis_instances: int | None = None
     ollama_available: bool | None = None
     lmstudio_available: bool | None = None
+    reason_codes: set[str] = field(default_factory=set)
 
 
 def _device(path: Path, stat_fn: Callable[[str], os.stat_result]) -> int:
@@ -134,7 +136,7 @@ def _instance_reason(count: int | None, missing: str, duplicate: str) -> str | N
 
 
 def validate_inventory(policy: RuntimePolicy, inventory: RuntimeInventory) -> list[str]:
-    reasons: list[str] = []
+    reasons: list[str] = sorted(inventory.reason_codes)
     if policy.docker_context and policy.docker_context not in inventory.docker_contexts:
         reasons.append(REASON_DOCKER_CONTEXT_UNKNOWN)
     if policy.docker_context and inventory.active_docker_context != policy.docker_context:
@@ -160,6 +162,11 @@ def sanitize_result(
     mode: str = "filesystem-only",
     inventory_source: str = "not-checked",
 ) -> dict[str, Any]:
+    def _optional_status(value: bool | None) -> str:
+        if value is None:
+            return "not_checked"
+        return "available" if value else "unavailable"
+
     return {
         "status": "ok" if not reasons else "failed",
         "mode": mode,
@@ -172,8 +179,8 @@ def sanitize_result(
             "active_docker_context": inventory.active_docker_context or "<unspecified>",
             "postgres_instances": inventory.postgres_instances,
             "redis_instances": inventory.redis_instances,
-            "ollama": "available" if inventory.ollama_available is True else "degraded",
-            "lmstudio": "available" if inventory.lmstudio_available is True else "degraded",
+            "ollama": _optional_status(inventory.ollama_available),
+            "lmstudio": _optional_status(inventory.lmstudio_available),
         },
         "read_only": True,
     }
@@ -184,10 +191,16 @@ def _policy_from_environment() -> RuntimePolicy:
         "AI_CORP_ARVECTUM_STORAGE_ROOT"
     )
     raw_internal = os.environ.get("ARVECTUM_INTERNAL_RUNTIME_ROOT")
+    allowlist = tuple(
+        item.strip()
+        for item in os.environ.get("ARVECTUM_DOCKER_CONTEXTS", "").split(",")
+        if item.strip()
+    )
     return RuntimePolicy(
         external_root=Path(raw_external).expanduser() if raw_external else None,
         internal_root=Path(raw_internal).expanduser() if raw_internal else None,
         docker_context=os.environ.get("ARVECTUM_DOCKER_CONTEXT"),
+        docker_context_allowlist=allowlist,
         require_separate_filesystem=os.environ.get(
             "ARVECTUM_REQUIRE_SEPARATE_FILESYSTEM", "true"
         ).lower()
@@ -232,7 +245,98 @@ def _run_read_only(command: list[str]) -> str:
     return completed.stdout
 
 
-def _live_inventory() -> RuntimeInventory:
+def _container_labels(container: dict[str, Any]) -> dict[str, str]:
+    raw_labels = container.get("Labels", "")
+    if isinstance(raw_labels, dict):
+        return {
+            str(key): str(value)
+            for key, value in raw_labels.items()
+            if isinstance(key, str) and isinstance(value, (str, int, float, bool))
+        }
+    if not isinstance(raw_labels, str):
+        return {}
+    labels: dict[str, str] = {}
+    for item in raw_labels.split(","):
+        key, separator, value = item.partition("=")
+        if separator and key:
+            labels[key] = value
+    return labels
+
+
+def _repository_name(image: Any) -> str:
+    if not isinstance(image, str):
+        return ""
+    repository = image.split("@", 1)[0].rsplit("/", 1)[-1]
+    if ":" in repository:
+        repository = repository.split(":", 1)[0]
+    return repository.lower()
+
+
+def _name_tokens(name: Any) -> set[str]:
+    if not isinstance(name, str):
+        return set()
+    token = ""
+    tokens: set[str] = set()
+    for character in name.lower().lstrip("/"):
+        if character.isalnum():
+            token += character
+        elif token:
+            tokens.add(token)
+            token = ""
+    if token:
+        tokens.add(token)
+    return tokens
+
+
+def _container_runtime_kind(container: dict[str, Any]) -> str | None:
+    """Classify only explicit Compose service, image repository, or name fields.
+
+    Command text and arbitrary label values are deliberately ignored.  The
+    accepted image repositories and name/service tokens are intentionally
+    narrow to prevent incidental words from becoming runtime instances.
+    """
+
+    labels = _container_labels(container)
+    service = labels.get("com.docker.compose.service", "").lower()
+    if service in {"postgres", "postgresql", "pgvector"}:
+        return "postgres"
+    if service == "redis":
+        return "redis"
+
+    repository = _repository_name(container.get("Image"))
+    if repository in {"postgres", "pgvector"}:
+        return "postgres"
+    if repository == "redis":
+        return "redis"
+
+    tokens = _name_tokens(container.get("Names"))
+    if tokens & {"postgres", "postgresql", "pgvector"}:
+        return "postgres"
+    if "redis" in tokens:
+        return "redis"
+    return None
+
+
+def _parse_container_rows(output: str) -> tuple[int, int]:
+    postgres = redis = 0
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+        try:
+            container = json.loads(line)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(container, dict):
+            continue
+        kind = _container_runtime_kind(container)
+        if kind == "postgres":
+            postgres += 1
+        elif kind == "redis":
+            redis += 1
+    return postgres, redis
+
+
+def _live_inventory(policy: RuntimePolicy | None = None) -> RuntimeInventory:
     contexts_output = _run_read_only(
         ["docker", "context", "ls", "--format", "{{.Name}}\t{{.Current}}"]
     )
@@ -244,24 +348,33 @@ def _live_inventory() -> RuntimeInventory:
             contexts.add(name)
         if current.strip().lower() == "true":
             active = name
-    containers = [
-        json.loads(line)
-        for line in _run_read_only(["docker", "ps", "--format", "{{json .}}"]).splitlines()
-        if line.strip()
-    ]
-    postgres = redis = 0
-    for container in containers:
-        text = json.dumps(container, ensure_ascii=False).lower()
-        postgres += "postgres" in text or "pgvector" in text
-        redis += "redis" in text
-    return RuntimeInventory(
+
+    allowlist = policy.docker_context_allowlist if policy else ()
+    selected_contexts = list(allowlist) if allowlist else sorted(contexts)
+    inventory = RuntimeInventory(
         docker_contexts=contexts,
         active_docker_context=active,
-        postgres_instances=int(postgres),
-        redis_instances=int(redis),
+        postgres_instances=0,
+        redis_instances=0,
         ollama_available=bool(_process_count("ollama")),
         lmstudio_available=bool(_process_count("lm studio")),
     )
+    if not selected_contexts:
+        inventory.reason_codes.add(REASON_LIVE_DOCKER_UNAVAILABLE)
+        return inventory
+
+    for context in selected_contexts:
+        try:
+            output = _run_read_only(
+                ["docker", "--context", context, "ps", "--format", "{{json .}}"]
+            )
+        except RuntimeError:
+            inventory.reason_codes.add(REASON_DOCKER_CONTEXT_UNAVAILABLE)
+            continue
+        postgres, redis = _parse_container_rows(output)
+        inventory.postgres_instances += postgres
+        inventory.redis_instances += redis
+    return inventory
 
 
 def _process_count(pattern: str) -> int:
@@ -304,7 +417,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.live_runtime:
             mode = "full-read-only"
             inventory_source = "live-docker"
-            inventory = _live_inventory()
+            inventory = _live_inventory(policy)
             reasons.extend(validate_inventory(policy, inventory))
     except (RuntimeError, ValueError, json.JSONDecodeError):
         reasons.append(
