@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from scripts.ops.audit_external_runtime_paths import (
-    REASON_DOCKER_CONTEXT_UNAVAILABLE,
+    REASON_DOCKER_DAEMON_IDENTITY_UNAVAILABLE,
     REASON_EXTERNAL_ROOT_MISSING,
     REASON_EXTERNAL_ROOT_SAME_FILESYSTEM,
     REASON_EXTERNAL_ROOT_SYMLINK,
@@ -229,6 +229,8 @@ def test_live_inventory_aggregates_postgres_across_contexts(monkeypatch) -> None
         calls.append(command)
         if command[:3] == ["docker", "context", "ls"]:
             return context_rows
+        if command[3] == "info":
+            return json.dumps({"ID": f"daemon-{command[2]}"})
         return outputs[command[2]]
 
     monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
@@ -238,7 +240,7 @@ def test_live_inventory_aggregates_postgres_across_contexts(monkeypatch) -> None
     assert inventory.postgres_instances == 2
     assert inventory.redis_instances == 0
     assert inventory.active_docker_context == "colima"
-    assert [call[2] for call in calls[1:]] == ["colima", "default", "other"]
+    assert [call[2] for call in calls[1:4]] == ["colima", "default", "other"]
     assert all("--context" in call for call in calls[1:])
 
 
@@ -246,6 +248,8 @@ def test_live_inventory_aggregates_redis_across_contexts(monkeypatch) -> None:
     def fake_run(command: list[str]) -> str:
         if command[:3] == ["docker", "context", "ls"]:
             return "one\ttrue\ntwo\tfalse\n"
+        if command[3] == "info":
+            return json.dumps({"ID": f"daemon-{command[2]}"})
         return json.dumps({"Names": f"cache-{command[3]}", "Image": "redis:7"}) + "\n"
 
     monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
@@ -253,6 +257,81 @@ def test_live_inventory_aggregates_redis_across_contexts(monkeypatch) -> None:
     inventory = _live_inventory(RuntimePolicy(None, None))
 
     assert inventory.redis_instances == 2
+    assert "redis_duplicate" in validate_inventory(RuntimePolicy(None, None), inventory)
+
+
+def test_live_inventory_deduplicates_context_aliases_for_postgres(monkeypatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str]) -> str:
+        calls.append(command)
+        if command[:3] == ["docker", "context", "ls"]:
+            return "default\tfalse\ncolima\ttrue\n"
+        if command[3] == "info":
+            return json.dumps({"ID": "same-daemon"})
+        assert command[2] == "colima"
+        return json.dumps(
+            {"ID": "container-id", "Names": "db", "Image": "postgres:16"}
+        ) + "\n"
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(RuntimePolicy(None, None))
+
+    assert inventory.postgres_instances == 1
+    assert inventory.unique_docker_daemons == 1
+    assert "postgres_duplicate" not in validate_inventory(RuntimePolicy(None, None), inventory)
+    assert sum(command[3] == "info" for command in calls) == 2
+    assert sum(command[3] == "ps" for command in calls) == 1
+
+
+def test_live_inventory_counts_postgres_on_distinct_daemons_as_duplicate(monkeypatch) -> None:
+    def fake_run(command: list[str]) -> str:
+        if command[:3] == ["docker", "context", "ls"]:
+            return "default\tfalse\ncolima\ttrue\n"
+        if command[3] == "info":
+            return json.dumps({"ID": f"daemon-{command[2]}"})
+        return json.dumps({"Names": f"db-{command[2]}", "Image": "postgres:16"}) + "\n"
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(RuntimePolicy(None, None))
+
+    assert inventory.postgres_instances == 2
+    assert inventory.unique_docker_daemons == 2
+    assert "postgres_duplicate" in validate_inventory(RuntimePolicy(None, None), inventory)
+
+
+def test_live_inventory_deduplicates_context_aliases_for_redis(monkeypatch) -> None:
+    def fake_run(command: list[str]) -> str:
+        if command[:3] == ["docker", "context", "ls"]:
+            return "default\tfalse\ncolima\ttrue\n"
+        if command[3] == "info":
+            return json.dumps({"ID": "same-daemon"})
+        return json.dumps({"Names": "cache", "Image": "redis:7"}) + "\n"
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(RuntimePolicy(None, None))
+
+    assert inventory.redis_instances == 1
+    assert "redis_duplicate" not in validate_inventory(RuntimePolicy(None, None), inventory)
+
+
+def test_live_inventory_counts_redis_on_distinct_daemons_as_duplicate(monkeypatch) -> None:
+    def fake_run(command: list[str]) -> str:
+        if command[:3] == ["docker", "context", "ls"]:
+            return "default\tfalse\ncolima\ttrue\n"
+        if command[3] == "info":
+            return json.dumps({"ID": f"daemon-{command[2]}"})
+        return json.dumps({"Names": f"cache-{command[2]}", "Image": "redis:7"}) + "\n"
+
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
+    monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._process_count", lambda _pattern: 0)
+    inventory = _live_inventory(RuntimePolicy(None, None))
+
+    assert inventory.redis_instances == 2
+    assert inventory.unique_docker_daemons == 2
     assert "redis_duplicate" in validate_inventory(RuntimePolicy(None, None), inventory)
 
 
@@ -265,6 +344,8 @@ def test_live_inventory_allowlist_and_unavailable_context_are_sanitized(monkeypa
             return "colima\ttrue\n"
         if command[2] == "missing":
             raise RuntimeError
+        if command[3] == "info":
+            return json.dumps({"ID": "daemon-colima"})
         return json.dumps({"Names": "db", "Image": "postgres:16"}) + "\n"
 
     monkeypatch.setattr("scripts.ops.audit_external_runtime_paths._run_read_only", fake_run)
@@ -274,10 +355,11 @@ def test_live_inventory_allowlist_and_unavailable_context_are_sanitized(monkeypa
     )
 
     assert inventory.postgres_instances == 1
-    assert REASON_DOCKER_CONTEXT_UNAVAILABLE in inventory.reason_codes
+    assert REASON_DOCKER_DAEMON_IDENTITY_UNAVAILABLE in inventory.reason_codes
     assert seen[1:] == [
+        ["docker", "--context", "colima", "info", "--format", "{{json .}}"],
+        ["docker", "--context", "missing", "info", "--format", "{{json .}}"],
         ["docker", "--context", "colima", "ps", "--format", "{{json .}}"],
-        ["docker", "--context", "missing", "ps", "--format", "{{json .}}"],
     ]
     assert all("endpoint" not in " ".join(call).lower() for call in seen)
 
@@ -305,7 +387,38 @@ def test_cli_unavailable_context_is_sanitized_without_traceback(tmp_path: Path) 
     payload = json.loads(completed.stdout)
 
     assert completed.returncode == 1
-    assert REASON_DOCKER_CONTEXT_UNAVAILABLE in payload["reason_codes"]
+    assert REASON_DOCKER_DAEMON_IDENTITY_UNAVAILABLE in payload["reason_codes"]
     assert "Traceback" not in completed.stdout + completed.stderr
     assert str(tmp_path) not in completed.stdout + completed.stderr
     assert "endpoint" not in completed.stdout.lower()
+
+
+def test_cli_live_output_hides_daemon_container_ids_and_endpoints(tmp_path: Path) -> None:
+    docker_bin = tmp_path / "bin"
+    docker_bin.mkdir()
+    fake_docker = docker_bin / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, sys\n"
+        "if sys.argv[1:4] == ['context', 'ls', '--format']:\n"
+        "    print('default\\tfalse')\n"
+        "    print('colima\\ttrue')\n"
+        "elif sys.argv[3] == 'info':\n"
+        "    print(json.dumps({'ID': 'daemon-secret', 'DockerRootDir': '/private/socket'}))\n"
+        "else:\n"
+        "    print(json.dumps({'ID': 'container-secret', 'Names': 'db', 'Image': 'postgres:16'}))\n"
+        "    print(json.dumps({'ID': 'container-secret-redis', 'Names': 'cache', 'Image': 'redis:7'}))\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+    environment = _runtime_env(tmp_path)
+    environment["PATH"] = f"{docker_bin}:{environment['PATH']}"
+    completed = _run_cli(tmp_path, "--live-runtime", "--json", env=environment)
+
+    assert completed.returncode == 0
+    output = completed.stdout + completed.stderr
+    assert "daemon-secret" not in output
+    assert "container-secret" not in output
+    assert "/private/socket" not in output
+    assert "endpoint" not in output.lower()
+    assert str(tmp_path) not in output

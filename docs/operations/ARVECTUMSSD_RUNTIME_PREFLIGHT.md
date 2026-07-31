@@ -45,10 +45,14 @@ The inventory adapter accepts only `docker_contexts`,
 `docker --context <name> ps` for every discovered context (or every context in
 `ARVECTUM_DOCKER_CONTEXTS`). This does not change the active context and does
 not start, stop, or restart containers. PostgreSQL and Redis counts are
-aggregated across contexts. Classification uses only the Compose service
-label, image repository, or narrowly tokenized container name; command text
-and arbitrary label values are ignored. Unavailable contexts produce the
-sanitized `docker_context_unavailable` reason code.
+aggregated across unique daemons: each context is first checked with read-only
+`docker --context <name> info`, and contexts with the same in-process daemon
+identity share one `ps` query. The daemon identity is never emitted or stored
+in the report. Classification uses only the Compose service label, image
+repository, or narrowly tokenized container name; command text and arbitrary
+label values are ignored. An unavailable daemon identity produces the
+sanitized `docker_daemon_identity_unavailable` reason code; a later container
+query failure produces `docker_context_unavailable`.
 
 The JSON is sanitized: physical paths, Docker endpoints, credentials, model
 paths, volume identifiers, and client identifiers are not emitted. Exit code

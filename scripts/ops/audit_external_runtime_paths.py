@@ -30,6 +30,7 @@ REASON_REQUIRED_SUBROOT_MISSING = "required_subroot_missing"
 REASON_REQUIRED_SUBROOT_SYMLINK = "required_subroot_symlink"
 REASON_DOCKER_CONTEXT_UNKNOWN = "docker_context_unknown"
 REASON_DOCKER_CONTEXT_UNAVAILABLE = "docker_context_unavailable"
+REASON_DOCKER_DAEMON_IDENTITY_UNAVAILABLE = "docker_daemon_identity_unavailable"
 REASON_POSTGRES_MISSING = "postgres_missing"
 REASON_POSTGRES_DUPLICATE = "postgres_duplicate"
 REASON_REDIS_MISSING = "redis_missing"
@@ -73,6 +74,7 @@ class RuntimeInventory:
     ollama_available: bool | None = None
     lmstudio_available: bool | None = None
     reason_codes: set[str] = field(default_factory=set)
+    unique_docker_daemons: int | None = None
 
 
 def _device(path: Path, stat_fn: Callable[[str], os.stat_result]) -> int:
@@ -176,6 +178,10 @@ def sanitize_result(
         "required_subroots": list(policy.required_subroots),
         "docker_context": policy.docker_context or "<unspecified>",
         "inventory": {
+            "docker_contexts": (
+                len(inventory.docker_contexts) if inventory_source != "not-checked" else None
+            ),
+            "unique_docker_daemons": inventory.unique_docker_daemons,
             "active_docker_context": inventory.active_docker_context or "<unspecified>",
             "postgres_instances": inventory.postgres_instances,
             "redis_instances": inventory.redis_instances,
@@ -336,6 +342,22 @@ def _parse_container_rows(output: str) -> tuple[int, int]:
     return postgres, redis
 
 
+def _daemon_identity(context: str) -> str:
+    """Return an in-memory daemon identity without exposing Docker metadata."""
+
+    raw = _run_read_only(
+        ["docker", "--context", context, "info", "--format", "{{json .}}"]
+    )
+    try:
+        payload = json.loads(raw)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise RuntimeError from exc
+    identity = payload.get("ID") if isinstance(payload, dict) else None
+    if not isinstance(identity, str) or not identity.strip():
+        raise RuntimeError
+    return identity
+
+
 def _live_inventory(policy: RuntimePolicy | None = None) -> RuntimeInventory:
     contexts_output = _run_read_only(
         ["docker", "context", "ls", "--format", "{{.Name}}\t{{.Current}}"]
@@ -361,12 +383,24 @@ def _live_inventory(policy: RuntimePolicy | None = None) -> RuntimeInventory:
     )
     if not selected_contexts:
         inventory.reason_codes.add(REASON_LIVE_DOCKER_UNAVAILABLE)
+        inventory.unique_docker_daemons = 0
         return inventory
 
+    daemon_contexts: dict[str, list[str]] = {}
     for context in selected_contexts:
         try:
+            identity = _daemon_identity(context)
+        except RuntimeError:
+            inventory.reason_codes.add(REASON_DOCKER_DAEMON_IDENTITY_UNAVAILABLE)
+            continue
+        daemon_contexts.setdefault(identity, []).append(context)
+
+    inventory.unique_docker_daemons = len(daemon_contexts)
+    for contexts_for_daemon in daemon_contexts.values():
+        representative = min(contexts_for_daemon)
+        try:
             output = _run_read_only(
-                ["docker", "--context", context, "ps", "--format", "{{json .}}"]
+                ["docker", "--context", representative, "ps", "--format", "{{json .}}"]
             )
         except RuntimeError:
             inventory.reason_codes.add(REASON_DOCKER_CONTEXT_UNAVAILABLE)
