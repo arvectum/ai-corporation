@@ -213,6 +213,7 @@ class TestCustomerPilotRedisIntegration:
         assert resp1.status_code == 201
 
         monkeypatch.setenv("AI_CORP_REDIS_ENABLED", "false")
+        monkeypatch.setenv("ARVECTUM_REDIS_ENABLED", "false")
         reset_redis_runtime()
 
         resp2 = client.post(url, json=payload, headers={"Idempotency-Key": idem_key})
@@ -228,6 +229,8 @@ class TestCustomerPilotRedisIntegration:
         payload = {"registry_number": "TEST-004"}
 
         monkeypatch.setenv("AI_CORP_REDIS_ENABLED", "true")
+        monkeypatch.setenv("ARVECTUM_REDIS_ENABLED", "true")
+        monkeypatch.setenv("ARVECTUM_REDIS_URL", "redis://127.0.0.1:19999/0")
         monkeypatch.setenv("AI_CORP_REDIS_URL", "redis://127.0.0.1:19999/0")
         reset_redis_runtime()
 

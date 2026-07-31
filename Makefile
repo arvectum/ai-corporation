@@ -39,7 +39,23 @@ test-redis-unit:
 	python -m pytest -q tests/unit/redis/
 
 test-redis-integration:
-	mkdir -p output; echo "pyver:$$(python --version 2>&1)"; echo "url:$$AI_CORP_REDIS_URL"; echo "ns:$$AI_CORP_REDIS_NAMESPACE"; echo "files:$$(ls tests/integration/test_redis_*_integration.py 2>&1)"; overall=0; for f in tests/integration/test_redis_*_integration.py; do echo "=== $$f ==="; python -m pytest -v "$$f" --run-integration -p no:cacheprovider > output/$$(basename $$f).log 2>&1; status=$$?; echo "exit($$f)=$$status"; cat output/$$(basename $$f).log; if [ "$$status" -ne 0 ]; then overall=$$status; fi; done; exit $$overall
+	@test -n "$${AI_CORP_REDIS_TEST_URL:-$${AI_CORP_REDIS_URL:-redis://127.0.0.1:6379/1}}" || (echo "test Redis URL is required"; exit 2); \
+		test_url="$${AI_CORP_REDIS_TEST_URL:-$${AI_CORP_REDIS_URL:-redis://127.0.0.1:6379/1}}"; \
+		canonical_url="$${ARVECTUM_REDIS_URL:-}"; \
+		if [ -n "$$canonical_url" ] && [ "$$test_url" = "$$canonical_url" ]; then echo "test Redis endpoint must differ from canonical runtime endpoint"; exit 2; fi; \
+		test_namespace="$${AI_CORP_REDIS_TEST_NAMESPACE:-test-arv007-integration}"; \
+		case "$$test_namespace" in test-*) ;; *) echo "test Redis namespace must start with test-"; exit 2;; esac; \
+		mkdir -p output; echo "redis_test_url_configured=yes"; echo "redis_test_namespace_configured=yes"; \
+		overall=0; for f in tests/integration/test_redis_*_integration.py; do \
+			log="output/$$(basename $$f).log"; \
+			ARVECTUM_REDIS_ENABLED=true AI_CORP_REDIS_ENABLED=true \
+			AI_CORP_REDIS_CANONICAL_URL="$$canonical_url" \
+			ARVECTUM_REDIS_URL="$$test_url" AI_CORP_REDIS_URL="$$test_url" \
+			ARVECTUM_REDIS_NAMESPACE="$$test_namespace" AI_CORP_REDIS_NAMESPACE="$$test_namespace" \
+				python -m pytest -v "$$f" --run-integration -p no:cacheprovider > "$$log" 2>&1; \
+			status=$$?; echo "redis_test_file=$$(basename $$f) status=$$status"; \
+			if [ "$$status" -ne 0 ]; then overall=$$status; fi; \
+		done; exit $$overall
 
 redis-start:
 	docker compose -f docker-compose.redis-test.yml up -d

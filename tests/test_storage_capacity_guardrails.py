@@ -931,29 +931,54 @@ def test_public_snapshot_unknown_no_absolute_path_leak(mock_settings):
     assert "/some/secret" not in pub.reason
 
 
-def test_root_env_canonical_loaded(monkeypatch):
+def test_root_env_canonical_loaded(monkeypatch, tmp_path):
     """ARVECTUM_STORAGE_ROOT canonical env is loaded by Settings."""
+    canonical = str(tmp_path / "canonical")
     get_settings.cache_clear()
-    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", "/canonical/storage")
-    s = get_settings()
-    assert s.arvectum_storage_root == "/canonical/storage"
-    get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", canonical)
+    try:
+        s = Settings(_env_file=None)
+        assert s.arvectum_storage_root == canonical
+    finally:
+        get_settings.cache_clear()
 
 
-def test_root_env_compatibility_fallback(monkeypatch):
+def test_root_env_compatibility_fallback(monkeypatch, tmp_path):
     """AI_CORP_ARVECTUM_STORAGE_ROOT compatibility env works as fallback."""
+    compatibility = str(tmp_path / "compatibility")
     get_settings.cache_clear()
-    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_ROOT", "/compat/storage")
-    s = get_settings()
-    assert s.arvectum_storage_root == "/compat/storage"
-    get_settings.cache_clear()
+    monkeypatch.delenv("ARVECTUM_STORAGE_ROOT", raising=False)
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_ROOT", compatibility)
+    try:
+        s = Settings(_env_file=None)
+        assert s.arvectum_storage_root == compatibility
+    finally:
+        get_settings.cache_clear()
 
 
-def test_root_env_canonical_takes_priority(monkeypatch):
+def test_root_env_canonical_takes_priority(monkeypatch, tmp_path):
     """Canonical ARVECTUM_STORAGE_ROOT has priority over compatibility."""
+    canonical = str(tmp_path / "canonical")
+    compatibility = str(tmp_path / "compatibility")
     get_settings.cache_clear()
-    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", "/canonical/storage")
-    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_ROOT", "/compat/storage")
-    s = get_settings()
-    assert s.arvectum_storage_root == "/canonical/storage"
+    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", canonical)
+    monkeypatch.setenv("AI_CORP_ARVECTUM_STORAGE_ROOT", compatibility)
+    try:
+        s = Settings(_env_file=None)
+        assert s.arvectum_storage_root == canonical
+    finally:
+        get_settings.cache_clear()
+
+
+def test_settings_cache_reloads_after_environment_change(monkeypatch, tmp_path):
+    first = str(tmp_path / "first")
+    second = str(tmp_path / "second")
     get_settings.cache_clear()
+    monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", first)
+    try:
+        assert get_settings().arvectum_storage_root == first
+        monkeypatch.setenv("ARVECTUM_STORAGE_ROOT", second)
+        get_settings.cache_clear()
+        assert get_settings().arvectum_storage_root == second
+    finally:
+        get_settings.cache_clear()

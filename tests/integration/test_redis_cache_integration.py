@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -63,10 +64,8 @@ class TestCacheIntegration:
 
     def test_corrupt_value_handled_as_miss(self, test_namespace, cleanup_keys):
         reset_redis_runtime()
-        import os
-
         import redis as redis_py
-        r = redis_py.Redis.from_url(os.environ.get("AI_CORP_REDIS_URL", "redis://127.0.0.1:6379/1"))
+        r = redis_py.Redis.from_url(os.environ["ARVECTUM_REDIS_URL"])
         key = f"{test_namespace}:cache:corrupt"
         r.set(key, "not-json")
         assert get(key) is None
@@ -74,6 +73,7 @@ class TestCacheIntegration:
     def test_cache_outage_fail_open(self, monkeypatch):
         reset_redis_runtime()
         close_client()
+        monkeypatch.setenv("ARVECTUM_REDIS_URL", "redis://127.0.0.1:19999/0")
         monkeypatch.setenv("AI_CORP_REDIS_URL", "redis://127.0.0.1:19999/0")
         reset_redis_runtime()
         val = get("some_key")

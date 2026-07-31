@@ -16,6 +16,7 @@ pytestmark = pytest.mark.integration
 class TestClientIntegration:
     def test_lazy_connection_when_disabled(self, monkeypatch):
         reset_redis_runtime()
+        monkeypatch.setenv("ARVECTUM_REDIS_ENABLED", "false")
         monkeypatch.setenv("AI_CORP_REDIS_ENABLED", "false")
         reset_redis_runtime()
         client = get_client()
@@ -30,6 +31,7 @@ class TestClientIntegration:
 
     def test_ping_disabled(self, monkeypatch):
         reset_redis_runtime()
+        monkeypatch.setenv("ARVECTUM_REDIS_ENABLED", "false")
         monkeypatch.setenv("AI_CORP_REDIS_ENABLED", "false")
         reset_redis_runtime()
         result = ping()
@@ -58,9 +60,9 @@ class TestClientIntegration:
 
     def test_require_client_raises_when_disabled(self, monkeypatch):
         reset_redis_runtime()
+        monkeypatch.setenv("ARVECTUM_REDIS_ENABLED", "false")
         monkeypatch.setenv("AI_CORP_REDIS_ENABLED", "false")
         reset_redis_runtime()
         with pytest.raises(RedisDisabledError):
             require_client()
-
 
