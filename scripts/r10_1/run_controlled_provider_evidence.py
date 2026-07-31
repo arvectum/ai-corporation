@@ -14,6 +14,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import select
 
@@ -90,6 +91,50 @@ def _controlled_failure_message(exc: R10_1CanonicalProductionError) -> str:
     return f"controlled_provider_evidence_rejected:{_sanitized_producer_failure(exc)}"
 
 
+def _document_file_descriptor(document: Any) -> dict[str, Any]:
+    """Project a resolved document into the canonical output-builder contract.
+
+    The controlled runner previously emitted only ``{"name": ...}``, while the
+    shared finalization step requires ``display_name``, ``extension`` and
+    ``size_bytes``.  Keep the projection metadata-only: no document text or raw
+    bytes are copied into runner metadata or the sanitized manifest.
+    """
+
+    display_name = str(getattr(document, "display_name", "") or "Документ")
+    extension = str(getattr(document, "extension", "") or "").strip().lower()
+    if not extension:
+        extension = Path(display_name).suffix.lower()
+    raw_content = getattr(document, "raw_content", None)
+    size_bytes = (
+        len(raw_content)
+        if isinstance(raw_content, (bytes, bytearray, memoryview))
+        else 0
+    )
+    role = str(getattr(document, "role", "") or "supporting")
+    source = str(getattr(document, "source", "") or "customer_run")
+    extracted = bool(getattr(document, "extracted_text_available", False))
+    warnings = [str(item) for item in (getattr(document, "warnings", None) or [])]
+
+    return {
+        "name": display_name,
+        "display_name": display_name,
+        "original_name": display_name,
+        "stored_name": display_name,
+        "extension": extension,
+        "size_bytes": size_bytes,
+        "content_type": "application/octet-stream",
+        "file_id": str(getattr(document, "file_id", "") or ""),
+        "role": role,
+        "role_hint": role,
+        "document_kind": role,
+        "source": source,
+        "source_type": source,
+        "extracted_text_available": extracted,
+        "text_extraction_status": "extracted" if extracted else "empty",
+        "warnings": warnings,
+    }
+
+
 def _metadata(
     *,
     run: TenderAnalysisRun,
@@ -100,9 +145,9 @@ def _metadata(
     limitations: list[str],
 ) -> dict:
     return {
-        "customer_id": run.customer_id,
-        "project_id": run.project_id,
-        "run_id": run.id,
+        "customer_id": str(run.customer_id),
+        "project_id": str(run.project_id),
+        "run_id": str(run.id),
         "procurement_id": run.registry_number,
         "tender_title": tender.title if tender else f"Закупка {run.registry_number}",
         "tender_category": (
@@ -128,10 +173,10 @@ def _metadata(
         "status": "analyzing",
         "warnings": list(warnings),
         "limitations": list(limitations),
-        "files": [{"name": document.display_name} for document in documents],
+        "files": [_document_file_descriptor(document) for document in documents],
         "procurement": {
             "registry_number": run.registry_number,
-            "case_id": case.id,
+            "case_id": str(case.id),
             "customer_name": tender.customer_name if tender else None,
             "customer_inn": tender.customer_inn if tender else None,
             "customer_kpp": tender.customer_kpp if tender else None,
@@ -237,7 +282,7 @@ def main() -> int:
             project_id=str(run.project_id),
             procurement_case_id=str(run.procurement_case_id),
             registry_number=run.registry_number,
-            run_id=run.id,
+            run_id=str(run.id),
             metadata=metadata,
             documents=inputs.documents,
             evidence_chunks=[
