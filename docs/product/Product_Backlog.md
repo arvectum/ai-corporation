@@ -13,6 +13,7 @@
 
 ## Open Follow-Ups
 
+- [ ] [ARV-001 / #87](https://github.com/arutyunoveth/ai-corporation/issues/87) — merge the deterministic golden-report gate, then complete the Mac mini acceptance on one approved real R10.1 report; freeze policy v1 only after two independent reviews, exact artifact hashes and a `PASS` manifest; synthetic fixtures cannot close the task
 - [ ] [ARV-072 / #41](https://github.com/arutyunoveth/ai-corporation/issues/41) — execute the controlled competitive benchmark on identical real procurements; keep public-surface research separate from live output scoring
 - [ ] [ARV-073 / #71](https://github.com/arutyunoveth/ai-corporation/issues/71) — install and customize ODS on the Mac mini as the local AI infrastructure layer; keep Hermes as the required bounded agent runtime; connect `ai-corporation` through LiteLLM/`ods/current`; inventory, migrate and safely remove duplicated standalone services only after backup, replacement validation and rollback preparation; prepare the downstream on-premise design
 - [ ] [ARV-074 / #73](https://github.com/arutyunoveth/ai-corporation/issues/73) — run the isolated Obsidian Mind memory pilot outside production runtime and record an `ADOPT / ADOPT WITH LIMITS / REJECT` decision

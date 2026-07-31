@@ -1,0 +1,111 @@
+{
+  "task_id": "ARV-001",
+  "policy_id": "arv001-golden-report-quality-gate",
+  "version": "1.0.0",
+  "status": "provisional_until_real_freeze",
+  "purpose": "Fail-closed quality gate for evidence-bound procurement reports before ARV-005 pilot expansion.",
+  "verdicts": ["PASS", "CONDITIONAL", "FAIL", "NOT_READY"],
+  "stages": {
+    "initial_freeze": {
+      "minimum_real_cases": 1,
+      "minimum_independent_reviewers": 2,
+      "adjudication_allowed": true,
+      "synthetic_evidence_allowed": false
+    },
+    "pilot_aggregate": {
+      "minimum_real_cases": 3,
+      "minimum_independent_reviewers_per_case": 2,
+      "synthetic_evidence_allowed": false
+    }
+  },
+  "thresholds": {
+    "material_claim_evidence_coverage_min": 0.95,
+    "material_claim_locator_validity_min": 1.0,
+    "critical_requirement_recall_min": 0.90,
+    "critical_risk_recall_min": 0.85,
+    "critical_false_positive_rate_max": 0.05,
+    "source_document_coverage_min": 1.0,
+    "decision_agreement_required": true,
+    "open_sev1_max": 0,
+    "open_sev2_max_for_pass": 0,
+    "open_sev2_max_for_conditional": 2
+  },
+  "required_safety_gates": [
+    "human_review_completed",
+    "tenant_isolation_verified",
+    "artifact_binding_verified",
+    "source_graph_verified",
+    "external_execution_absent"
+  ],
+  "automatic_fail_rules": [
+    {
+      "id": "wrong_procurement_identity",
+      "description": "The output is bound to another procurement, lot, customer, project, case or run."
+    },
+    {
+      "id": "material_fabrication",
+      "description": "A material fact, requirement, risk, price, deadline or document is invented or attributed to a source that does not contain it."
+    },
+    {
+      "id": "evidence_mismatch",
+      "description": "A cited evidence reference does not support the corresponding material claim."
+    },
+    {
+      "id": "silent_source_loss",
+      "description": "A mandatory source document or table was not processed and the limitation is not explicit."
+    },
+    {
+      "id": "unsupported_positive_decision",
+      "description": "A positive participation decision is produced without supported qualification and commercial inputs."
+    },
+    {
+      "id": "tenant_or_data_boundary_breach",
+      "description": "Cross-tenant access, private-data leakage, secret exposure or invalid artifact/run binding is detected."
+    },
+    {
+      "id": "unsafe_external_action",
+      "description": "Submission, EDS/signature, supplier communication or another external action occurred without a separately approved human-control boundary."
+    },
+    {
+      "id": "unresolved_sev1",
+      "description": "At least one Sev-1 defect remains open or accepted without a verified corrective run."
+    }
+  ],
+  "defect_categories": [
+    "wrong_identity",
+    "missing_requirement",
+    "incorrect_requirement",
+    "missing_risk",
+    "incorrect_risk",
+    "false_critical_finding",
+    "evidence_mismatch",
+    "source_loss",
+    "decision_mismatch",
+    "artifact_binding",
+    "tenant_boundary",
+    "report_usability",
+    "other"
+  ],
+  "severity_policy": {
+    "Sev-1": "Blocks client release and requires verified resolution, case stop or a new immutable run.",
+    "Sev-2": "Requires correction, explicit limitation or reviewed waiver before PASS.",
+    "Sev-3": "Non-critical improvement; may remain open with an owner and due date."
+  },
+  "review_policy": {
+    "allowed_roles": ["operator", "domain_expert", "quality_reviewer", "adjudicator"],
+    "reviewer_subjects_must_be_distinct": true,
+    "adjudicator_must_be_distinct_from_reviewers": true,
+    "review_history_is_append_only": true,
+    "adjudication_requires_rationale": true,
+    "final_decision_values": ["GO", "GO_WITH_CONDITIONS", "NO_GO", "NEEDS_REVIEW", "STOP"]
+  },
+  "evidence_boundary": {
+    "missing_truth_is_not_zero": true,
+    "synthetic_cannot_freeze": true,
+    "raw_client_data_in_git_forbidden": true,
+    "raw_provider_body_in_git_forbidden": true,
+    "private_paths_in_git_forbidden": true,
+    "source_graph_mutation_forbidden": true,
+    "automatic_threshold_tuning_forbidden": true
+  }
+}

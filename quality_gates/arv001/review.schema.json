@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arvectum.com/schemas/arv001/review.schema.json",
+  "title": "ARV-001 golden report case review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "stage",
+    "evidence_class",
+    "case_ref",
+    "producer_mode",
+    "artifacts",
+    "source_documents",
+    "claims",
+    "critical_requirements",
+    "critical_risks",
+    "safety",
+    "decision",
+    "reviewers",
+    "defects"
+  ],
+  "properties": {
+    "schema_version": {"const": "arv001-review-v1"},
+    "task_id": {"const": "ARV-001"},
+    "stage": {"enum": ["initial_freeze", "pilot_aggregate"]},
+    "evidence_class": {"enum": ["real", "synthetic"]},
+    "case_ref": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
+    "producer_mode": {"enum": ["frozen_r9", "production_llm_r10_1"]},
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_bundle_sha256", "canonical_output_sha256", "report_sha256"],
+      "properties": {
+        "source_bundle_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_output_sha256": {"$ref": "#/$defs/sha256"},
+        "report_sha256": {"$ref": "#/$defs/sha256"},
+        "source_graph_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "source_documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mandatory_total", "processed_total", "silent_losses"],
+      "properties": {
+        "mandatory_total": {"type": "integer", "minimum": 1},
+        "processed_total": {"type": "integer", "minimum": 0},
+        "silent_losses": {"type": "integer", "minimum": 0}
+      }
+    },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["material_total", "evidence_supported", "valid_locators", "evidence_mismatches"],
+      "properties": {
+        "material_total": {"type": "integer", "minimum": 1},
+        "evidence_supported": {"type": "integer", "minimum": 0},
+        "valid_locators": {"type": "integer", "minimum": 0},
+        "evidence_mismatches": {"type": "integer", "minimum": 0}
+      }
+    },
+    "critical_requirements": {"$ref": "#/$defs/truthMetric"},
+    "critical_risks": {"$ref": "#/$defs/truthMetric"},
+    "critical_findings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system_total", "false_positive_total"],
+      "properties": {
+        "system_total": {"type": "integer", "minimum": 0},
+        "false_positive_total": {"type": "integer", "minimum": 0}
+      },
+      "default": {"system_total": 0, "false_positive_total": 0}
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "human_review_completed",
+        "tenant_isolation_verified",
+        "artifact_binding_verified",
+        "source_graph_verified",
+        "external_execution_absent"
+      ],
+      "properties": {
+        "human_review_completed": {"type": "boolean"},
+        "tenant_isolation_verified": {"type": "boolean"},
+        "artifact_binding_verified": {"type": "boolean"},
+        "source_graph_verified": {"type": "boolean"},
+        "external_execution_absent": {"type": "boolean"}
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "reviewed", "agreement", "positive_inputs_supported"],
+      "properties": {
+        "system": {"$ref": "#/$defs/decision"},
+        "reviewed": {"$ref": "#/$defs/decision"},
+        "agreement": {"type": "boolean"},
+        "positive_inputs_supported": {"type": "boolean"}
+      }
+    },
+    "reviewers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject", "role", "independent", "completed"],
+        "properties": {
+          "subject": {"type": "string", "pattern": "^[A-Za-z0-9._-]{2,64}$"},
+          "role": {"enum": ["operator", "domain_expert", "quality_reviewer", "adjudicator"]},
+          "independent": {"type": "boolean"},
+          "completed": {"type": "boolean"}
+        }
+      }
+    },
+    "adjudication": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["subject", "decision", "rationale"],
+      "properties": {
+        "subject": {"type": "string", "pattern": "^[A-Za-z0-9._-]{2,64}$"},
+        "decision": {"$ref": "#/$defs/decision"},
+        "rationale": {"type": "string", "minLength": 10, "maxLength": 2000}
+      }
+    },
+    "defects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "category", "status", "automatic_fail_rule", "evidence_ref", "rationale"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[A-Za-z0-9._-]{3,80}$"},
+          "severity": {"enum": ["Sev-1", "Sev-2", "Sev-3"]},
+          "category": {
+            "enum": [
+              "wrong_identity",
+              "missing_requirement",
+              "incorrect_requirement",
+              "missing_risk",
+              "incorrect_risk",
+              "false_critical_finding",
+              "evidence_mismatch",
+              "source_loss",
+              "decision_mismatch",
+              "artifact_binding",
+              "tenant_boundary",
+              "report_usability",
+              "other"
+            ]
+          },
+          "status": {"enum": ["open", "resolved", "accepted_risk"]},
+          "automatic_fail_rule": {
+            "type": ["string", "null"],
+            "enum": [
+              null,
+              "wrong_procurement_identity",
+              "material_fabrication",
+              "evidence_mismatch",
+              "silent_source_loss",
+              "unsupported_positive_decision",
+              "tenant_or_data_boundary_breach",
+              "unsafe_external_action",
+              "unresolved_sev1"
+            ]
+          },
+          "evidence_ref": {"type": "string", "minLength": 3, "maxLength": 256},
+          "rationale": {"type": "string", "minLength": 5, "maxLength": 2000}
+        }
+      }
+    },
+    "notes": {"type": "string", "maxLength": 4000}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "decision": {"enum": ["GO", "GO_WITH_CONDITIONS", "NO_GO", "NEEDS_REVIEW", "STOP"]},
+    "truthMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["truth_total", "supported_found", "missing_truth_reason"],
+      "properties": {
+        "truth_total": {"type": ["integer", "null"], "minimum": 0},
+        "supported_found": {"type": ["integer", "null"], "minimum": 0},
+        "missing_truth_reason": {"type": ["string", "null"], "maxLength": 1000}
+      }
+    }
+  }
+}

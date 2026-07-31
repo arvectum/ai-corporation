@@ -1,0 +1,69 @@
+{
+  "schema_version": "arv001-review-v1",
+  "task_id": "ARV-001",
+  "stage": "initial_freeze",
+  "evidence_class": "synthetic",
+  "case_ref": "synthetic-case-001",
+  "producer_mode": "production_llm_r10_1",
+  "artifacts": {
+    "source_bundle_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "canonical_output_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "report_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "source_graph_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "source_documents": {
+    "mandatory_total": 4,
+    "processed_total": 4,
+    "silent_losses": 0
+  },
+  "claims": {
+    "material_total": 20,
+    "evidence_supported": 20,
+    "valid_locators": 20,
+    "evidence_mismatches": 0
+  },
+  "critical_requirements": {
+    "truth_total": 10,
+    "supported_found": 10,
+    "missing_truth_reason": null
+  },
+  "critical_risks": {
+    "truth_total": 6,
+    "supported_found": 6,
+    "missing_truth_reason": null
+  },
+  "critical_findings": {
+    "system_total": 8,
+    "false_positive_total": 0
+  },
+  "safety": {
+    "human_review_completed": true,
+    "tenant_isolation_verified": true,
+    "artifact_binding_verified": true,
+    "source_graph_verified": true,
+    "external_execution_absent": true
+  },
+  "decision": {
+    "system": "GO_WITH_CONDITIONS",
+    "reviewed": "GO_WITH_CONDITIONS",
+    "agreement": true,
+    "positive_inputs_supported": true
+  },
+  "reviewers": [
+    {
+      "subject": "operator-a",
+      "role": "operator",
+      "independent": true,
+      "completed": true
+    },
+    {
+      "subject": "reviewer-b",
+      "role": "quality_reviewer",
+      "independent": true,
+      "completed": true
+    }
+  ],
+  "adjudication": null,
+  "defects": [],
+  "notes": "Synthetic fixture only. It must never freeze ARV-001."
+}

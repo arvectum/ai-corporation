@@ -1,10 +1,10 @@
 REDIS_HOST_COMPOSE = docker --context "$${ARVECTUM_DOCKER_CONTEXT:-colima}" compose -f docker-compose.redis.yml -f docker-compose.redis-host.yml
 
-.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean redis-host-config redis-host-start redis-host-ping redis-host-stop
+.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv001 test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean redis-host-config redis-host-start redis-host-ping redis-host-stop
 
 check:
-	python -m compileall -q src scripts
-	python -m ruff check src/main.py src/shared/api/router_registry.py src/modules/customer_pilot/router.py src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/preflight.py src/shared/redis/ scripts/ops/arv076_runtime_backup.py scripts/ops/audit_external_runtime_paths.py tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/ tests/ops/test_arv076_runtime_backup.py tests/ops/test_audit_external_runtime_paths.py tests/test_runtime_preflight_no_fallback.py tests/test_r0_security_boundary.py
+	python -m compileall -q src scripts quality_gates
+	python -m ruff check src/main.py src/shared/api/router_registry.py src/modules/customer_pilot/router.py src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/preflight.py src/shared/redis/ scripts/ops/arv076_runtime_backup.py scripts/ops/audit_external_runtime_paths.py quality_gates/arv001/evaluate.py tests/quality/test_arv001_quality_gate.py tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/ tests/ops/test_arv076_runtime_backup.py tests/ops/test_audit_external_runtime_paths.py tests/test_runtime_preflight_no_fallback.py tests/test_r0_security_boundary.py
 
 test:
 	python -m pytest -q
@@ -26,6 +26,10 @@ test-r8-acceptance-tampering:
 
 test-r8-acceptance:
 	python scripts/acceptance/run_r8_acceptance.py --phase full
+
+test-arv001:
+	python quality_gates/arv001/evaluate.py validate-package
+	python -m pytest -q tests/quality/test_arv001_quality_gate.py
 
 test-arv076:
 	python -m pytest -q tests/ops/test_arv076_runtime_backup.py
