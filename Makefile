@@ -1,8 +1,8 @@
-.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean
+.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean
 
 check:
 	python -m compileall -q src scripts
-	python -m ruff check src/main.py src/shared/api/router_registry.py src/modules/customer_pilot/router.py src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/preflight.py src/shared/redis/ scripts/ops/arv076_runtime_backup.py tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/ tests/ops/test_arv076_runtime_backup.py tests/test_r0_security_boundary.py
+	python -m ruff check src/main.py src/shared/api/router_registry.py src/modules/customer_pilot/router.py src/shared/api/middleware.py src/shared/config/settings.py src/shared/runtime/preflight.py src/shared/redis/ scripts/ops/arv076_runtime_backup.py scripts/ops/audit_external_runtime_paths.py tests/integration/conftest.py tests/integration/test_redis_*.py tests/unit/redis/ tests/ops/test_arv076_runtime_backup.py tests/ops/test_audit_external_runtime_paths.py tests/test_runtime_preflight_no_fallback.py tests/test_r0_security_boundary.py
 
 test:
 	python -m pytest -q
@@ -27,6 +27,9 @@ test-r8-acceptance:
 
 test-arv076:
 	python -m pytest -q tests/ops/test_arv076_runtime_backup.py
+
+audit-external-runtime-paths:
+	python scripts/ops/audit_external_runtime_paths.py --filesystem-only --json
 
 ci: check test
 
