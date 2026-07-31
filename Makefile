@@ -1,4 +1,6 @@
-.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean
+REDIS_HOST_COMPOSE = docker --context "$${ARVECTUM_DOCKER_CONTEXT:-colima}" compose -f docker-compose.redis.yml -f docker-compose.redis-host.yml
+
+.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean redis-host-config redis-host-start redis-host-ping redis-host-stop
 
 check:
 	python -m compileall -q src scripts
@@ -50,6 +52,30 @@ redis-stop:
 
 redis-clean:
 	docker compose -f docker-compose.redis-test.yml down -v
+
+redis-host-config:
+	@test -f .env.local || (echo ".env.local is required"; exit 2)
+	@set -a; . ./.env.local; set +a; \
+		test -n "$$ARVECTUM_REDIS_PASSWORD" || (echo "ARVECTUM_REDIS_PASSWORD is required"; exit 2); \
+		$(REDIS_HOST_COMPOSE) config --quiet
+
+redis-host-start:
+	@test -f .env.local || (echo ".env.local is required"; exit 2)
+	@set -a; . ./.env.local; set +a; \
+		test -n "$$ARVECTUM_REDIS_PASSWORD" || (echo "ARVECTUM_REDIS_PASSWORD is required"; exit 2); \
+		$(REDIS_HOST_COMPOSE) up -d redis
+
+redis-host-ping:
+	@test -f .env.local || (echo ".env.local is required"; exit 2)
+	@set -a; . ./.env.local; set +a; \
+		test -n "$$ARVECTUM_REDIS_PASSWORD" || (echo "ARVECTUM_REDIS_PASSWORD is required"; exit 2); \
+		$(REDIS_HOST_COMPOSE) exec -T redis redis-cli ping
+
+redis-host-stop:
+	@test -f .env.local || (echo ".env.local is required"; exit 2)
+	@set -a; . ./.env.local; set +a; \
+		test -n "$$ARVECTUM_REDIS_PASSWORD" || (echo "ARVECTUM_REDIS_PASSWORD is required"; exit 2); \
+		$(REDIS_HOST_COMPOSE) stop redis
 
 # Local-only developer targets: require the maintainer's local trust material
 # under /Users/master and are intentionally not used by CI or deployment.

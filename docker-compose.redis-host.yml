@@ -1,0 +1,6 @@
+# Host-access overlay for the canonical Redis runtime.
+# Always combine this file with docker-compose.redis.yml.
+services:
+  redis:
+    ports:
+      - "127.0.0.1:${ARVECTUM_REDIS_HOST_PORT:-16380}:6379"
