@@ -8,6 +8,7 @@ or silently falls back to the frozen producer.
 from __future__ import annotations
 
 import json
+import re
 import time
 from dataclasses import dataclass
 from enum import StrEnum
@@ -459,7 +460,17 @@ def _map_supported_claims(
                 _strings(claim.value, field_path=claim.field_path)
             )
         elif claim.field_path == "contract_risks":
-            risks.extend(_risk_rows(claim.value))
+            # Preserve a human-readable, non-quote locator through the
+            # canonical boundary.  The report must never present a risk which
+            # cannot be traced back to the procurement-bound evidence packet.
+            locators = [
+                normalized
+                for reference in claim.evidence_references
+                if (normalized := _risk_evidence_locator(reference.document_name, reference.locator))
+            ]
+            for row in _risk_rows(claim.value):
+                row["evidence_locators"] = locators
+                risks.append(row)
         elif claim.field_path == "supplier_questions":
             questions.extend(_question_rows(claim.value))
         else:
@@ -468,6 +479,49 @@ def _map_supported_claims(
     for key, values in requirements.items():
         requirements[key] = _dedupe_strings(values)
     return requirements, risks, questions
+
+
+def _risk_evidence_locator(document: Any, locator: Any) -> dict[str, str] | None:
+    """Project a packet locator into a safe, customer-readable reference."""
+    if (
+        not isinstance(document, str)
+        or not document.strip()
+        or "/" in document
+        or "\\" in document
+        or _is_technical_identifier(document)
+    ):
+        return None
+    if not isinstance(locator, dict):
+        return None
+    labels = {
+        "path": "путь", "xpath": "путь", "section": "раздел", "page": "страница",
+        "paragraph": "абзац", "line": "строка", "row": "строка", "chunk_index": "фрагмент",
+    }
+    parts: list[str] = []
+    for key, label in labels.items():
+        value = locator.get(key)
+        value_text = str(value).strip() if isinstance(value, (str, int)) else ""
+        if (
+            value_text
+            and not _is_technical_identifier(value_text)
+            and not _contains_private_path(value_text)
+        ):
+            parts.append(f"{label}: {value}")
+    if not parts:
+        return None
+    return {"document": document.strip(), "locator": "; ".join(parts)}
+
+
+def _is_technical_identifier(value: str) -> bool:
+    normalized = value.strip()
+    return bool(
+        re.fullmatch(r"[0-9a-f]{64}", normalized, flags=re.IGNORECASE)
+        or re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", normalized, flags=re.IGNORECASE)
+    )
+
+
+def _contains_private_path(value: str) -> bool:
+    return value.startswith(("/", "file:")) or "/Volumes/" in value or "/Users/" in value
 
 
 def _runtime_provenance(result: ProductionLLMAnalysisResult) -> dict[str, Any]:
@@ -1030,7 +1084,11 @@ def produce_r10_1_canonical_analysis(
             "procurement_id": registry_number,
             "tender_title": owned.get("tender_title") or f"Закупка {registry_number}",
             "tender_category": owned.get("tender_category") or "Закупка",
-            "customer_name": owned.get("customer_name") or customer_id,
+            # customer_id is a tenant identity, never a customer-facing
+            # procurement attribute.  A document-derived value is applied
+            # below when available; otherwise the report model renders an
+            # explicit "not extracted" state.
+            "customer_name": owned.get("customer_name"),
             "status": "completed",
             "warnings": list(owned.get("warnings") or []),
             "limitations": [*list(owned.get("limitations") or []), *result.limitations],
@@ -1048,6 +1106,22 @@ def produce_r10_1_canonical_analysis(
                 "case_id": procurement_case_id,
             },
         }
+    )
+    from src.modules.tender_operator_agent_demo.upload_service import (
+        _enrich_procurement_metadata_from_documents,
+    )
+
+    notice_text = "\n".join(
+        document.text or "" for document in documents if document.role == "notice"
+    )
+    combined_text = "\n".join(document.text or "" for document in documents)
+    owned = _enrich_procurement_metadata_from_documents(
+        owned,
+        documents=documents,
+        combined_text=combined_text,
+        notice_text=notice_text,
+        technical_spec_text="\n".join(document.text or "" for document in documents if document.role == "technical_spec"),
+        contract_draft_text="\n".join(document.text or "" for document in documents if document.role == "contract_draft"),
     )
     outputs = _build_output_payloads(
         metadata=owned,
