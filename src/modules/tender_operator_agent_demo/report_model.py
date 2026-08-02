@@ -1,16 +1,20 @@
 """Canonical procurement report facade with a separate customer projection.
 
-The implementation module preserves the historical canonical contract.  This
+The implementation module preserves the historical canonical contract. This
 facade repairs the canonical evidence shape and exposes a sanitized projection
-for the R10.1 customer renderer without mutating the canonical model.
+for the R10.1 customer renderer without mutating provider output.
 """
 
 from __future__ import annotations
 
 import re
+from pathlib import Path
 from typing import Any
 
 from src.modules.tender_operator_agent_demo import report_model_legacy as _legacy
+from src.modules.tender_operator_agent_demo.document_set_completeness import (
+    build_document_set_summary,
+)
 
 for _name, _value in vars(_legacy).items():
     if _name not in {"__name__", "__package__", "__loader__", "__spec__"}:
@@ -19,7 +23,21 @@ for _name, _value in vars(_legacy).items():
 UNKNOWN = _legacy.UNKNOWN
 CUSTOMER_NOT_EXTRACTED = _legacy.CUSTOMER_NOT_EXTRACTED
 _HASH_NAME = _legacy._HASH_NAME
+_UUID = re.compile(
+    r"^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 _ORIGINAL_BUILD_PROCUREMENT_REPORT_MODEL = _legacy.build_procurement_report_model
+_STALE_MISSING_DOCUMENT_MARKERS = (
+    "проект контракта не найден",
+    "проект контракта отсутств",
+    "отсутствует проект контракта",
+    "получить проект контракта",
+    "запросить отсутствующие документы",
+    "отдельное тз",
+    "техническое задание или описание объекта закупки не найден",
+    "техническое задание отсутств",
+)
 
 
 def _format_source_location(value: Any) -> str:
@@ -117,6 +135,101 @@ def _canonical_evidence_map(model: dict[str, Any]) -> list[dict[str, Any]]:
     return evidence
 
 
+def _document_summary(metadata: dict[str, Any]) -> dict[str, Any]:
+    current = metadata.get("document_set_summary")
+    if isinstance(current, dict) and current.get("logical_documents") is not None:
+        return dict(current)
+    files = [item for item in metadata.get("files", []) if isinstance(item, dict)]
+    return build_document_set_summary(files)
+
+
+def _is_stale_missing_document_text(value: Any) -> bool:
+    lowered = str(value or "").lower()
+    return any(marker in lowered for marker in _STALE_MISSING_DOCUMENT_MARKERS)
+
+
+def _safe_customer_text(value: Any) -> str | None:
+    text = str(value or "").strip()
+    if not text or _HASH_NAME.fullmatch(text) or _UUID.fullmatch(text):
+        return None
+    if text.startswith(("/", "file:")) or "/Users/" in text or "/Volumes/" in text:
+        return None
+    return text
+
+
+def _clean_complete_document_model(
+    model: dict[str, Any], document_summary: dict[str, Any]
+) -> None:
+    """Remove notice-only conclusions when the canonical set is complete."""
+
+    if document_summary.get("status") != "complete":
+        return
+    decision = model.get("customer_decision")
+    if isinstance(decision, dict):
+        reasons = [
+            item
+            for item in decision.get("reasons", [])
+            if not _is_stale_missing_document_text(item)
+        ]
+        complete_reason = (
+            "Техническая документация и проект контракта включены в комплект анализа."
+        )
+        if complete_reason not in reasons:
+            reasons.append(complete_reason)
+        decision["reasons"] = reasons
+        next_actions = [
+            item
+            for item in model.get("action_plan", [])
+            if item and not _is_stale_missing_document_text(item)
+        ]
+        decision["next_action"] = (
+            next_actions[0]
+            if next_actions
+            else "Проверить коммерческие предложения и собственную себестоимость до решения об участии."
+        )
+    for key in ("corpus_limitations", "limitations"):
+        if isinstance(model.get(key), list):
+            model[key] = [
+                item
+                for item in model[key]
+                if not _is_stale_missing_document_text(item)
+            ]
+    if isinstance(model.get("missing_data"), list):
+        model["missing_data"] = [
+            item
+            for item in model["missing_data"]
+            if not _is_stale_missing_document_text(
+                item.get("description") if isinstance(item, dict) else item
+            )
+        ]
+    if isinstance(model.get("customer_questions"), list):
+        model["customer_questions"] = [
+            item
+            for item in model["customer_questions"]
+            if not _is_stale_missing_document_text(
+                item.get("question") if isinstance(item, dict) else item
+            )
+        ]
+    bid = model.get("bid_decision")
+    if isinstance(bid, dict):
+        for key in ("blockers", "conditions", "rationale"):
+            if isinstance(bid.get(key), list):
+                bid[key] = [
+                    item
+                    for item in bid[key]
+                    if not _is_stale_missing_document_text(item)
+                ]
+    coverage = model.get("document_coverage")
+    if isinstance(coverage, dict):
+        coverage["missing"] = []
+        if coverage.get("impact") == "Договорный анализ ограничен":
+            coverage["impact"] = ""
+    contract = model.get("contract_conditions")
+    if isinstance(contract, dict):
+        contract["status"] = "present"
+        contract["reason"] = "Проект контракта включён в комплект анализа."
+
+
 def build_procurement_report_model(
     metadata: dict[str, Any],
     outputs: dict[str, dict[str, Any]],
@@ -145,13 +258,29 @@ def build_procurement_report_model(
         model.get("application_deadline")
     )
     model["evidence_map"] = _canonical_evidence_map(model)
+    document_summary = _document_summary(metadata)
+    model_metadata = dict(model.get("metadata") or {})
+    model_metadata.update(
+        {
+            "document_set_summary": document_summary,
+            "document_count": document_summary.get("physical_file_count", 0),
+            "logical_document_count": document_summary.get(
+                "logical_document_count", 0
+            ),
+            "document_set_status": document_summary.get("status", "unknown"),
+        }
+    )
+    model["metadata"] = model_metadata
+    _clean_complete_document_model(model, document_summary)
     return model
 
 
 def _customer_document_label(value: Any) -> tuple[str, str]:
-    text = str(value or "").strip()
-    if not text or _HASH_NAME.fullmatch(text):
-        return "Извещение о закупке", "извещение"
+    text = _safe_customer_text(value)
+    if not text:
+        return "Документы закупки", "подтверждающий документ"
+    if Path(text).name != text:
+        return "Документы закупки", "подтверждающий документ"
     lowered = text.lower()
     role = "notice" if "notice" in lowered or "извещ" in lowered else ""
     return _legacy._customer_document_label(
@@ -170,6 +299,7 @@ def _customer_evidence_location(value: Any) -> str:
 
 def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
     """Return a sanitized customer model without mutating canonical data."""
+
     metadata = (
         model.get("metadata")
         if isinstance(model.get("metadata"), dict)
@@ -195,19 +325,28 @@ def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
         if isinstance(item, dict)
     ]
 
+    raw_line_items = [
+        row for row in model.get("line_items", []) if isinstance(row, dict)
+    ]
+    okpd2_codes = [
+        item
+        for item in model.get("okpd2_codes", [])
+        if isinstance(item, dict) and _safe_customer_text(item.get("code"))
+    ]
+    single_item_okpd2 = (
+        str(okpd2_codes[0]["code"])
+        if len(raw_line_items) == 1 and len(okpd2_codes) == 1
+        else None
+    )
     line_items: list[dict[str, Any]] = []
-    for row in model.get("line_items", []):
-        if not isinstance(row, dict):
-            continue
-        location = _format_source_location(row.get("source_row"))
-        if location.startswith("позиция "):
-            source_display = (
-                "Извещение о закупке — раздел «Объект закупки», " + location
-            )
-        elif location.startswith("раздел "):
-            source_display = "Извещение о закупке — " + location
-        else:
-            source_display = "Извещение о закупке — " + location
+    for row in raw_line_items:
+        location = _customer_evidence_location(row.get("source_row"))
+        source_display = "Извещение о закупке — " + location
+        characteristics = [
+            text
+            for value in row.get("characteristics", [])
+            if (text := _safe_customer_text(value))
+        ]
         line_items.append(
             {
                 "sequence": row.get("sequence"),
@@ -216,7 +355,8 @@ def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
                 or UNKNOWN,
                 "quantity_display": row.get("quantity_display") or UNKNOWN,
                 "unit_original": row.get("unit_original") or UNKNOWN,
-                "okpd2": row.get("okpd2"),
+                "okpd2": row.get("okpd2") or single_item_okpd2,
+                "characteristics": characteristics,
                 "source_display": source_display,
             }
         )
@@ -259,15 +399,19 @@ def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
         "deadline_status": model.get("deadline_status"),
         "nmck": model.get("nmck"),
         "delivery_place": model.get("delivery_place"),
+        "document_set_status": document_summary.get("status") or "unknown",
+        "missing_required_document_kinds": list(
+            document_summary.get("missing_required_document_kinds") or []
+        ),
         "documents_count": int(
-            document_summary.get("logical_document_count")
-            or len(documents)
+            document_summary.get("logical_document_count") or len(documents)
         ),
         "physical_files_count": int(
             document_summary.get("physical_file_count")
             or metadata.get("document_count")
             or len(documents)
         ),
+        "document_set_complete": document_summary.get("status") == "complete",
         "customer_documents": documents,
         "customer_decision": dict(model.get("customer_decision") or {}),
         "line_items": line_items,
