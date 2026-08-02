@@ -175,12 +175,23 @@ def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
         if isinstance(model.get("metadata"), dict)
         else {}
     )
+    document_summary = (
+        metadata.get("document_set_summary")
+        if isinstance(metadata.get("document_set_summary"), dict)
+        else {}
+    )
+    logical_documents = document_summary.get("logical_documents")
+    source_documents = (
+        logical_documents
+        if isinstance(logical_documents, list) and logical_documents
+        else model.get("customer_documents", [])
+    )
     documents = [
         {
             "name": str(item.get("name") or "Документ закупки"),
             "type": str(item.get("type") or "документ"),
         }
-        for item in model.get("customer_documents", [])
+        for item in source_documents
         if isinstance(item, dict)
     ]
 
@@ -249,7 +260,9 @@ def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
         "nmck": model.get("nmck"),
         "delivery_place": model.get("delivery_place"),
         "documents_count": int(
-            metadata.get("document_count") or len(documents)
+            document_summary.get("physical_file_count")
+            or metadata.get("document_count")
+            or len(documents)
         ),
         "customer_documents": documents,
         "customer_decision": dict(model.get("customer_decision") or {}),

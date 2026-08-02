@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import urlparse
 
 
 def extract_notice_metadata(xml_text: str) -> dict[str, Any]:
@@ -133,10 +135,34 @@ def _extract_okpd2_codes(root: ET.Element) -> list[dict[str, str]]:
     return result
 
 
+def _safe_notice_attachment_url(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text.startswith("//"):
+        return None
+    if text.startswith("/"):
+        return text
+    parsed = urlparse(text)
+    hostname = (parsed.hostname or "").lower()
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if hostname != "zakupki.gov.ru" and not hostname.endswith(".zakupki.gov.ru"):
+        return None
+    return text
+
+
+def _node_attribute(node: ET.Element, names: tuple[str, ...]) -> str | None:
+    allowed = {name.lower() for name in names}
+    for key, value in node.attrib.items():
+        if _local_name(key).lower() in allowed and str(value).strip():
+            return str(value).strip()
+    return None
+
+
 def extract_notice_attachments(xml_text: str) -> list[dict[str, str | None]]:
     if not xml_text or not xml_text.strip():
         return []
-
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -144,28 +170,34 @@ def extract_notice_attachments(xml_text: str) -> list[dict[str, str | None]]:
 
     attachments: list[dict[str, str | None]] = []
     seen: set[tuple[str, str]] = set()
-    for attachment_node in root.iter():
-        if not attachment_node.tag.endswith("attachmentInfo"):
+    candidate_tags = {
+        "attachment", "attachmentinfo", "document", "documentinfo", "file", "fileinfo"
+    }
+    name_fields = ("fileName", "docName", "name", "documentName", "title")
+    url_fields = ("url", "downloadUrl", "fileUrl", "href", "link")
+
+    for node in root.iter():
+        local = _local_name(node.tag).lower()
+        if "attachment" not in local and local not in candidate_tags:
             continue
-        name = _extract_child_text(
-            attachment_node,
-            ("fileName", "docName", "name", "documentName"),
-        )
-        url = _extract_child_text(
-            attachment_node,
-            ("url", "downloadUrl", "fileUrl", "href"),
-        )
-        if not name and not url:
+        name = _extract_child_text(node, name_fields) or _node_attribute(node, name_fields)
+        url = _extract_child_text(node, url_fields) or _node_attribute(node, url_fields)
+        if not url and node.text and node.text.strip().startswith(("http://", "https://", "/")):
+            url = node.text.strip()
+        safe_url = _safe_notice_attachment_url(url)
+        if not safe_url:
             continue
-        key = ((name or "").strip().lower(), (url or "").strip())
+        if not name:
+            name = PurePosixPath(urlparse(safe_url).path).name or "document"
+        key = (name.strip().lower(), safe_url)
         if key in seen:
             continue
         seen.add(key)
         attachments.append(
             {
-                "name": (name or "").strip() or None,
-                "url": (url or "").strip() or None,
-                "document_kind": _classify_notice_attachment_kind(name or ""),
+                "name": name.strip(),
+                "url": safe_url,
+                "document_kind": _classify_notice_attachment_kind(name),
             }
         )
     return attachments

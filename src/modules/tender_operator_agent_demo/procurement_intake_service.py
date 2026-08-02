@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import io
 import json
 import re
 import time
@@ -13,17 +14,32 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 from fastapi import HTTPException
 
-from src.modules.tender_operator_agent_demo.attachment_downloader import download_procurement_attachments
-from src.modules.tender_operator_agent_demo.eis_notice_parser import extract_notice_attachments
-from src.modules.tender_operator_agent_demo.public_44fz_search import normalize_public_eis_law
+from src.modules.tender_operator_agent_demo import schemas as tender_schemas
+from src.modules.tender_operator_agent_demo.attachment_downloader import (
+    download_procurement_attachments,
+)
+from src.modules.tender_operator_agent_demo.document_set_completeness import (
+    apply_document_set_summary,
+)
+from src.modules.tender_operator_agent_demo.eis_notice_parser import (
+    extract_notice_attachments,
+)
 from src.modules.tender_operator_agent_demo.procurement_discovery import (
     get_demo_procurement,
     get_procurement_details,
     search_procurements,
 )
-from src.modules.tender_operator_agent_demo.procurement_sources import get_procurement_source_descriptors
-from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult, ProcurementAttachment, ProcurementDetails
-from src.modules.tender_operator_agent_demo import schemas as tender_schemas
+from src.modules.tender_operator_agent_demo.procurement_schemas import (
+    DocsArchiveResult,
+    ProcurementAttachment,
+    ProcurementDetails,
+)
+from src.modules.tender_operator_agent_demo.procurement_sources import (
+    get_procurement_source_descriptors,
+)
+from src.modules.tender_operator_agent_demo.public_44fz_search import (
+    normalize_public_eis_law,
+)
 from src.modules.tender_operator_agent_demo.schemas import (
     EisDocsArchiveRunRequest,
     ProcurementAttachmentManifestItem,
@@ -33,6 +49,7 @@ from src.modules.tender_operator_agent_demo.schemas import (
     ProcurementSearchResult,
     TenderOperatorUploadedRunStatus,
 )
+from src.modules.tender_operator_agent_demo.settings import get_zakupki_soap_settings
 from src.modules.tender_operator_agent_demo.upload_service import (
     ALLOWED_EXTENSIONS,
     MAX_ZIP_ENTRY_COUNT,
@@ -49,13 +66,11 @@ from src.modules.tender_operator_agent_demo.upload_service import (
     sanitize_demo_filename,
     save_demo_run_metadata,
 )
-from src.modules.tender_operator_agent_demo.settings import get_zakupki_soap_settings
 from src.modules.tender_operator_agent_demo.zakupki_soap_client import ZakupkiSoapClient
 from src.tender_research.providers.public_44fz_search import (
     _parse_detail_metadata,
     _parse_document_links,
 )
-
 
 ARCHIVE_DOWNLOAD_RETRY_ATTEMPTS = 5
 ARCHIVE_DOWNLOAD_RETRY_DELAY_SECONDS = 10
@@ -266,6 +281,7 @@ def _create_public_html_run_from_search_result(
     _write_procurement_artifacts(run_id, selected=selected, manifest=[])
     _apply_search_result_context(run_id, request)
     saved_count = _supplement_run_with_public_notice_attachments(run_id, request.source_url)
+    _apply_document_set_completeness(run_id)
 
     current_metadata = load_demo_run_metadata(run_id)
     current_status = current_metadata.get("status", TenderOperatorUploadedRunStatus.DOCS_REQUIRED.value)
@@ -563,6 +579,8 @@ def _discover_notice_xml_attachments(run_id: str, metadata: dict[str, Any]) -> l
         for idx, payload in enumerate(extract_notice_attachments(xml_text), start=1):
             name = str(payload.get("name") or "").strip() or f"notice-attachment-{idx}"
             url = str(payload.get("url") or "").strip() or None
+            if url and url.startswith("/"):
+                url = urljoin("https://zakupki.gov.ru", url)
             key = (name.lower(), url or "")
             if key in seen:
                 continue
@@ -756,6 +774,54 @@ def _supplement_run_with_notice_xml_attachments(run_id: str) -> int:
     )
 
 
+def _apply_document_set_completeness(run_id: str) -> dict[str, Any]:
+    metadata = load_demo_run_metadata(run_id)
+    summary = apply_document_set_summary(metadata)
+    limitation = (
+        "Комплект документов неполон: до анализа необходимо получить проект "
+        "контракта и техническое задание или описание объекта закупки."
+    )
+    limitations = list(metadata.get("limitations") or [])
+    if summary["analysis_allowed"]:
+        if metadata.get("files"):
+            metadata["status"] = TenderOperatorUploadedRunStatus.READY_TO_ANALYZE.value
+            metadata["attachments_status"] = "downloaded"
+            metadata["manual_upload_required"] = False
+        limitations = [item for item in limitations if item != limitation]
+    elif summary["physical_file_count"] == 0:
+        metadata["status"] = TenderOperatorUploadedRunStatus.DOCS_REQUIRED.value
+        metadata["attachments_status"] = "manual_upload_required"
+        metadata["manual_upload_required"] = True
+        metadata["analysis_status"] = "not_started"
+    else:
+        metadata["status"] = TenderOperatorUploadedRunStatus.DOCS_REQUIRED.value
+        metadata["attachments_status"] = "incomplete_document_set"
+        metadata["manual_upload_required"] = True
+        metadata["analysis_status"] = "not_started"
+        if limitation not in limitations:
+            limitations.append(limitation)
+    metadata["limitations"] = limitations
+    save_demo_run_metadata(run_id, metadata)
+    append_demo_run_event(
+        run_id,
+        "document_set_checked",
+        (
+            "Комплект документов достаточен для запуска анализа."
+            if summary["analysis_allowed"]
+            else "Комплект документов неполон; автоматический анализ заблокирован."
+        ),
+        {
+            "document_set_status": summary["status"],
+            "physical_file_count": summary["physical_file_count"],
+            "logical_document_count": summary["logical_document_count"],
+            "missing_required_document_kinds": summary[
+                "missing_required_document_kinds"
+            ],
+        },
+    )
+    return summary
+
+
 def _apply_search_result_context(
     run_id: str,
     request: tender_schemas.SearchResultHandoffRequest,
@@ -876,103 +942,154 @@ def _extract_safe_archive_into_run(run_id: str, archive_path: Path) -> tuple[lis
     files: list[dict[str, Any]] = []
     manifest: list[ProcurementAttachmentManifestItem] = []
     extracted_count = 0
+    total_entries = 0
+    total_unpacked = 0
+    max_nested_depth = 2
+    max_compression_ratio = 200
+    extraction_complete = True
     extracted_dir = get_demo_run_input_dir(run_id) / "extracted"
     extracted_dir.mkdir(parents=True, exist_ok=True)
-    try:
-        with zipfile.ZipFile(archive_path) as archive:
-            members = [item for item in archive.infolist() if not item.is_dir()]
-            if len(members) > MAX_ZIP_ENTRY_COUNT:
-                manifest.append(
-                    ProcurementAttachmentManifestItem(
-                        name=archive_path.name,
-                        stored_name=archive_path.name,
-                        extension=".zip",
-                        status="skipped",
-                        note=f"ZIP archive contains too many entries. Limit: {MAX_ZIP_ENTRY_COUNT}.",
-                    )
-                )
-                return files, manifest, extracted_count
-            total_unpacked = sum(item.file_size for item in members)
-            if total_unpacked > MAX_ZIP_TOTAL_BYTES:
-                manifest.append(
-                    ProcurementAttachmentManifestItem(
-                        name=archive_path.name,
-                        stored_name=archive_path.name,
-                        extension=".zip",
-                        status="skipped",
-                        note="ZIP archive exceeds the safe unpacked size limit.",
-                    )
-                )
-                return files, manifest, extracted_count
 
-            for item in members:
-                entry_path = Path(item.filename)
-                if entry_path.is_absolute() or ".." in entry_path.parts:
-                    manifest.append(
-                        ProcurementAttachmentManifestItem(
-                            name=item.filename,
-                            stored_name=None,
-                            extension=entry_path.suffix.lower(),
-                            status="skipped",
-                            note="ZIP entry was rejected because it contains an unsafe path.",
-                        )
-                    )
-                    continue
-                entry_name = entry_path.name
-                ext = entry_path.suffix.lower()
-                if ext not in ALLOWED_EXTENSIONS or ext == ".zip":
-                    manifest.append(
-                        ProcurementAttachmentManifestItem(
-                            name=entry_name,
-                            stored_name=None,
-                            extension=ext,
-                            status="skipped",
-                            note="Формат вложения не входит в allowlist.",
-                        )
-                    )
-                    continue
-                raw = archive.read(item)
-                original_name, stored_name = sanitize_demo_filename(entry_name, extracted_count + 1)
-                relative_stored_name = str(Path("extracted") / stored_name)
-                (extracted_dir / stored_name).write_bytes(raw)
-                extracted_count += 1
-                files.append(
-                    build_demo_file_descriptor(
-                        file_id=f"FILE-{extracted_count:02d}",
-                        original_name=original_name,
-                        stored_name=relative_stored_name,
-                        role_hint=_role_hint_from_procurement_attachment(original_name),
-                        size_bytes=len(raw),
-                        content_type="application/octet-stream",
-                        source="eis_getdocs_archive",
-                        source_type="getdocs_archive",
-                        document_kind=_document_kind_from_role_hint(_role_hint_from_procurement_attachment(original_name)),
-                        parent_archive=archive_path.name,
-                    )
-                )
-                manifest.append(
-                    ProcurementAttachmentManifestItem(
-                        name=original_name,
-                        stored_name=relative_stored_name,
-                        extension=ext,
-                        status="saved",
-                        note="Файл извлечён из getDocsIP архива в безопасном локальном режиме.",
-                        source_type="getdocs_archive",
-                        document_kind=_document_kind_from_role_hint(_role_hint_from_procurement_attachment(original_name)),
-                        content_type="application/octet-stream",
-                        size_bytes=len(raw),
-                    )
-                )
-    except zipfile.BadZipFile:
+    def skipped(name: str, extension: str, note: str) -> None:
         manifest.append(
             ProcurementAttachmentManifestItem(
-                name=archive_path.name,
-                stored_name=archive_path.name,
-                extension=".zip",
+                name=name,
+                stored_name=None,
+                extension=extension,
                 status="skipped",
-                note="ZIP archive could not be read safely.",
+                note=note,
             )
         )
+
+    def walk(current: zipfile.ZipFile, *, archive_label: str, depth: int) -> bool:
+        nonlocal extraction_complete, extracted_count, total_entries, total_unpacked
+        members = [item for item in current.infolist() if not item.is_dir()]
+        total_entries += len(members)
+        if total_entries > MAX_ZIP_ENTRY_COUNT:
+            extraction_complete = False
+            skipped(
+                archive_label,
+                ".zip",
+                f"ZIP archives contain too many entries. Limit: {MAX_ZIP_ENTRY_COUNT}.",
+            )
+            return False
+
+        for item in members:
+            entry_path = Path(item.filename)
+            if entry_path.is_absolute() or ".." in entry_path.parts:
+                skipped(
+                    item.filename,
+                    entry_path.suffix.lower(),
+                    "ZIP entry was rejected because it contains an unsafe path.",
+                )
+                continue
+
+            entry_name = entry_path.name
+            ext = entry_path.suffix.lower()
+            if item.flag_bits & 0x1:
+                extraction_complete = False
+                skipped(entry_name, ext, "Encrypted ZIP entries are not supported.")
+                continue
+            projected_total = total_unpacked + max(int(item.file_size), 0)
+            if projected_total > MAX_ZIP_TOTAL_BYTES:
+                extraction_complete = False
+                skipped(
+                    archive_label,
+                    ".zip",
+                    "ZIP archives exceed the safe cumulative unpacked size limit.",
+                )
+                return False
+            if (
+                item.compress_size > 0
+                and item.file_size / item.compress_size > max_compression_ratio
+            ):
+                extraction_complete = False
+                skipped(
+                    entry_name,
+                    ext,
+                    "ZIP entry exceeds the safe compression-ratio limit.",
+                )
+                continue
+            raw = current.read(item)
+            total_unpacked += len(raw)
+
+            if ext == ".zip":
+                if depth >= max_nested_depth:
+                    extraction_complete = False
+                    skipped(
+                        entry_name,
+                        ext,
+                        f"Nested ZIP depth exceeds the safe limit: {max_nested_depth}.",
+                    )
+                    continue
+                try:
+                    with zipfile.ZipFile(io.BytesIO(raw)) as nested:
+                        if not walk(
+                            nested,
+                            archive_label=f"{archive_label}/{entry_name}",
+                            depth=depth + 1,
+                        ):
+                            return False
+                except zipfile.BadZipFile:
+                    extraction_complete = False
+                    skipped(entry_name, ext, "Nested ZIP archive could not be read safely.")
+                continue
+
+            if ext not in ALLOWED_EXTENSIONS:
+                skipped(entry_name, ext, "Формат вложения не входит в allowlist.")
+                continue
+
+            original_name, stored_name = sanitize_demo_filename(
+                entry_name,
+                extracted_count + 1,
+            )
+            relative_stored_name = str(Path("extracted") / stored_name)
+            (extracted_dir / stored_name).write_bytes(raw)
+            extracted_count += 1
+            role_hint = _role_hint_from_procurement_attachment(original_name)
+            document_kind = _document_kind_from_role_hint(role_hint)
+            files.append(
+                build_demo_file_descriptor(
+                    file_id=f"FILE-{extracted_count:02d}",
+                    original_name=original_name,
+                    stored_name=relative_stored_name,
+                    role_hint=role_hint,
+                    size_bytes=len(raw),
+                    content_type="application/octet-stream",
+                    source="eis_getdocs_archive",
+                    source_type="getdocs_archive",
+                    document_kind=document_kind,
+                    parent_archive=archive_label,
+                )
+            )
+            manifest.append(
+                ProcurementAttachmentManifestItem(
+                    name=original_name,
+                    stored_name=relative_stored_name,
+                    extension=ext,
+                    status="saved",
+                    note="Файл извлечён из getDocsIP архива в безопасном локальном режиме.",
+                    source_type="getdocs_archive",
+                    document_kind=document_kind,
+                    content_type="application/octet-stream",
+                    size_bytes=len(raw),
+                )
+            )
+        return True
+
+    try:
+        with zipfile.ZipFile(archive_path) as archive:
+            walk(archive, archive_label=archive_path.name, depth=0)
+    except zipfile.BadZipFile:
+        extraction_complete = False
+        skipped(archive_path.name, ".zip", "ZIP archive could not be read safely.")
+    if not extraction_complete:
+        for file_item in files:
+            stored_name = file_item.get("stored_name")
+            if stored_name:
+                (get_demo_run_input_dir(run_id) / stored_name).unlink(missing_ok=True)
+        files = []
+        extracted_count = 0
     return files, manifest, extracted_count
 
 
@@ -1016,6 +1133,15 @@ def analyze_eis_archive_run(run_id: str):
     metadata = load_demo_run_metadata(run_id)
     if metadata.get("procurement_source") != "zakupki_gov_ru_getdocs_ip":
         raise HTTPException(status_code=400, detail="Run is not an EIS getDocsIP intake run")
+    summary = _apply_document_set_completeness(run_id)
+    if not summary["analysis_allowed"]:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Комплект документов неполон. До анализа получите проект "
+                "контракта и техническое задание или описание объекта закупки."
+            ),
+        )
     return analyze_uploaded_demo_run(run_id)
 
 
@@ -1327,6 +1453,7 @@ def create_run_from_eis_docs_archive(request: EisDocsArchiveRunRequest) -> Procu
     archive_download_status = "not_requested"
     archive_download_attempts = 0
     documents_extracted_count = 0
+    archive_extraction_complete: bool | None = None
 
     archive_urls = archive_result.archive_urls or ([archive_result.archive_url] if archive_result.archive_url else [])
     if archive_urls:
@@ -1416,6 +1543,10 @@ def create_run_from_eis_docs_archive(request: EisDocsArchiveRunRequest) -> Procu
             )
             files.extend(extracted_files)
             manifest.extend(extracted_manifest)
+            archive_extraction_complete = not any(
+                item.status == "skipped" and item.extension == ".zip"
+                for item in extracted_manifest
+            )
             append_demo_run_event(
                 run_id,
                 "eis_archive_extracted",
@@ -1506,6 +1637,7 @@ def create_run_from_eis_docs_archive(request: EisDocsArchiveRunRequest) -> Procu
         "archive_download_status": archive_download_status,
         "archive_download_attempts": archive_download_attempts,
         "documents_extracted_count": documents_extracted_count,
+        "archive_extraction_complete": archive_extraction_complete,
         "getdocs_status": archive_result.status,
         "getdocs_request_id": archive_result.request_id,
         "getdocs_ref_id": archive_result.ref_id,
@@ -1523,6 +1655,7 @@ def create_run_from_eis_docs_archive(request: EisDocsArchiveRunRequest) -> Procu
     )
     _write_procurement_artifacts(run_id, selected=selected, manifest=manifest)
     _supplement_run_with_notice_xml_attachments(run_id)
+    _apply_document_set_completeness(run_id)
     append_demo_run_event(
         run_id,
         "run_created_from_eis_archive",
@@ -1551,7 +1684,7 @@ def create_run_from_eis_docs_archive(request: EisDocsArchiveRunRequest) -> Procu
         downloaded_files_count=int(current_metadata.get("downloaded_files_count", len(current_metadata.get("files", [])))),
         manual_upload_required=bool(current_metadata.get("manual_upload_required", final_status == TenderOperatorUploadedRunStatus.DOCS_REQUIRED)),
         warnings=list(current_metadata.get("warnings", archive_result.warnings)),
-        limitations=metadata["limitations"],
+        limitations=list(current_metadata.get("limitations", metadata["limitations"])),
         attachments_status=str(current_metadata.get("attachments_status", metadata["attachments_status"])),
         procurement=selected,
         attachments=manifest,
@@ -1591,6 +1724,7 @@ def create_run_from_search_result(
     result = create_run_from_eis_docs_archive(eis_request)
     _apply_search_result_context(result.run_id, request)
     _supplement_run_with_public_notice_attachments(result.run_id, request.source_url)
+    _apply_document_set_completeness(result.run_id)
 
     status = result.status.value if hasattr(result.status, "value") else str(result.status)
     analysis_status = result.analysis_status

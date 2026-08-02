@@ -10,9 +10,16 @@ def _set_runs_root(monkeypatch, tmp_path: Path) -> Path:
 
 
 def test_getdocs_archive_endpoint_creates_run_with_archive_metadata(client, monkeypatch, tmp_path):
-    from src.modules.tender_operator_agent_demo import procurement_intake_service as service
-    from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult, DownloadedAttachment
-    from src.modules.tender_operator_agent_demo.settings import clear_zakupki_soap_settings_cache
+    from src.modules.tender_operator_agent_demo import (
+        procurement_intake_service as service,
+    )
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        DocsArchiveResult,
+        DownloadedAttachment,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        clear_zakupki_soap_settings_cache,
+    )
 
     runs_root = _set_runs_root(monkeypatch, tmp_path)
     monkeypatch.setenv("ZAKUPKI_GOV_RU_SOAP_ENABLED", "1")
@@ -88,8 +95,9 @@ def test_getdocs_archive_endpoint_creates_run_with_archive_metadata(client, monk
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "ready_to_analyze"
-    assert payload["attachments_status"] == "downloaded"
+    assert payload["status"] == "docs_required"
+    assert payload["attachments_status"] == "incomplete_document_set"
+    assert payload["manual_upload_required"] is True
     assert payload["archive_url_present"] is True
     assert payload["archive_downloaded"] is True
     assert payload["documents_extracted_count"] == 1
@@ -126,9 +134,15 @@ def test_getdocs_archive_endpoint_creates_run_with_archive_metadata(client, monk
 
 
 def test_getdocs_archive_endpoint_falls_back_to_manual_upload(client, monkeypatch, tmp_path):
-    from src.modules.tender_operator_agent_demo import procurement_intake_service as service
-    from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult
-    from src.modules.tender_operator_agent_demo.settings import clear_zakupki_soap_settings_cache
+    from src.modules.tender_operator_agent_demo import (
+        procurement_intake_service as service,
+    )
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        DocsArchiveResult,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        clear_zakupki_soap_settings_cache,
+    )
 
     _set_runs_root(monkeypatch, tmp_path)
     monkeypatch.setenv("ZAKUPKI_GOV_RU_SOAP_ENABLED", "1")
@@ -166,9 +180,16 @@ def test_getdocs_archive_endpoint_falls_back_to_manual_upload(client, monkeypatc
 
 
 def test_getdocs_archive_endpoint_retries_transient_archive_download(client, monkeypatch, tmp_path):
-    from src.modules.tender_operator_agent_demo import procurement_intake_service as service
-    from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult, DownloadedAttachment
-    from src.modules.tender_operator_agent_demo.settings import clear_zakupki_soap_settings_cache
+    from src.modules.tender_operator_agent_demo import (
+        procurement_intake_service as service,
+    )
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        DocsArchiveResult,
+        DownloadedAttachment,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        clear_zakupki_soap_settings_cache,
+    )
 
     runs_root = _set_runs_root(monkeypatch, tmp_path)
     monkeypatch.setenv("ZAKUPKI_GOV_RU_SOAP_ENABLED", "1")
@@ -218,8 +239,10 @@ def test_getdocs_archive_endpoint_retries_transient_archive_download(client, mon
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] == "ready_to_analyze"
+    assert payload["status"] == "docs_required"
     metadata = json.loads((runs_root / payload["run_id"] / "metadata.json").read_text(encoding="utf-8"))
+    assert metadata["document_set_status"] == "notice_only"
+    assert metadata["manual_upload_required"] is True
     assert metadata["archive_downloaded"] is True
     assert metadata["archive_download_attempts"] == 2
     assert metadata["archive_download_status"] == "downloaded"
@@ -231,9 +254,15 @@ def test_getdocs_archive_endpoint_retries_transient_archive_download(client, mon
 
 
 def test_getdocs_archive_endpoint_marks_archive_not_ready_after_retries(client, monkeypatch, tmp_path):
-    from src.modules.tender_operator_agent_demo import procurement_intake_service as service
-    from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult
-    from src.modules.tender_operator_agent_demo.settings import clear_zakupki_soap_settings_cache
+    from src.modules.tender_operator_agent_demo import (
+        procurement_intake_service as service,
+    )
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        DocsArchiveResult,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        clear_zakupki_soap_settings_cache,
+    )
 
     runs_root = _set_runs_root(monkeypatch, tmp_path)
     monkeypatch.setenv("ZAKUPKI_GOV_RU_SOAP_ENABLED", "1")
@@ -295,9 +324,16 @@ def test_getdocs_archive_rejects_unsupported_method(client):
 
 
 def test_getdocs_archive_can_auto_analyze_after_download(client, monkeypatch, tmp_path):
-    from src.modules.tender_operator_agent_demo import procurement_intake_service as service
-    from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult, DownloadedAttachment
-    from src.modules.tender_operator_agent_demo.settings import clear_zakupki_soap_settings_cache
+    from src.modules.tender_operator_agent_demo import (
+        procurement_intake_service as service,
+    )
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        DocsArchiveResult,
+        DownloadedAttachment,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        clear_zakupki_soap_settings_cache,
+    )
 
     runs_root = _set_runs_root(monkeypatch, tmp_path)
     monkeypatch.setenv("ZAKUPKI_GOV_RU_SOAP_ENABLED", "1")
@@ -364,9 +400,16 @@ def test_getdocs_archive_can_auto_analyze_after_download(client, monkeypatch, tm
 
 
 def test_getdocs_archive_xml_only_is_partial_not_crash(client, monkeypatch, tmp_path):
-    from src.modules.tender_operator_agent_demo import procurement_intake_service as service
-    from src.modules.tender_operator_agent_demo.procurement_schemas import DocsArchiveResult, DownloadedAttachment
-    from src.modules.tender_operator_agent_demo.settings import clear_zakupki_soap_settings_cache
+    from src.modules.tender_operator_agent_demo import (
+        procurement_intake_service as service,
+    )
+    from src.modules.tender_operator_agent_demo.procurement_schemas import (
+        DocsArchiveResult,
+        DownloadedAttachment,
+    )
+    from src.modules.tender_operator_agent_demo.settings import (
+        clear_zakupki_soap_settings_cache,
+    )
 
     _set_runs_root(monkeypatch, tmp_path)
     monkeypatch.setenv("ZAKUPKI_GOV_RU_SOAP_ENABLED", "1")
@@ -418,5 +461,8 @@ def test_getdocs_archive_xml_only_is_partial_not_crash(client, monkeypatch, tmp_
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["status"] in {"completed_with_warnings", "needs_review"}
+    assert payload["status"] == "docs_required"
+    assert payload["analysis_status"] == "not_started"
+    assert payload["attachments_status"] == "incomplete_document_set"
+    assert payload["manual_upload_required"] is True
     clear_zakupki_soap_settings_cache()
