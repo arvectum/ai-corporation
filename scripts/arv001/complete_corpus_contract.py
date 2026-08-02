@@ -253,9 +253,10 @@ def prepare_documents(
         by_name.setdefault(str(item.get("original_name") or ""), []).append(item)
     prepared: list[PreparedDocument] = []
     used_storage: set[str] = set()
-    for descriptor in sorted(
+    ordered = sorted(
         physical, key=lambda item: str(item.get("original_name") or "")
-    ):
+    )
+    for ordinal, descriptor in enumerate(ordered, start=1):
         original_name = str(descriptor.get("original_name") or "").strip()
         candidates = by_name.get(original_name, [])
         if not original_name or len(candidates) != 1:
@@ -273,7 +274,11 @@ def prepare_documents(
             raise AcceptanceBlocked("source_file_size_mismatch")
         status, text = extract_text(str(path), max_chars=max_chars)
         if status != EXTRACTED_STATUS or not text.strip():
-            raise AcceptanceBlocked("document_text_extraction_failed")
+            extension = path.suffix.lower() or "none"
+            raise AcceptanceBlocked(
+                "document_text_extraction_failed:"
+                f"ordinal={ordinal}:ext={extension}:status={status}"
+            )
         prepared.append(
             PreparedDocument(
                 original_name=original_name,
