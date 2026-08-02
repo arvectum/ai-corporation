@@ -295,12 +295,13 @@ def test_customer_report_uses_separate_projection_and_tonne_economics(
     assert model["evidence_map"][0]["short_excerpt"] == "Топливо дизельное"
     assert "evidence_id" not in projection["evidence_map"][0]
     assert "short_excerpt" not in projection["evidence_map"][0]
-    assert projection["documents_count"] == 5
+    assert projection["documents_count"] == 1
+    assert projection["physical_files_count"] == 5
     assert projection["analysis_as_of"] == "31.07.2026 23:02 (UTC)"
     assert projection["line_items"][0]["source_display"] == (
         "Извещение о закупке — раздел «Объект закупки», позиция 1"
     )
-    assert "Файлы комплекта (5)" in rendered
+    assert "Документы комплекта (1)" in rendered
     assert "Анализ закупки №" in rendered
     assert "180 000,00 ₽ за тонну" in rendered
     assert "НМЦК на метр" not in rendered

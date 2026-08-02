@@ -58,6 +58,49 @@ def test_document_set_requires_contract_and_technical_document():
     assert summary["missing_required_document_kinds"] == []
 
 
+def test_complete_eis_corpus_keeps_six_customer_logical_documents():
+    files = [
+        {
+            "original_name": f"technical-{index}.xml",
+            "role_hint": "notice",
+        }
+        for index in range(1, 6)
+    ] + [
+        {"original_name": "Описание объекта закупки.docx"},
+        {"original_name": "Обоснование НМЦК.xlsx"},
+        {"original_name": "Требования к составу заявки.docx"},
+        {"original_name": "Проект контракта.docx"},
+        {
+            "original_name": (
+                "Реквизиты обеспечения исполнения контракта.docx"
+            )
+        },
+    ]
+
+    summary = build_document_set_summary(files)
+
+    assert summary["status"] == "complete"
+    assert summary["analysis_allowed"] is True
+    assert summary["physical_file_count"] == 10
+    assert summary["logical_document_count"] == 6
+    assert [item["name"] for item in summary["logical_documents"]] == [
+        "Извещение о закупке",
+        "Описание объекта закупки",
+        "Обоснование НМЦК",
+        "Требования к составу заявки",
+        "Проект контракта",
+        "Реквизиты обеспечения исполнения контракта",
+    ]
+    assert summary["kind_counts"] == {
+        "application_requirements": 1,
+        "contract_draft": 1,
+        "contract_performance_security": 1,
+        "notice": 5,
+        "price_justification": 1,
+        "technical_specification": 1,
+    }
+
+
 def test_notice_attachment_parser_supports_elements_and_href_attributes():
     xml = """
     <epNotification>
@@ -124,7 +167,6 @@ def test_getdocs_extractor_expands_nested_archives_safely(monkeypatch, tmp_path:
     }
     assert all(item.status == "saved" for item in manifest)
     assert build_document_set_summary(files)["status"] == "complete"
-
 
 
 def test_notice_attachment_parser_rejects_lookalike_and_protocol_relative_hosts():
@@ -214,7 +256,6 @@ def test_archive_limit_failure_discards_partial_extraction(monkeypatch, tmp_path
     service.ensure_demo_run_structure(run_id, exist_ok=False)
 
     archive_path = tmp_path / "documentation.zip"
-    from zipfile import ZipFile
     with ZipFile(archive_path, "w") as archive:
         archive.writestr("notice.xml", "<notice />")
         archive.writestr("Техническое задание.txt", "x" * 64)

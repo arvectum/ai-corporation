@@ -13,6 +13,16 @@ TECHNICAL_KINDS = {
 }
 CONTRACT_KINDS = {"contract_draft", "draft_contract"}
 PRICE_KINDS = {"price_justification", "nmck_justification"}
+APPLICATION_KINDS = {
+    "application_requirements",
+    "application_content_requirements",
+    "participant_requirements",
+}
+SECURITY_KINDS = {
+    "contract_performance_security",
+    "performance_security",
+    "contract_security",
+}
 
 
 def _normalized_kind(item: dict[str, Any]) -> str:
@@ -28,6 +38,10 @@ def _normalized_kind(item: dict[str, Any]) -> str:
         return "contract_draft"
     if explicit_candidates & PRICE_KINDS:
         return "price_justification"
+    if explicit_candidates & APPLICATION_KINDS:
+        return "application_requirements"
+    if explicit_candidates & SECURITY_KINDS:
+        return "contract_performance_security"
 
     name = str(
         item.get("original_name")
@@ -36,6 +50,25 @@ def _normalized_kind(item: dict[str, Any]) -> str:
         or ""
     ).strip()
     lowered = name.lower()
+    if any(
+        token in lowered
+        for token in (
+            "реквизиты обеспечения исполнения контракта",
+            "обеспечение исполнения контракта",
+            "contract performance security",
+        )
+    ):
+        return "contract_performance_security"
+    if any(
+        token in lowered
+        for token in (
+            "требования к составу заявки",
+            "требования к заявке",
+            "состав заявки",
+            "application requirements",
+        )
+    ):
+        return "application_requirements"
     if any(
         token in lowered
         for token in (
@@ -78,6 +111,44 @@ def _normalized_kind(item: dict[str, Any]) -> str:
     return "other_attachment"
 
 
+def _source_name(item: dict[str, Any]) -> str:
+    return str(
+        item.get("original_name") or item.get("display_name") or ""
+    ).strip()
+
+
+def _public_name(item: dict[str, Any], fallback: str) -> str:
+    source_name = _source_name(item)
+    if not source_name:
+        return fallback
+    stem = Path(source_name).stem.strip()
+    return stem or fallback
+
+
+def _grouped_document(
+    *,
+    kind: str,
+    items: list[dict[str, Any]],
+    fallback_name: str,
+    public_type: str,
+) -> dict[str, Any]:
+    public_name = (
+        _public_name(items[0], fallback_name)
+        if len(items) == 1
+        else fallback_name
+    )
+    return {
+        "name": public_name,
+        "type": public_type,
+        "kind": kind,
+        "physical_file_count": len(items),
+        "files": [
+            _source_name(item) or "Документ"
+            for item in items
+        ],
+    }
+
+
 def build_document_set_summary(files: list[dict[str, Any]]) -> dict[str, Any]:
     physical_files = [item for item in files if isinstance(item, dict)]
     classified = [(_normalized_kind(item), item) for item in physical_files]
@@ -100,15 +171,26 @@ def build_document_set_summary(files: list[dict[str, Any]]) -> dict[str, Any]:
             "Техническое задание / описание объекта закупки",
             "техническая документация",
         ),
+        "price_justification": (
+            "Обоснование НМЦК",
+            "ценовое обоснование",
+        ),
+        "application_requirements": (
+            "Требования к составу заявки",
+            "требования к заявке",
+        ),
         "contract_draft": ("Проект контракта", "проект контракта"),
-        "price_justification": ("Обоснование НМЦК", "ценовое обоснование"),
-        "other_attachment": ("Прочие приложения", "приложение"),
+        "contract_performance_security": (
+            "Реквизиты обеспечения исполнения контракта",
+            "обеспечение исполнения контракта",
+        ),
     }
     for kind in (
         "technical_specification",
-        "contract_draft",
         "price_justification",
-        "other_attachment",
+        "application_requirements",
+        "contract_draft",
+        "contract_performance_security",
     ):
         kind_items = [
             item for item_kind, item in classified if item_kind == kind
@@ -117,20 +199,30 @@ def build_document_set_summary(files: list[dict[str, Any]]) -> dict[str, Any]:
             continue
         label, public_type = public_labels[kind]
         logical_documents.append(
-            {
-                "name": label,
-                "type": public_type,
-                "kind": kind,
-                "physical_file_count": len(kind_items),
-                "files": [
-                    str(
-                        item.get("original_name")
-                        or item.get("display_name")
-                        or "Документ"
-                    )
-                    for item in kind_items
-                ],
-            }
+            _grouped_document(
+                kind=kind,
+                items=kind_items,
+                fallback_name=label,
+                public_type=public_type,
+            )
+        )
+
+    other_items = [
+        item for item_kind, item in classified
+        if item_kind == "other_attachment"
+    ]
+    grouped_other: dict[str, list[dict[str, Any]]] = {}
+    for item in other_items:
+        public_name = _public_name(item, "Прочее приложение")
+        grouped_other.setdefault(public_name, []).append(item)
+    for public_name, items in grouped_other.items():
+        logical_documents.append(
+            _grouped_document(
+                kind="other_attachment",
+                items=items,
+                fallback_name=public_name,
+                public_type="приложение",
+            )
         )
 
     has_technical = counts.get("technical_specification", 0) > 0

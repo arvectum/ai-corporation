@@ -260,6 +260,10 @@ def build_customer_report_projection(model: dict[str, Any]) -> dict[str, Any]:
         "nmck": model.get("nmck"),
         "delivery_place": model.get("delivery_place"),
         "documents_count": int(
+            document_summary.get("logical_document_count")
+            or len(documents)
+        ),
+        "physical_files_count": int(
             document_summary.get("physical_file_count")
             or metadata.get("document_count")
             or len(documents)
