@@ -4,14 +4,20 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 from typing import Sequence
 
+from scripts.arv001 import application_workflow
 from scripts.arv001 import run_complete_corpus_acceptance as runner
-from scripts.arv001.complete_corpus_contract import AcceptanceBlocked
+from scripts.arv001.complete_corpus_contract import (
+    DEFAULT_CORPUS_SHA256,
+    AcceptanceBlocked,
+)
+from scripts.arv001.corpus_hash_resolver import BoundCorpusHashResolver
 
 _CANDIDATE_ARTIFACTS = (
     "physical-files.json",
@@ -135,6 +141,38 @@ def build_ephemeral_candidate_view(
     }
 
 
+def _expected_corpus_sha(argv: Sequence[str], view_root: Path) -> str:
+    expected = _argument_value(argv, "--expected-corpus-sha") or DEFAULT_CORPUS_SHA256
+    try:
+        summary = json.loads(
+            (view_root / "intake-summary.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AcceptanceBlocked("intake_summary_invalid") from exc
+    recorded = summary.get("corpus_sha256") if isinstance(summary, dict) else None
+    if recorded != expected:
+        raise AcceptanceBlocked("intake_summary_corpus_sha_mismatch")
+    return expected
+
+
+def _delegate_with_bound_hash(
+    delegated_argv: list[str], expected_sha: str
+) -> tuple[int, BoundCorpusHashResolver]:
+    resolver = BoundCorpusHashResolver(expected_sha)
+    previous_argv = sys.argv
+    previous_runner_hash = runner._corpus_hash
+    previous_workflow_hash = application_workflow.corpus_hash
+    sys.argv = delegated_argv
+    runner._corpus_hash = resolver
+    application_workflow.corpus_hash = resolver
+    try:
+        return runner.main(), resolver
+    finally:
+        application_workflow.corpus_hash = previous_workflow_hash
+        runner._corpus_hash = previous_runner_hash
+        sys.argv = previous_argv
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     original_argv = list(sys.argv if argv is None else argv)
     try:
@@ -149,15 +187,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 intake_root=intake_root,
                 view_root=view_root,
             )
+            expected_sha = _expected_corpus_sha(original_argv, view_root)
             delegated_argv = _replace_argument(
                 original_argv, "--candidate-root", view_root
             )
-            previous = sys.argv
-            sys.argv = delegated_argv
-            try:
-                return runner.main()
-            finally:
-                sys.argv = previous
+            result, resolver = _delegate_with_bound_hash(delegated_argv, expected_sha)
+            if result == 0 and resolver.profile is not None:
+                profile = resolver.profile.sanitized()
+                print(
+                    "corpus_hash_profile="
+                    + json.dumps(profile, ensure_ascii=True, sort_keys=True),
+                    file=sys.stderr,
+                )
+            return result
     except AcceptanceBlocked as exc:
         value = str(exc)
         safe = (

@@ -113,6 +113,8 @@ def test_entrypoint_delegates_with_temporary_complete_candidate_root(
             str(candidate),
             "--intake-root",
             str(intake),
+            "--expected-corpus-sha",
+            "b" * 64,
         ]
     )
 
