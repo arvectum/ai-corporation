@@ -93,12 +93,14 @@ def test_bound_resolver_requires_same_profile_after_round_trip():
 def test_split_adapter_patches_both_pre_and_post_persistence_hash_calls(monkeypatch):
     physical = _physical()
     expected = _stable_expected(physical)
+    assert runner._corpus_hash(physical) != expected
     original_runner_hash = runner._corpus_hash
     original_workflow_hash = application_workflow.corpus_hash
 
     def fake_main() -> int:
         assert runner._corpus_hash(physical) == expected
         assert application_workflow.corpus_hash(list(reversed(physical))) == expected
+        assert runner._corpus_hash_profile()["sha256"] == expected
         return 0
 
     monkeypatch.setattr(runner, "main", fake_main)

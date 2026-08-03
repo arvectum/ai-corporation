@@ -5,11 +5,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from scripts.arv001 import application_workflow
 from scripts.arv001 import run_complete_corpus_acceptance as runner
@@ -18,6 +19,11 @@ from scripts.arv001.complete_corpus_contract import (
     AcceptanceBlocked,
 )
 from scripts.arv001.corpus_hash_resolver import BoundCorpusHashResolver
+
+_SAFE_EXCEPTION_CLASS = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,80}$")
+_PHASES = frozenset(
+    {"arguments", "ephemeral_view", "expected_corpus_sha", "delegation", "profile_output"}
+)
 
 _CANDIDATE_ARTIFACTS = (
     "physical-files.json",
@@ -162,37 +168,56 @@ def _delegate_with_bound_hash(
     previous_argv = sys.argv
     previous_runner_hash = runner._corpus_hash
     previous_workflow_hash = application_workflow.corpus_hash
+    previous_profile = runner._corpus_hash_profile
+
+    def profile() -> dict[str, object] | None:
+        return resolver.profile.sanitized() if resolver.profile is not None else None
+
     sys.argv = delegated_argv
     runner._corpus_hash = resolver
     application_workflow.corpus_hash = resolver
+    runner._corpus_hash_profile = profile
     try:
         return runner.main(), resolver
     finally:
         application_workflow.corpus_hash = previous_workflow_hash
         runner._corpus_hash = previous_runner_hash
+        runner._corpus_hash_profile = previous_profile
         sys.argv = previous_argv
 
 
+def _safe_unexpected_code(phase: str, exc: Exception) -> str:
+    safe_phase = phase if phase in _PHASES else "unknown"
+    name = exc.__class__.__name__
+    safe_name = name if _SAFE_EXCEPTION_CLASS.fullmatch(name) else "Exception"
+    return f"arv001_split_root_unexpected_exception:{safe_phase}:{safe_name}"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    original_argv = list(sys.argv if argv is None else argv)
+    current_phase = "arguments"
     try:
+        original_argv = list(sys.argv if argv is None else argv)
         candidate_root = _argument_path(original_argv, "--candidate-root")
         intake_root = _argument_path(
             original_argv, "--intake-root", default=candidate_root
         )
         with tempfile.TemporaryDirectory(prefix="arv001-candidate-view-") as directory:
             view_root = Path(directory) / "candidate"
+            current_phase = "ephemeral_view"
             build_ephemeral_candidate_view(
                 candidate_root=candidate_root,
                 intake_root=intake_root,
                 view_root=view_root,
             )
+            current_phase = "expected_corpus_sha"
             expected_sha = _expected_corpus_sha(original_argv, view_root)
             delegated_argv = _replace_argument(
                 original_argv, "--candidate-root", view_root
             )
+            current_phase = "delegation"
             result, resolver = _delegate_with_bound_hash(delegated_argv, expected_sha)
             if result == 0 and resolver.profile is not None:
+                current_phase = "profile_output"
                 profile = resolver.profile.sanitized()
                 print(
                     "corpus_hash_profile="
@@ -209,8 +234,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(safe, file=sys.stderr)
         return 2
-    except Exception:
-        print("arv001_split_root_acceptance_failed", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - sanitize every unexpected failure.
+        print(_safe_unexpected_code(current_phase, exc), file=sys.stderr)
         return 3
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from scripts.arv001 import complete_corpus_contract as _contract
 from scripts.arv001.application_workflow import (
     create_application_data,
     database_preflight,
@@ -28,19 +29,50 @@ from scripts.arv001.complete_corpus_contract import (
     DEFAULT_PROJECT_NAME,
     DEFAULT_REGISTRY_NUMBER,
     AcceptanceBlocked,
-    artifact_shape as _artifact_shape,
-    corpus_hash as _corpus_hash,
     load_candidate,
-    prepare_documents as _prepare_documents,
-    read_json as _read_json,
-    sha256_file as _sha256_file,
-    validate_customer_report as _validate_customer_report,
     validate_document_set,
-    write_json as _write_json,
 )
 
 _static_contract_preflight = static_contract_preflight
+_corpus_hash = _contract.corpus_hash
+_prepare_documents = _contract.prepare_documents
+_read_json = _contract.read_json
+_sha256_file = _contract.sha256_file
+_validate_customer_report = _contract.validate_customer_report
+_write_json = _contract.write_json
 _SAFE_CODE = re.compile(r"^[a-z0-9_.:-]{1,180}$")
+_SAFE_EXCEPTION_CLASS = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,80}$")
+_PHASES = frozenset(
+    {
+        "arguments", "git_preflight", "configuration", "local_runtime_initialization",
+        "candidate_load", "physical_contract", "corpus_hash", "intake_summary",
+        "document_set", "repository_contract", "database_preflight",
+        "provider_preflight", "settings_resolution", "document_preparation",
+        "static_summary", "static_output", "stage_creation", "static_stage_write",
+        "application_data", "post_persistence_preflight", "controlled_invocation",
+        "finalization", "success_output",
+    }
+)
+
+
+def _corpus_hash_profile() -> None:
+    return None
+
+
+def _verified_diagnostic_bound_profile(
+    profile: object, expected_sha: str
+) -> dict[str, object]:
+    if not isinstance(profile, dict):
+        raise AcceptanceBlocked("diagnostic_bound_corpus_hash_profile_missing_or_invalid")
+    if (
+        profile.get("sha256") != expected_sha
+        or profile.get("fields") != ["original_name", "sha256", "size_bytes"]
+        or not isinstance(profile.get("serialization"), str)
+        or not profile["serialization"]
+        or profile.get("ordering") != "original_name_unicode_codepoint_ascending"
+    ):
+        raise AcceptanceBlocked("diagnostic_bound_corpus_hash_profile_missing_or_invalid")
+    return profile
 
 
 def _arguments() -> argparse.Namespace:
@@ -60,7 +92,9 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--expected-policy-sha", default=DEFAULT_POLICY_SHA256)
     parser.add_argument("--customer-name", default=DEFAULT_CUSTOMER_NAME)
     parser.add_argument("--project-name", default=DEFAULT_PROJECT_NAME)
-    parser.add_argument("--execute-provider", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--execute-provider", action="store_true")
+    mode.add_argument("--verify-pre-provider-stage-boundary", action="store_true")
     return parser.parse_args()
 
 
@@ -159,6 +193,13 @@ def _safe_failure(stderr: str) -> str:
         else "controlled_provider_evidence_failed"
     )
     return value if _SAFE_CODE.fullmatch(value) else "controlled_provider_evidence_failed"
+
+
+def _safe_unexpected_code(phase: str, exc: Exception) -> str:
+    safe_phase = phase if phase in _PHASES else "unknown"
+    name = exc.__class__.__name__
+    safe_name = name if _SAFE_EXCEPTION_CLASS.fullmatch(name) else "Exception"
+    return f"arv001_unexpected_exception:{safe_phase}:{safe_name}"
 
 
 def _run_controlled_once(
@@ -369,38 +410,53 @@ def _finalize(
 
 
 def main() -> int:
-    args = _arguments()
-    repo_root = _repository_root()
+    current_phase = "arguments"
+    stage: Path | None = None
     try:
+        args = _arguments()
+        repo_root = _repository_root()
+        current_phase = "git_preflight"
         git = _git_preflight(repo_root, args.expected_head)
+        current_phase = "configuration"
         paths = _configure(args, repo_root)
+        current_phase = "local_runtime_initialization"
         _initialize_local_runtime(
             paths, repo_root, initialize_database=args.initialize_database
         )
+        current_phase = "candidate_load"
         values, shapes = load_candidate(paths["candidate_root"])
         physical = values["physical-files.json"]
         metadata = values["metadata.json"]
+        current_phase = "physical_contract"
         if not isinstance(physical, list) or len(physical) != 10 or any(
             not isinstance(item, dict) for item in physical
         ):
             raise AcceptanceBlocked("physical_files_contract_invalid")
+        current_phase = "corpus_hash"
         actual_corpus_sha = _corpus_hash(physical)
         if actual_corpus_sha != args.expected_corpus_sha:
             raise AcceptanceBlocked("canonical_corpus_sha_mismatch")
+        current_phase = "intake_summary"
         intake_summary = values["intake-summary.json"]
         if not isinstance(intake_summary, dict) or intake_summary.get(
             "corpus_sha256"
         ) != args.expected_corpus_sha:
             raise AcceptanceBlocked("intake_summary_corpus_sha_mismatch")
+        current_phase = "document_set"
         validate_document_set(values, 10)
+        current_phase = "repository_contract"
         contract = static_contract_preflight()
+        current_phase = "database_preflight"
         database = database_preflight()
+        current_phase = "provider_preflight"
         provider = provider_preflight(
             paths["policy_path"], args.expected_policy_sha
         )
-        from src.shared.config.settings import get_settings
 
+        current_phase = "settings_resolution"
+        from src.shared.config.settings import get_settings
         settings = get_settings()
+        current_phase = "document_preparation"
         documents = _prepare_documents(
             physical=physical,
             metadata=metadata,
@@ -409,6 +465,7 @@ def main() -> int:
             chunk_size=settings.rag_chunk_size_chars,
             chunk_overlap=settings.rag_chunk_overlap_chars,
         )
+        current_phase = "static_summary"
         static = {
             "git": git,
             "artifact_shapes": shapes,
@@ -421,7 +478,46 @@ def main() -> int:
             "total_prepared_chunks": sum(len(item.chunks) for item in documents),
             "source_file_mutations": 0,
         }
+        if args.verify_pre_provider_stage_boundary:
+            profile = _verified_diagnostic_bound_profile(
+                _corpus_hash_profile(), args.expected_corpus_sha
+            )
+            current_phase = "stage_creation"
+            final_root = paths["output_root"]
+            stage = final_root.parent / f".{final_root.name}.partial.{uuid4().hex}"
+            stage.mkdir(parents=True, mode=0o750)
+            try:
+                current_phase = "static_stage_write"
+                _write_json(stage / "static-preflight.json", static)
+                current_phase = "static_output"
+                if not isinstance(_read_json(stage / "static-preflight.json"), dict):
+                    raise AcceptanceBlocked("diagnostic_static_preflight_invalid")
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
+            current_phase = "success_output"
+            print(
+                json.dumps(
+                    {
+                        "status": "pre_provider_stage_boundary_verified",
+                        "marker": "ARV-001_PRE_PROVIDER_STAGE_BOUNDARY_VERIFIED",
+                        "head_sha": git["head_sha"],
+                        "physical_file_count": 10,
+                        "mapped_file_count": len(documents),
+                        "total_prepared_chunks": sum(len(item.chunks) for item in documents),
+                        "corpus_hash_profile": profile,
+                        "application_records_created": 0,
+                        "controlled_subprocess_starts": 0,
+                        "provider_generation_calls": 0,
+                        "diagnostic_stage_cleaned": True,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 0
         if not args.execute_provider:
+            current_phase = "static_output"
             print(
                 json.dumps(
                     {"status": "static_preflight_complete", **static},
@@ -430,10 +526,13 @@ def main() -> int:
                 )
             )
             return 0
+        current_phase = "stage_creation"
         final_root = paths["output_root"]
         stage = final_root.parent / f".{final_root.name}.partial.{uuid4().hex}"
         stage.mkdir(parents=True, mode=0o750)
+        current_phase = "static_stage_write"
         _write_json(stage / "static-preflight.json", static)
+        current_phase = "application_data"
         application = create_application_data(
             customer_name=args.customer_name,
             project_name=args.project_name,
@@ -444,8 +543,10 @@ def main() -> int:
             logical_documents=values["logical-documents.json"],
             documents=documents,
         )
+        current_phase = "post_persistence_preflight"
         preflight = post_persistence_preflight(application["run_id"])
         controlled_root = stage / "controlled-evidence"
+        current_phase = "controlled_invocation"
         invocation = _run_controlled_once(
             repo_root,
             application["run_id"],
@@ -453,6 +554,7 @@ def main() -> int:
             paths["policy_path"],
             controlled_root,
         )
+        current_phase = "finalization"
         final = _finalize(
             stage,
             controlled_root,
@@ -463,6 +565,7 @@ def main() -> int:
             args.registry_number,
         )
         metrics = final["metrics"]
+        current_phase = "success_output"
         print(
             json.dumps(
                 {
@@ -507,8 +610,8 @@ def main() -> int:
         )
         print(safe, file=sys.stderr)
         return 2
-    except Exception:
-        print("arv001_complete_corpus_acceptance_failed", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - sanitize every unexpected failure.
+        print(_safe_unexpected_code(current_phase, exc), file=sys.stderr)
         return 3
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from scripts.arv001 import run_complete_corpus_acceptance as runner
+from scripts.arv001.complete_corpus_contract import artifact_shape
 from src.modules.tender_operator_agent_demo.customer_report_contract import (
     build_customer_detail_projection,
 )
@@ -229,7 +230,7 @@ def test_artifact_contract_shapes_are_reported_without_values(tmp_path: Path):
     path = tmp_path / "physical-files.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    shape = runner._artifact_shape(runner._read_json(path))
+    shape = artifact_shape(runner._read_json(path))
 
     assert shape == {
         "type": "array",
