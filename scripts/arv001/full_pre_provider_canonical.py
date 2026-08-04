@@ -26,6 +26,7 @@ import json
 import os
 import secrets
 import sqlite3
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,6 @@ from scripts.arv001.runtime_doctor import (
     DoctorReport,
     Phase,
     validate_python,
-    validate_repository,
 )
 
 _APPROVED_GGUF_SHA256 = (
@@ -261,6 +261,53 @@ def _failure_with_prepared_reason(*, head_sha, phase, code, recorder):
     )
 
 
+def _validate_exact_main_repository(
+    *, repository_root: Path, expected_head: str
+) -> tuple[str, ...]:
+    """Validate a clean exact merged-main checkout or clean detached worktree.
+
+    The feature-branch-only guard used while PR #117 was under development is
+    invalid after merge. Exact SHA binding remains mandatory, while ``main``
+    and detached exact-HEAD worktrees are the only supported execution modes.
+    Dirty tracked or untracked state remains a separate fail-closed condition.
+    """
+
+    try:
+        top_level = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=repository_root,
+            text=True,
+        ).strip()
+        head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repository_root,
+            text=True,
+        ).strip()
+        branch = subprocess.check_output(
+            ["git", "branch", "--show-current"],
+            cwd=repository_root,
+            text=True,
+        ).strip()
+        worktree = subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=repository_root,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ("git_repository_unavailable",)
+
+    errors: list[str] = []
+    if Path(top_level).resolve() != repository_root.resolve():
+        errors.append("repository_root_mismatch")
+    if head != expected_head:
+        errors.append("git_head_mismatch")
+    if branch not in {"", "main"}:
+        errors.append("git_branch_not_main_or_detached")
+    if worktree:
+        errors.append("git_worktree_not_clean")
+    return tuple(errors)
+
+
 def _orchestration_doctor(
     *,
     private_env: Path | None,
@@ -277,7 +324,7 @@ def _orchestration_doctor(
     report.phases.append(
         Phase(
             "repository",
-            validate_repository(
+            _validate_exact_main_repository(
                 repository_root=repository_root,
                 expected_head=head_sha,
             ),

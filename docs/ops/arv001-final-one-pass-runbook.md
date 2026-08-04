@@ -1,9 +1,10 @@
 # ARV-001 full pre-provider runbook
 
-The canonical zero-generation entrypoint is `python -m scripts.arv001.full_pre_provider`.
+The canonical zero-generation entrypoint is `python -m scripts.arv001.full_pre_provider_canonical`.
 It is the only supported preparation path; direct invocation of the base runner
-is deprecated for operator use.  The command accepts no secrets and publishes
-only a sanitized report.  A PASS does not authorize `--execute-provider`.
+`python -m scripts.arv001.full_pre_provider` is deprecated for operator use.
+The command accepts no secrets and publishes only a sanitized report. A PASS
+does not authorize `--execute-provider`.
 
 ## Root-cause matrix
 
@@ -42,12 +43,16 @@ only a sanitized report.  A PASS does not authorize `--execute-provider`.
 | Gate 5 | persisted counts/binding unverified | post-persistence preflight | Gate 5 test | isolated SQLite |
 | controlled transport | preflight and generation coupled | `--preflight-only` stop | transport-spy test | loopback runtime |
 | report/privacy | fixture projections leaked internal fields | report scanner/projection validation | privacy fixture test | none |
+| merged-main guard | development branch was hard-coded after merge | exact main/detached validator | exact-main repository tests | clean exact checkout |
 
 ## Canonical invocation
 
 Run from the repository root with static corpus/policy inputs only. The
 orchestrator creates the local credential, dynamic loopback URLs and tokenizer
 identity; `--private-env` is optional and never supplies those dynamic values.
+The supported execution checkout is either a clean `main` at the exact expected
+SHA or a clean detached worktree at that exact SHA. Dirty tracked or untracked
+state remains fail-closed.
 
 ```bash
 ARV001_CANDIDATE_ROOT=... \

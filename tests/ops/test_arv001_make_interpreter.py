@@ -9,5 +9,8 @@ def test_arv001_make_target_uses_configurable_python_311() -> None:
     assert "PYTHON ?= python" in makefile
     assert "@$(PYTHON) -c 'import sys;" in makefile
     assert "sys.version_info[:2] == (3, 11)" in makefile
-    assert "@$(PYTHON) -m scripts.arv001.full_pre_provider" in makefile
+    assert (
+        "@$(PYTHON) -m scripts.arv001.full_pre_provider_canonical" in makefile
+    )
+    assert "@$(PYTHON) -m scripts.arv001.full_pre_provider \\" not in makefile
     assert "@python -m scripts.arv001.full_pre_provider" not in makefile

@@ -44,7 +44,7 @@ arv001-full-pre-provider:
 	@test -n "$${ARV001_CORPUS_SHA:-}" || (echo "ARV001_CORPUS_SHA is required"; exit 2)
 	@test -n "$${ARV001_POLICY_SHA:-}" || (echo "ARV001_POLICY_SHA is required"; exit 2)
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 2)' || (echo "ARV-001 requires Python 3.11; pass PYTHON=/path/to/python3.11"; exit 2)
-	@$(PYTHON) -m scripts.arv001.full_pre_provider \
+	@$(PYTHON) -m scripts.arv001.full_pre_provider_canonical \
 		--candidate-root "$${ARV001_CANDIDATE_ROOT}" \
 		--intake-root "$${ARV001_INTAKE_ROOT}" \
 		--approved-policy "$${ARV001_APPROVED_POLICY}" \

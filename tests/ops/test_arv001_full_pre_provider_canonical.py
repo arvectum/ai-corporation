@@ -5,11 +5,127 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from scripts.arv001 import full_pre_provider_canonical as canonical
 from scripts.arv001.prepared_verification import (
     PreparedVerificationError,
     canonical_document_identity_hashes,
 )
+
+
+def _mock_git(
+    monkeypatch,
+    *,
+    repository_root: Path,
+    head: str,
+    branch: str,
+    worktree: str = "",
+    top_level: Path | None = None,
+) -> None:
+    outputs = {
+        ("git", "rev-parse", "--show-toplevel"): str(
+            top_level if top_level is not None else repository_root
+        ),
+        ("git", "rev-parse", "HEAD"): head,
+        ("git", "branch", "--show-current"): branch,
+        (
+            "git",
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+        ): worktree,
+    }
+
+    def check_output(command, **kwargs):
+        assert kwargs["cwd"] == repository_root
+        assert kwargs["text"] is True
+        return outputs[tuple(command)]
+
+    monkeypatch.setattr(canonical.subprocess, "check_output", check_output)
+
+
+@pytest.mark.parametrize("branch", ["main", ""])
+def test_exact_main_repository_accepts_clean_main_or_detached(
+    monkeypatch,
+    tmp_path: Path,
+    branch: str,
+) -> None:
+    head = "a" * 40
+    _mock_git(
+        monkeypatch,
+        repository_root=tmp_path,
+        head=head,
+        branch=branch,
+    )
+
+    assert canonical._validate_exact_main_repository(
+        repository_root=tmp_path,
+        expected_head=head,
+    ) == ()
+
+
+@pytest.mark.parametrize("branch", ["main", ""])
+def test_exact_main_repository_rejects_dirty_tracked_or_untracked_state(
+    monkeypatch,
+    tmp_path: Path,
+    branch: str,
+) -> None:
+    head = "a" * 40
+    _mock_git(
+        monkeypatch,
+        repository_root=tmp_path,
+        head=head,
+        branch=branch,
+        worktree="?? local-private-artifact",
+    )
+
+    assert canonical._validate_exact_main_repository(
+        repository_root=tmp_path,
+        expected_head=head,
+    ) == ("git_worktree_not_clean",)
+
+
+def test_exact_main_repository_rejects_feature_branch_with_distinct_reason(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    head = "a" * 40
+    _mock_git(
+        monkeypatch,
+        repository_root=tmp_path,
+        head=head,
+        branch="fix/arv001-final-one-pass",
+    )
+
+    assert canonical._validate_exact_main_repository(
+        repository_root=tmp_path,
+        expected_head=head,
+    ) == ("git_branch_not_main_or_detached",)
+
+
+def test_exact_main_repository_aggregates_root_head_branch_and_worktree_errors(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    _mock_git(
+        monkeypatch,
+        repository_root=tmp_path,
+        top_level=tmp_path / "other",
+        head="b" * 40,
+        branch="fix/arv001-final-one-pass",
+        worktree=" M tracked.py",
+    )
+
+    assert canonical._validate_exact_main_repository(
+        repository_root=tmp_path,
+        expected_head="a" * 40,
+    ) == (
+        "repository_root_mismatch",
+        "git_head_mismatch",
+        "git_branch_not_main_or_detached",
+        "git_worktree_not_clean",
+    )
 
 
 def test_canonical_doctor_does_not_fold_asset_failures_into_repository(
@@ -18,7 +134,7 @@ def test_canonical_doctor_does_not_fold_asset_failures_into_repository(
 ) -> None:
     monkeypatch.setattr(
         canonical,
-        "validate_repository",
+        "_validate_exact_main_repository",
         lambda **_: (),
     )
     monkeypatch.setattr(
@@ -50,7 +166,7 @@ def test_canonical_doctor_retains_real_repository_failure(
 ) -> None:
     monkeypatch.setattr(
         canonical,
-        "validate_repository",
+        "_validate_exact_main_repository",
         lambda **_: ("git_head_mismatch",),
     )
     monkeypatch.setattr(
