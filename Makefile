@@ -1,6 +1,8 @@
+PYTHON ?= python
+
 REDIS_HOST_COMPOSE = docker --context "$${ARVECTUM_DOCKER_CONTEXT:-colima}" compose -f docker-compose.redis.yml -f docker-compose.redis-host.yml
 
-.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv001 test-arv076 audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean redis-host-config redis-host-start redis-host-ping redis-host-stop
+.PHONY: check test ci test-redis-integration test-r8-postgres test-r8-acceptance-foundation test-r8-acceptance-tenant-concurrency test-r8-acceptance-migration-backfill test-r8-acceptance-tampering test-r8-acceptance test-arv001 test-arv076 arv001-full-pre-provider audit-external-runtime-paths eis-preflight r4-local-start redis-start redis-ping redis-stop redis-clean redis-host-config redis-host-start redis-host-ping redis-host-stop
 
 check:
 	python -m compileall -q src scripts quality_gates
@@ -30,6 +32,29 @@ test-r8-acceptance:
 test-arv001:
 	python quality_gates/arv001/evaluate.py validate-package
 	python -m pytest -q tests/quality/test_arv001_quality_gate.py
+
+arv001-full-pre-provider:
+	@{ test -z "$${ARV001_GGUF_PATH:-}" && test -z "$${ARV001_LLAMA_SERVER_PATH:-}"; } || { test -n "$${ARV001_GGUF_PATH:-}" && test -n "$${ARV001_LLAMA_SERVER_PATH:-}"; } || (echo "both exact asset paths are required together"; exit 2)
+	@{ test -z "$${ARV001_ASSET_ROOT:-}"; } || { test -z "$${ARV001_GGUF_PATH:-}" && test -z "$${ARV001_LLAMA_SERVER_PATH:-}"; } || (echo "exact asset paths and ARV001_ASSET_ROOT are mutually exclusive"; exit 2)
+	@test -n "$${ARV001_CANDIDATE_ROOT:-}" || (echo "ARV001_CANDIDATE_ROOT is required"; exit 2)
+	@test -n "$${ARV001_INTAKE_ROOT:-}" || (echo "ARV001_INTAKE_ROOT is required"; exit 2)
+	@test -n "$${ARV001_APPROVED_POLICY:-}" || (echo "ARV001_APPROVED_POLICY is required"; exit 2)
+	@test -n "$${ARV001_ASSET_ROOT:-}" || { test -n "$${ARV001_GGUF_PATH:-}" && test -n "$${ARV001_LLAMA_SERVER_PATH:-}"; } || (echo "ARV001_ASSET_ROOT or both exact asset paths are required"; exit 2)
+	@test -n "$${ARV001_PRIVATE_RUNTIME_DIR:-}" || (echo "ARV001_PRIVATE_RUNTIME_DIR is required"; exit 2)
+	@test -n "$${ARV001_CORPUS_SHA:-}" || (echo "ARV001_CORPUS_SHA is required"; exit 2)
+	@test -n "$${ARV001_POLICY_SHA:-}" || (echo "ARV001_POLICY_SHA is required"; exit 2)
+	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 11) else 2)' || (echo "ARV-001 requires Python 3.11; pass PYTHON=/path/to/python3.11"; exit 2)
+	@$(PYTHON) -m scripts.arv001.full_pre_provider \
+		--candidate-root "$${ARV001_CANDIDATE_ROOT}" \
+		--intake-root "$${ARV001_INTAKE_ROOT}" \
+		--approved-policy "$${ARV001_APPROVED_POLICY}" \
+		$(if $(ARV001_ASSET_ROOT),--asset-root "$(ARV001_ASSET_ROOT)") \
+		$(if $(ARV001_GGUF_PATH),--gguf-path "$(ARV001_GGUF_PATH)") \
+		$(if $(ARV001_LLAMA_SERVER_PATH),--llama-server-path "$(ARV001_LLAMA_SERVER_PATH)") \
+		--runtime-profile-dir "$${ARV001_PRIVATE_RUNTIME_DIR}" \
+		--expected-head "$$(git rev-parse HEAD)" \
+		--expected-corpus-sha "$${ARV001_CORPUS_SHA}" \
+		--expected-policy-sha "$${ARV001_POLICY_SHA}"
 
 test-arv076:
 	python -m pytest -q tests/ops/test_arv076_runtime_backup.py

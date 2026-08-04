@@ -1,0 +1,24 @@
+{
+  "schema_version": "arv001-approved-runtime-v1",
+  "provider": "openai_compatible",
+  "model_alias": "arvectum-gemma4-12b-it-qat-q4_0",
+  "model_family": "gemma4",
+  "parameter_profile": "12B",
+  "tuning_profile": "instruction_tuned",
+  "training_profile": "qat",
+  "format": "GGUF",
+  "quantization": "Q4_0",
+  "source_repository": "google/gemma-4-12B-it-qat-q4_0-gguf",
+  "source_revision": "29d097773436b69ff9feafd636ab4cf873786537",
+  "gguf_sha256": "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b",
+  "llama_cpp_repository": "ggml-org/llama.cpp",
+  "llama_cpp_commit": "0b14b87d7",
+  "llama_cpp_build": "10240",
+  "llama_server_sha256": "bfb04423277c5912db8d27d7d96a3251d29231d28743371f68f5e345abc8f7ae",
+  "required_capabilities": [
+    "loopback_only",
+    "models_endpoint",
+    "tokenize_endpoint",
+    "openai_compatible_transport_boundary"
+  ]
+}

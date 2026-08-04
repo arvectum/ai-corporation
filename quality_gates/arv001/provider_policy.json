@@ -1,0 +1,22 @@
+{
+  "policy_version": "arv001-local-pre-provider-gemma4-it-qat-q4_0-v1",
+  "provider": "openai_compatible",
+  "model": "arvectum-gemma4-12b-it-qat-q4_0",
+  "budget": {
+    "limits": {
+      "max_input_tokens": 32768,
+      "max_output_tokens": 4096,
+      "timeout_ms": 120000,
+      "max_retries": 0,
+      "max_total_latency_ms": 120000,
+      "max_estimated_cost": 0.01,
+      "chars_per_token_estimate": 4
+    },
+    "pricing": {
+      "input_cost_per_1k_tokens": 0.0,
+      "output_cost_per_1k_tokens": 0.0,
+      "currency": "USD",
+      "pricing_table_version": "local-zero-generation-v1"
+    }
+  }
+}

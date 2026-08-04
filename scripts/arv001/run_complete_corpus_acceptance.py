@@ -44,13 +44,29 @@ _SAFE_CODE = re.compile(r"^[a-z0-9_.:-]{1,180}$")
 _SAFE_EXCEPTION_CLASS = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,80}$")
 _PHASES = frozenset(
     {
-        "arguments", "git_preflight", "configuration", "local_runtime_initialization",
-        "candidate_load", "physical_contract", "corpus_hash", "intake_summary",
-        "document_set", "repository_contract", "database_preflight",
-        "provider_preflight", "settings_resolution", "document_preparation",
-        "static_summary", "static_output", "stage_creation", "static_stage_write",
-        "application_data", "post_persistence_preflight", "controlled_invocation",
-        "finalization", "success_output",
+        "arguments",
+        "git_preflight",
+        "configuration",
+        "local_runtime_initialization",
+        "candidate_load",
+        "physical_contract",
+        "corpus_hash",
+        "intake_summary",
+        "document_set",
+        "repository_contract",
+        "database_preflight",
+        "provider_preflight",
+        "settings_resolution",
+        "document_preparation",
+        "static_summary",
+        "static_output",
+        "stage_creation",
+        "static_stage_write",
+        "application_data",
+        "post_persistence_preflight",
+        "controlled_invocation",
+        "finalization",
+        "success_output",
     }
 )
 
@@ -63,7 +79,9 @@ def _verified_diagnostic_bound_profile(
     profile: object, expected_sha: str
 ) -> dict[str, object]:
     if not isinstance(profile, dict):
-        raise AcceptanceBlocked("diagnostic_bound_corpus_hash_profile_missing_or_invalid")
+        raise AcceptanceBlocked(
+            "diagnostic_bound_corpus_hash_profile_missing_or_invalid"
+        )
     if (
         profile.get("sha256") != expected_sha
         or profile.get("fields") != ["original_name", "sha256", "size_bytes"]
@@ -71,7 +89,9 @@ def _verified_diagnostic_bound_profile(
         or not profile["serialization"]
         or profile.get("ordering") != "original_name_unicode_codepoint_ascending"
     ):
-        raise AcceptanceBlocked("diagnostic_bound_corpus_hash_profile_missing_or_invalid")
+        raise AcceptanceBlocked(
+            "diagnostic_bound_corpus_hash_profile_missing_or_invalid"
+        )
     return profile
 
 
@@ -92,10 +112,46 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--expected-policy-sha", default=DEFAULT_POLICY_SHA256)
     parser.add_argument("--customer-name", default=DEFAULT_CUSTOMER_NAME)
     parser.add_argument("--project-name", default=DEFAULT_PROJECT_NAME)
+    parser.add_argument("--private-verification-descriptor", type=Path)
     mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--static-only", action="store_true")
     mode.add_argument("--execute-provider", action="store_true")
     mode.add_argument("--verify-pre-provider-stage-boundary", action="store_true")
+    mode.add_argument("--prepare-only", action="store_true")
     return parser.parse_args()
+
+
+def _write_private_verification_descriptor(
+    path: Path,
+    *,
+    application: dict[str, Any],
+    head_sha: str,
+    registry: str,
+    corpus_sha: str,
+    logical_count: int,
+    preflight: dict[str, Any],
+    invocation: dict[str, Any],
+    controlled_output_root: Path,
+) -> None:
+    from scripts.arv001.prepared_verification import (
+        PreparedVerificationError,
+        write_private_verification_descriptor,
+    )
+
+    try:
+        write_private_verification_descriptor(
+            path,
+            application=application,
+            head_sha=head_sha,
+            registry=registry,
+            corpus_sha=corpus_sha,
+            logical_count=logical_count,
+            preflight=preflight,
+            invocation=invocation,
+            controlled_output_root=controlled_output_root,
+        )
+    except PreparedVerificationError as exc:
+        raise AcceptanceBlocked(exc.code) from exc
 
 
 def _repository_root() -> Path:
@@ -192,7 +248,9 @@ def _safe_failure(stderr: str) -> str:
         if stderr.strip()
         else "controlled_provider_evidence_failed"
     )
-    return value if _SAFE_CODE.fullmatch(value) else "controlled_provider_evidence_failed"
+    return (
+        value if _SAFE_CODE.fullmatch(value) else "controlled_provider_evidence_failed"
+    )
 
 
 def _safe_unexpected_code(phase: str, exc: Exception) -> str:
@@ -250,6 +308,75 @@ def _run_controlled_once(
     }
 
 
+def _run_controlled_preflight_once(
+    repo_root: Path,
+    run_id: str,
+    registry_number: str,
+    policy_path: Path,
+    output_root: Path,
+) -> dict[str, Any]:
+    """Reach the R10.1 transport boundary without constructing a provider."""
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.r10_1.run_controlled_provider_evidence",
+            "--preflight-only",
+            "--run-id",
+            run_id,
+            "--expected-registry-number",
+            registry_number,
+            "--approved-policy",
+            str(policy_path),
+            "--output-root",
+            str(output_root),
+        ],
+        cwd=repo_root,
+        env=os.environ.copy(),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise AcceptanceBlocked(
+            "controlled_preflight_failed:" + _safe_failure(result.stderr)
+        )
+    try:
+        response = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as exc:
+        raise AcceptanceBlocked("controlled_preflight_success_output_invalid") from exc
+    expected_fields = {
+        "status",
+        "evidence_packet_hash",
+        "batch_plan_hash",
+        "ready_for_transport",
+        "controlled_preflight_invocations",
+        "controlled_provider_invocations",
+        "provider_generation_calls",
+    }
+    if not isinstance(response, dict) or set(response) != expected_fields:
+        raise AcceptanceBlocked("controlled_preflight_output_schema_invalid")
+    if (
+        response["status"] != "controlled_preflight_complete"
+        or response["ready_for_transport"] is not True
+        or not all(
+            isinstance(response[key], str)
+            and re.fullmatch(r"[0-9a-f]{64}", response[key])
+            for key in ("evidence_packet_hash", "batch_plan_hash")
+        )
+        or response["controlled_preflight_invocations"] != 1
+        or response["controlled_provider_invocations"] != 0
+        or response["provider_generation_calls"] != 0
+    ):
+        raise AcceptanceBlocked("controlled_preflight_output_invalid")
+    return {
+        "controlled_preflight_invocations": 1,
+        "controlled_provider_invocations": 0,
+        "provider_generation_calls": 0,
+    }
+
+
 def _controlled_manifest_metrics(manifest: dict[str, Any]) -> dict[str, Any]:
     executions = (
         manifest.get("executions")
@@ -273,8 +400,7 @@ def _controlled_manifest_metrics(manifest: dict[str, Any]) -> dict[str, Any]:
         unsupported = sum(
             1
             for claim in accepted
-            if not isinstance(claim, dict)
-            or claim.get("support_status") != "supported"
+            if not isinstance(claim, dict) or claim.get("support_status") != "supported"
         )
         batch_count = int(item.get("batch_count") or 0)
         provider_calls = int(item.get("provider_call_count") or 0)
@@ -322,9 +448,7 @@ def _controlled_manifest_metrics(manifest: dict[str, Any]) -> dict[str, Any]:
         "repeat_identity_verified": True,
         "executions": summaries,
         "batch_count_per_execution": summaries[0]["batch_count"],
-        "accepted_claim_count_per_execution": summaries[0][
-            "accepted_claim_count"
-        ],
+        "accepted_claim_count_per_execution": summaries[0]["accepted_claim_count"],
         "rejected_claim_count_per_execution": 0,
         "unsupported_claim_count_per_execution": 0,
         "retry_count_per_execution": 0,
@@ -349,9 +473,7 @@ def _finalize(
         / "execution-1"
         / "canonical_report.json",
         "customer-report.html": controlled_root / "execution-1" / "report.html",
-        "upload-ready-report.html": controlled_root
-        / "execution-1"
-        / "report.html",
+        "upload-ready-report.html": controlled_root / "execution-1" / "report.html",
     }
     if any(not path.is_file() for path in sources.values()):
         raise AcceptanceBlocked("controlled_output_missing")
@@ -428,8 +550,10 @@ def main() -> int:
         physical = values["physical-files.json"]
         metadata = values["metadata.json"]
         current_phase = "physical_contract"
-        if not isinstance(physical, list) or len(physical) != 10 or any(
-            not isinstance(item, dict) for item in physical
+        if (
+            not isinstance(physical, list)
+            or len(physical) != 10
+            or any(not isinstance(item, dict) for item in physical)
         ):
             raise AcceptanceBlocked("physical_files_contract_invalid")
         current_phase = "corpus_hash"
@@ -438,9 +562,10 @@ def main() -> int:
             raise AcceptanceBlocked("canonical_corpus_sha_mismatch")
         current_phase = "intake_summary"
         intake_summary = values["intake-summary.json"]
-        if not isinstance(intake_summary, dict) or intake_summary.get(
-            "corpus_sha256"
-        ) != args.expected_corpus_sha:
+        if (
+            not isinstance(intake_summary, dict)
+            or intake_summary.get("corpus_sha256") != args.expected_corpus_sha
+        ):
             raise AcceptanceBlocked("intake_summary_corpus_sha_mismatch")
         current_phase = "document_set"
         validate_document_set(values, 10)
@@ -449,12 +574,11 @@ def main() -> int:
         current_phase = "database_preflight"
         database = database_preflight()
         current_phase = "provider_preflight"
-        provider = provider_preflight(
-            paths["policy_path"], args.expected_policy_sha
-        )
+        provider = provider_preflight(paths["policy_path"], args.expected_policy_sha)
 
         current_phase = "settings_resolution"
         from src.shared.config.settings import get_settings
+
         settings = get_settings()
         current_phase = "document_preparation"
         documents = _prepare_documents(
@@ -504,7 +628,9 @@ def main() -> int:
                         "head_sha": git["head_sha"],
                         "physical_file_count": 10,
                         "mapped_file_count": len(documents),
-                        "total_prepared_chunks": sum(len(item.chunks) for item in documents),
+                        "total_prepared_chunks": sum(
+                            len(item.chunks) for item in documents
+                        ),
                         "corpus_hash_profile": profile,
                         "application_records_created": 0,
                         "controlled_subprocess_starts": 0,
@@ -516,7 +642,9 @@ def main() -> int:
                 )
             )
             return 0
-        if not args.execute_provider:
+        if getattr(args, "static_only", False) or (
+            not args.execute_provider and not getattr(args, "prepare_only", False)
+        ):
             current_phase = "static_output"
             print(
                 json.dumps(
@@ -526,6 +654,78 @@ def main() -> int:
                 )
             )
             return 0
+        if getattr(args, "prepare_only", False):
+            current_phase = "stage_creation"
+            final_root = paths["output_root"]
+            stage = final_root.parent / f".{final_root.name}.partial.{uuid4().hex}"
+            stage.mkdir(parents=True, mode=0o750)
+            try:
+                current_phase = "static_stage_write"
+                _write_json(stage / "static-preflight.json", static)
+                current_phase = "application_data"
+                application = create_application_data(
+                    customer_name=args.customer_name,
+                    project_name=args.project_name,
+                    registry_number=args.registry_number,
+                    corpus_sha=args.expected_corpus_sha,
+                    metadata=metadata,
+                    parse_summary=values["deterministic-parse-summary.json"],
+                    logical_documents=values["logical-documents.json"],
+                    documents=documents,
+                )
+                current_phase = "post_persistence_preflight"
+                preflight = post_persistence_preflight(application["run_id"])
+                current_phase = "controlled_invocation"
+                invocation = _run_controlled_preflight_once(
+                    repo_root,
+                    application["run_id"],
+                    args.registry_number,
+                    paths["policy_path"],
+                    stage / "controlled-preflight",
+                )
+                current_phase = "success_output"
+                logical_documents = values["logical-documents.json"]
+                if args.private_verification_descriptor:
+                    _write_private_verification_descriptor(
+                        args.private_verification_descriptor,
+                        application=application,
+                        head_sha=git["head_sha"],
+                        registry=args.registry_number,
+                        corpus_sha=args.expected_corpus_sha,
+                        logical_count=len(logical_documents),
+                        preflight=preflight,
+                        invocation=invocation,
+                        controlled_output_root=stage / "controlled-preflight",
+                    )
+                print(
+                    json.dumps(
+                        {
+                            "status": "application_prepared",
+                            "marker": "ARV-001_APPLICATION_PREPARED",
+                            "head_sha": git["head_sha"],
+                            "physical_file_count": len(documents),
+                            "logical_document_count": len(logical_documents),
+                            "mapped_file_count": len(documents),
+                            "extracted_document_count": application[
+                                "extracted_document_count"
+                            ],
+                            "prepared_chunk_count": application["chunk_count"],
+                            "post_persistence_gate5_ready": preflight[
+                                "ready_for_controlled_execution"
+                            ],
+                            **invocation,
+                            "production_db_mutations": 0,
+                            "old_arv003_mutations": 0,
+                            "git_mutations": 0,
+                        },
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+                )
+                return 0
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
         current_phase = "stage_creation"
         final_root = paths["output_root"]
         stage = final_root.parent / f".{final_root.name}.partial.{uuid4().hex}"
@@ -577,9 +777,7 @@ def main() -> int:
                     "case_id": application["case_id"],
                     "run_id": application["run_id"],
                     "document_count": application["document_count"],
-                    "extracted_document_count": application[
-                        "extracted_document_count"
-                    ],
+                    "extracted_document_count": application["extracted_document_count"],
                     "chunk_count": application["chunk_count"],
                     "corpus_sha256": application["corpus_sha256"],
                     "source_graph_hash": application["source_graph_hash"],

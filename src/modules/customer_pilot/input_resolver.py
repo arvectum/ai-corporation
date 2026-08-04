@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
@@ -10,12 +11,13 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from src.modules.procurement_analysis.document_roles import detect_document_role
 from src.tender_research.models import (
     ProcurementDocumentChunk,
     ProcurementTender,
     ProcurementTenderDocument,
+    TenderAnalysisRun,
 )
-from src.modules.procurement_analysis.document_roles import detect_document_role
 
 
 @dataclass(frozen=True)
@@ -28,10 +30,10 @@ class CustomerRunInputs:
 
 
 def resolve_customer_run_inputs(
-    session: Session, registry_number: str
+    session: Session, registry_number: str, *, _exact_tender: ProcurementTender | None = None
 ) -> CustomerRunInputs:
     """Resolve persisted production-intake text; caller paths are never accepted."""
-    tender = session.scalar(
+    tender = _exact_tender or session.scalar(
         select(ProcurementTender)
         .where(
             (ProcurementTender.registry_number == registry_number)
@@ -87,14 +89,14 @@ def resolve_customer_run_inputs(
         document_identity = row.document_identity_hash or row.sha256
         if not document_identity:
             document_identity = sha256(
-                (f"{name}\0{text}").encode("utf-8")
+                (f"{name}\0{text}").encode()
             ).hexdigest()
         evidence_chunks = [
             {
                 "document_id": document_identity,
                 "document_name": name,
                 "chunk_id": sha256(
-                    f"{document_identity}\0{chunk.chunk_index}\0{chunk.text_hash}".encode("utf-8")
+                    f"{document_identity}\0{chunk.chunk_index}\0{chunk.text_hash}".encode()
                 ).hexdigest(),
                 "locator": {
                     "document_order": document_order,
@@ -133,3 +135,30 @@ def resolve_customer_run_inputs(
             409, "Persisted procurement intake has no usable extracted documents"
         )
     return CustomerRunInputs(registry_number, documents, identities, [], [])
+
+
+def resolve_customer_run_inputs_for_analysis_run(
+    session: Session, run: TenderAnalysisRun
+) -> CustomerRunInputs:
+    """Resolve only the tender persisted in this run's immutable intake binding.
+
+    Legacy runs without an explicit tender identity fail closed: selecting the
+    newest matching registry would silently substitute a different corpus.
+    """
+    try:
+        binding = json.loads(run.metadata_json or "{}")
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(409, "Analysis run intake binding is invalid") from exc
+    tender_id = binding.get("arv001_tender_id") if isinstance(binding, dict) else None
+    if not isinstance(tender_id, str) or not tender_id:
+        raise HTTPException(409, "Analysis run intake binding is missing")
+    tender = session.scalar(select(ProcurementTender).where(ProcurementTender.id == tender_id))
+    if not tender or (tender.registry_number != run.registry_number and tender.purchase_number != run.registry_number):
+        raise HTTPException(409, "Analysis run intake binding does not match registry")
+    expected_documents = binding.get("arv001_document_identity_hashes")
+    if not isinstance(expected_documents, list) or not expected_documents or not all(isinstance(item, str) for item in expected_documents):
+        raise HTTPException(409, "Analysis run document binding is invalid")
+    inputs = resolve_customer_run_inputs(session, run.registry_number, _exact_tender=tender)
+    if inputs.source_document_ids != expected_documents:
+        raise HTTPException(409, "Analysis run document binding does not match intake")
+    return inputs

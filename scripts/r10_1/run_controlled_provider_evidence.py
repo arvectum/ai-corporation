@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run one approved customer procurement twice through the R10.1 provider path.
 
 The API key is read only through the existing Settings secret boundary. The
@@ -13,17 +12,26 @@ import argparse
 import json
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 
-from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
+from src.modules.customer_pilot.input_resolver import (
+    resolve_customer_run_inputs_for_analysis_run,
+)
 from src.modules.customer_pilot.models import ProcurementCase
 from src.modules.procurement_analysis.r10_1_producer import (
     R10_1CanonicalProductionError,
+    build_r10_1_batch_plan,
+    build_r10_1_evidence_packet,
 )
-from src.modules.production_llm_analysis.batching import tokenizer_from_environment
+from src.modules.production_llm_analysis.batching import (
+    BatchPolicy,
+    tokenizer_from_environment,
+)
+from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
 from src.modules.production_llm_analysis.controlled_evidence import (
     ControlledEvidenceError,
     load_approved_provider_policy,
@@ -43,11 +51,27 @@ class ControlledRunnerConfigurationError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class PreparedControlledEvidence:
+    """Immutable pre-transport state shared by preflight and execution."""
+
+    run: TenderAnalysisRun
+    inputs: Any
+    metadata: dict[str, Any]
+    packet_hash: str
+    batch_plan_hash: str
+    transport_identity_hash: str
+    output_root: Path
+    token_counter: Any
+
+
 _FAILURE_CODE_PATTERN = re.compile(r"^[a-z0-9_.:-]{1,160}$")
 
 
 def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--expected-registry-number", required=True)
     parser.add_argument("--approved-policy", type=Path, required=True)
@@ -89,6 +113,44 @@ def _sanitized_producer_failure(exc: R10_1CanonicalProductionError) -> str:
 
 def _controlled_failure_message(exc: R10_1CanonicalProductionError) -> str:
     return f"controlled_provider_evidence_rejected:{_sanitized_producer_failure(exc)}"
+
+
+def prepare_controlled_provider_evidence(
+    *, session, run: TenderAnalysisRun, case: ProcurementCase, policy, base_url: str,
+    api_key: str, output_root: Path, token_counter: Any,
+) -> PreparedControlledEvidence:
+    """Build all deterministic evidence state without creating a provider transport."""
+    if run.status != "completed":
+        raise ControlledRunnerConfigurationError("analysis_run_not_completed")
+    inputs = resolve_customer_run_inputs_for_analysis_run(session, run)
+    binding = json.loads(run.metadata_json or "{}")
+    tender_id = binding.get("arv001_tender_id") if isinstance(binding, dict) else None
+    tender = session.scalar(select(ProcurementTender).where(ProcurementTender.id == tender_id))
+    if not tender:
+        raise ControlledRunnerConfigurationError("analysis_run_intake_binding_missing")
+    metadata = _metadata(run=run, case=case, tender=tender, documents=inputs.documents, warnings=inputs.warnings, limitations=inputs.limitations)
+    if output_root.exists():
+        raise ControlledRunnerConfigurationError("output_root_already_exists")
+    if not bool(getattr(token_counter, "persistent", False)):
+        raise ControlledRunnerConfigurationError("exact_persistent_tokenizer_not_configured")
+    evidence_chunks = [chunk for document in inputs.documents for chunk in (document.evidence_chunks or [])]
+    packet = build_r10_1_evidence_packet(
+        customer_id=str(run.customer_id), project_id=str(run.project_id), procurement_case_id=str(run.procurement_case_id),
+        run_id=str(run.id), registry_number=run.registry_number, documents=inputs.documents, evidence_fragments=evidence_chunks or None,
+    )
+    batch_policy = BatchPolicy.approved_32k(tokenizer_identity=str(token_counter.identity), measured_overhead=0)
+    plan = build_r10_1_batch_plan(
+        packet=packet, customer_id=str(run.customer_id), project_id=str(run.project_id), procurement_case_id=str(run.procurement_case_id),
+        registry_number=run.registry_number, run_id=str(run.id), documents=inputs.documents, provider_name=policy.provider,
+        model=policy.model, budget_policy=policy.budget, token_counter=token_counter, batch_policy=batch_policy,
+        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id, prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id, output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version, controlled=True,
+    )
+    transport_identity_hash = __import__("hashlib").sha256(f"{base_url}\0{policy.provider}\0{policy.model}".encode()).hexdigest()
+    # Validate the config boundary but do not retain or invoke a transport.
+    OpenAICompatibleTransportConfig(base_url=base_url, api_key=api_key)
+    return PreparedControlledEvidence(run, inputs, metadata, packet.packet_hash, plan.plan_hash, transport_identity_hash, output_root, token_counter)
 
 
 def _document_file_descriptor(document: Any) -> dict[str, Any]:
@@ -235,28 +297,6 @@ def main() -> int:
                     "procurement_case_registry_mismatch"
                 )
 
-            inputs = resolve_customer_run_inputs(session, run.registry_number)
-            tender = session.scalar(
-                select(ProcurementTender)
-                .where(
-                    (ProcurementTender.registry_number == run.registry_number)
-                    | (ProcurementTender.purchase_number == run.registry_number)
-                )
-                .order_by(
-                    ProcurementTender.updated_at.desc(),
-                    ProcurementTender.external_id.desc(),
-                    ProcurementTender.id.desc(),
-                )
-            )
-            metadata = _metadata(
-                run=run,
-                case=case,
-                tender=tender,
-                documents=inputs.documents,
-                warnings=inputs.warnings,
-                limitations=inputs.limitations,
-            )
-
         output_root = args.output_root or (
             Path(load_config().data_dir)
             / "r10-1-controlled-evidence"
@@ -272,25 +312,41 @@ def main() -> int:
             )
 
         token_counter = tokenizer_from_environment()
-        if not bool(getattr(token_counter, "persistent", False)):
-            raise ControlledRunnerConfigurationError(
-                "exact_persistent_tokenizer_not_configured"
+        prepared = prepare_controlled_provider_evidence(
+            session=session, run=run, case=case, policy=policy, base_url=base_url,
+            api_key=api_key, output_root=output_root, token_counter=token_counter,
+        )
+        if args.preflight_only:
+            print(
+                json.dumps(
+                    {
+                        "status": "controlled_preflight_complete",
+                        "evidence_packet_hash": prepared.packet_hash,
+                        "batch_plan_hash": prepared.batch_plan_hash,
+                        "ready_for_transport": True,
+                        "controlled_preflight_invocations": 1,
+                        "controlled_provider_invocations": 0,
+                        "provider_generation_calls": 0,
+                    },
+                    sort_keys=True,
+                )
             )
+            return 0
         bundle = run_controlled_provider_evidence(
-            output_root=output_root,
+            output_root=prepared.output_root,
             customer_id=str(run.customer_id),
             project_id=str(run.project_id),
             procurement_case_id=str(run.procurement_case_id),
             registry_number=run.registry_number,
             run_id=str(run.id),
-            metadata=metadata,
-            documents=inputs.documents,
+            metadata=prepared.metadata,
+            documents=prepared.inputs.documents,
             evidence_chunks=[
                 chunk
-                for document in inputs.documents
+                for document in prepared.inputs.documents
                 for chunk in (document.evidence_chunks or [])
             ],
-            token_counter=token_counter,
+            token_counter=prepared.token_counter,
             controlled=True,
             provider_factory=provider_factory,
             policy=policy,
@@ -319,8 +375,15 @@ def main() -> int:
     except R10_1CanonicalProductionError as exc:
         print(_controlled_failure_message(exc), file=sys.stderr)
         return 2
-    except Exception:
-        print("controlled_provider_evidence_failed", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - terminal boundary remains sanitized.
+        name = type(exc).__name__
+        if name == "HTTPException":
+            code = getattr(exc, "status_code", None)
+            if isinstance(code, int) and 400 <= code <= 599:
+                name = f"HTTPException_{code}"
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", name):
+            name = "Exception"
+        print(f"controlled_provider_evidence_failed:{name}", file=sys.stderr)
         return 3
 
 

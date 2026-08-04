@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from typing import Any
@@ -401,6 +402,31 @@ def create_application_data(
             response=response,
         )
         run_id = str(run_data["id"])
+        run = session.scalar(select(TenderAnalysisRun).where(TenderAnalysisRun.id == run_id))
+        if not run:
+            raise AcceptanceBlocked("application_run_missing_before_binding")
+        bound_documents = session.scalars(
+            select(ProcurementTenderDocument)
+            .where(ProcurementTenderDocument.tender_id == tender.id)
+            .order_by(
+                ProcurementTenderDocument.file_name.asc(),
+                func.coalesce(ProcurementTenderDocument.document_identity_hash, "").asc(),
+                func.coalesce(ProcurementTenderDocument.sha256, "").asc(),
+                ProcurementTenderDocument.id.asc(),
+            )
+        ).all()
+        run.metadata_json = json.dumps(
+            {
+                "arv001_tender_id": str(tender.id),
+                "arv001_document_identity_hashes": [
+                    row.document_identity_hash or row.sha256 for row in bound_documents
+                ],
+                "arv001_corpus_sha256": corpus_sha,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        session.commit()
         complete_run(profile.customer_id, case["id"], run_id, session)
         run = session.scalar(
             select(TenderAnalysisRun).where(TenderAnalysisRun.id == run_id)
