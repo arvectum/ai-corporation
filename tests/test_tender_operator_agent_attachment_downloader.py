@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import ClassVar
 from urllib.error import HTTPError, URLError
 
 import pytest
@@ -239,7 +240,7 @@ def test_default_transport_rebuilds_verified_opener_for_redirect(monkeypatch):
 
     class FakeResponse:
         status = 200
-        headers = {
+        headers: ClassVar[dict[str, str]] = {
             "Content-Length": "7",
             "Content-Type": "application/pdf",
         }
