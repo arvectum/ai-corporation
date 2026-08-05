@@ -6,10 +6,11 @@ orchestrator maps any aggregate failure to the public ``repository`` phase.
 This entrypoint narrows the aggregate precheck to repository, Python and static
 checks only; runtime assets remain validated by dedicated phases.
 
-The approved Gemma 4 GGUF and llama-server binary are bound to repository-owned
-exact SHA-256 identities. Exact byte identity is stronger than best-effort
-parsing of evolving GGUF metadata or help/version text. No unapproved asset is
-accepted, and provider/generation execution remains disabled.
+The approved Gemma 4 GGUF, official llama.cpp release executable and complete
+adjacent runtime bundle are bound to one repository-owned identity contract.
+Exact byte identity is stronger than best-effort parsing of evolving GGUF
+metadata or help/version text. No unapproved asset is accepted, and
+provider/generation execution remains disabled.
 
 The canonical entrypoint also preserves the strict prepared-database verifier's
 closed reason code. The legacy compatibility boundary intentionally returns
@@ -32,6 +33,11 @@ from typing import Any
 
 from scripts.arv001 import full_pre_provider as implementation
 from scripts.arv001 import prepared_verification as prepared_verification
+from scripts.arv001.approved_runtime import (
+    ApprovedRuntimeContractError,
+    canonical_runtime_bundle_tree,
+    load_approved_runtime_contract,
+)
 from scripts.arv001.prepared_verification import (
     PreparedVerificationError,
     canonical_document_identity_hashes,
@@ -43,11 +49,11 @@ from scripts.arv001.runtime_doctor import (
     validate_python,
 )
 
-_APPROVED_GGUF_SHA256 = (
-    "93567e57a8fe10b23569b9d9ec38cd005deedf71e29477c421a4b83f418a538b"
-)
-_APPROVED_LLAMA_SERVER_SHA256 = (
-    "bfb04423277c5912db8d27d7d96a3251d29231d28743371f68f5e345abc8f7ae"
+_APPROVED_RUNTIME = load_approved_runtime_contract()
+_APPROVED_GGUF_SHA256 = _APPROVED_RUNTIME.gguf_sha256
+_APPROVED_LLAMA_SERVER_SHA256 = _APPROVED_RUNTIME.llama_server_sha256
+_APPROVED_RUNTIME_BUNDLE_TREE_SHA256 = (
+    _APPROVED_RUNTIME.runtime_bundle_tree_sha256
 )
 _ORIGINAL_FAILURE = implementation._failure
 _PREPARED_VERIFICATION_REASON: str | None = None
@@ -118,9 +124,9 @@ def _validate_approved_gguf(
 def _validate_approved_llama_server(
     candidate: Path,
 ) -> tuple[dict[str, str] | None, tuple[str, ...]]:
-    """Accept only the exact approved executable arm64 llama-server bytes."""
+    """Accept only the attested executable and complete official runtime bundle."""
 
-    if candidate.is_symlink():
+    if candidate.name != "llama-server" or candidate.is_symlink():
         return None, ("llama_server_not_executable",)
     try:
         if not candidate.is_file() or not os.access(candidate, os.X_OK):
@@ -130,6 +136,21 @@ def _validate_approved_llama_server(
         return None, ("llama_server_not_executable",)
     if digest != _APPROVED_LLAMA_SERVER_SHA256:
         return None, ("llama_server_sha256_mismatch",)
+
+    try:
+        bundle_hash, regular_count, symlink_count = canonical_runtime_bundle_tree(
+            candidate.parent
+        )
+    except ApprovedRuntimeContractError:
+        return None, ("llama_runtime_bundle_invalid",)
+    if bundle_hash != _APPROVED_RUNTIME_BUNDLE_TREE_SHA256:
+        return None, ("llama_runtime_bundle_sha256_mismatch",)
+    if (
+        regular_count != _APPROVED_RUNTIME.runtime_bundle_regular_file_count
+        or symlink_count != _APPROVED_RUNTIME.runtime_bundle_symlink_count
+    ):
+        return None, ("llama_runtime_bundle_shape_mismatch",)
+
     return {
         "binary_sha256": digest,
         "binary_architecture": "arm64",

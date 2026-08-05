@@ -15,7 +15,7 @@ does not authorize `--execute-provider`.
 | symbols/schemas | guessed contracts | typed service boundary | service tests | none |
 | split roots/hash/legacy docs | wrong layout or bytes | split adapter/contract | split-root tests | source corpus |
 | env/export/prefix/settings | shell-only or stale names | allow-listed dotenv | aggregated env tests | private env |
-| tokenizer/GGUF/binary/runtime identity | unverified local runtime | doctor profile | doctor tests | local assets |
+| tokenizer/GGUF/binary/runtime identity | unverified local runtime | closed identity contract | runtime-contract tests | attested local assets |
 | persistence/snapshot/source graph/Gate 5 | static-only boundary | prepare-only | workflow tests | isolated SQLite |
 | controlled handoff | transport coupled to validation | preflight-only | zero-call test | loopback runtime |
 | report grounding/privacy | internal projection leakage | existing report validators | report fixture tests | none |
@@ -36,7 +36,8 @@ does not authorize `--execute-provider`.
 | unprefixed settings | legacy variable names | allow-list and stable code | unprefixed test | private environment |
 | old runtime env absent | obsolete manifest assumed required | current discovery/profile | discovery test | local runtime assets |
 | GGUF ambiguity | multiple candidates | bounded no-symlink discovery | ambiguity test | local runtime assets |
-| binary identity changed | old build number was treated as identity | hash/architecture/capability profile | binary validation test | compatible binary |
+| binary identity changed | local executable hash was incorrectly attributed to the official release | release, archive, executable and bundle hashes in one contract | official-runtime identity tests | intact official bundle |
+| substituted runtime dylib | executable-only hashing did not bind adjacent libraries | deterministic full-bundle tree hash | bundle substitution regression | intact official bundle |
 | generic exception | raw diagnostics leaked | sanitized terminal boundary | failure-injection test | none |
 | pre-stage boundary | static validation ended too early | `--prepare-only` | prepare-only test | isolated SQLite |
 | application persistence | direct SQL would bypass contracts | ORM/services only | persistence workflow test | isolated SQLite |
@@ -44,6 +45,33 @@ does not authorize `--execute-provider`.
 | controlled transport | preflight and generation coupled | `--preflight-only` stop | transport-spy test | loopback runtime |
 | report/privacy | fixture projections leaked internal fields | report scanner/projection validation | privacy fixture test | none |
 | merged-main guard | development branch was hard-coded after merge | exact main/detached validator | exact-main repository tests | clean exact checkout |
+
+## Approved local runtime identity
+
+`config/arv001/approved_local_runtime.json` is the single source of truth. The
+canonical runner loads and validates that closed contract; runtime hashes are no
+longer duplicated in executable code.
+
+The approved server runtime is the official `ggml-org/llama.cpp` release:
+
+- tag: `b10240`;
+- commit: `0b14b87d7c20cb753b94b96854dd7b45306fc696`;
+- asset: `llama-b10240-bin-macos-arm64.tar.gz`;
+- asset SHA-256: `771a9a9bc7c9c62d5a3e891f2b64c89bca4850a7c9aeaf0b0e3f26be216fd8c7`;
+- extracted `llama-server` SHA-256: `ff0e2445d93e2d6305c44cce6386db1020385194261dc184deaf0f37c7148d85`;
+- complete runtime-bundle tree SHA-256: `9fb4db02070f78327f8f57ee40a906ef7d13d13444cf0c491aec4ba22b413740`;
+- bundle shape: `43` regular files and `18` safe symlinks.
+
+`ARV001_LLAMA_SERVER_PATH` must point to `llama-server` inside the complete,
+unmodified extracted official bundle. Do not copy the executable into a separate
+directory: the validator hashes its parent directory as the runtime bundle and
+rejects missing, added, changed or escaping entries. Quarantine xattrs are not
+part of the tree identity, but file bytes, permission bits and safe symlink
+targets are bound.
+
+A pre-existing `llama-server` process is not authorization to reuse it. The
+managed acceptance runtime starts from the exact supplied bundle, binds only to
+loopback, and must be cleaned up by the runner.
 
 ## Canonical invocation
 
@@ -66,9 +94,10 @@ ARV001_LLAMA_SERVER_PATH=... \
 make arv001-full-pre-provider
 ```
 
-When exact paths are unavailable, set `ARV001_ASSET_ROOT` instead; bounded
-discovery then requires one approved GGUF and one compatible binary. Never set
-an API key, runtime URL, or tokenizer identity in this command.
+Use the exact GGUF path and the exact `llama-server` path inside the intact
+official bundle. Generic asset-root discovery is not an approval mechanism for
+this acceptance contour. Never set an API key, runtime URL or tokenizer identity
+in this command.
 
 The command starts no generation endpoint and must report
 `provider_generation_calls=0`. A failure is fail-closed and sanitized; do not
@@ -76,4 +105,4 @@ substitute older ARV-003 artifacts or use `--execute-provider`.
 
 The runtime doctor and preparation runner reject unsafe or ambiguous local
 inputs. Their reports intentionally omit local paths, credentials, source text,
-customer identifiers, and provider response bodies.
+customer identifiers and provider response bodies.

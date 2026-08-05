@@ -28,7 +28,19 @@ def test_unapproved_gguf_hash_is_rejected(monkeypatch, tmp_path: Path) -> None:
     assert errors == ("approved_gguf_sha256_mismatch",)
 
 
-def test_exact_approved_llama_server_hash_is_accepted(
+def _approved_bundle(monkeypatch) -> None:
+    monkeypatch.setattr(
+        canonical,
+        "canonical_runtime_bundle_tree",
+        lambda _: (
+            canonical._APPROVED_RUNTIME_BUNDLE_TREE_SHA256,
+            canonical._APPROVED_RUNTIME.runtime_bundle_regular_file_count,
+            canonical._APPROVED_RUNTIME.runtime_bundle_symlink_count,
+        ),
+    )
+
+
+def test_exact_approved_llama_server_and_bundle_are_accepted(
     monkeypatch, tmp_path: Path
 ) -> None:
     candidate = tmp_path / "llama-server"
@@ -39,6 +51,7 @@ def test_exact_approved_llama_server_hash_is_accepted(
         "_sha256",
         lambda _: canonical._APPROVED_LLAMA_SERVER_SHA256,
     )
+    _approved_bundle(monkeypatch)
 
     profile, errors = canonical._validate_approved_llama_server(candidate)
 
@@ -62,6 +75,33 @@ def test_unapproved_llama_server_hash_is_rejected(
 
     assert profile is None
     assert errors == ("llama_server_sha256_mismatch",)
+
+
+def test_approved_executable_with_substituted_bundle_is_rejected(
+    monkeypatch, tmp_path: Path
+) -> None:
+    candidate = tmp_path / "llama-server"
+    candidate.write_bytes(b"approved-binary")
+    os.chmod(candidate, 0o700)
+    monkeypatch.setattr(
+        canonical,
+        "_sha256",
+        lambda _: canonical._APPROVED_LLAMA_SERVER_SHA256,
+    )
+    monkeypatch.setattr(
+        canonical,
+        "canonical_runtime_bundle_tree",
+        lambda _: (
+            "0" * 64,
+            canonical._APPROVED_RUNTIME.runtime_bundle_regular_file_count,
+            canonical._APPROVED_RUNTIME.runtime_bundle_symlink_count,
+        ),
+    )
+
+    profile, errors = canonical._validate_approved_llama_server(candidate)
+
+    assert profile is None
+    assert errors == ("llama_runtime_bundle_sha256_mismatch",)
 
 
 def test_non_executable_llama_server_is_rejected(tmp_path: Path) -> None:
