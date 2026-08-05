@@ -1,9 +1,10 @@
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import pytest
 
 from src.modules.tender_operator_agent_demo.attachment_downloader import (
+    AttachmentTransportError,
     download_procurement_attachments,
 )
 from src.modules.tender_operator_agent_demo.procurement_schemas import (
@@ -149,6 +150,8 @@ def test_attachment_downloader_continues_after_download_error(tmp_path: Path):
 
     assert [item.name for item in result.saved] == ["good.txt"]
     assert [item.name for item in result.skipped] == ["bad.txt"]
+    assert result.skipped[0].error == "transport_error:RuntimeError"
+    assert "timeout" not in (result.skipped[0].note or "")
 
 
 def test_attachment_downloader_respects_total_size_limit(tmp_path: Path):
@@ -174,9 +177,11 @@ def test_default_transport_uses_repository_verified_opener(monkeypatch):
 
     url = "https://zakupki.gov.ru/docs/file.pdf"
     opened: list[tuple[str, int]] = []
-    created_for: list[str] = []
+    created_for: list[tuple[str, bool]] = []
 
     class FakeResponse:
+        status = 200
+
         def __init__(self) -> None:
             self.headers = {
                 "Content-Length": "7",
@@ -196,10 +201,15 @@ def test_default_transport_uses_repository_verified_opener(monkeypatch):
     class FakeOpener:
         def open(self, request, timeout: int):
             opened.append((request.full_url, timeout))
+            assert request.headers["Accept-encoding"] == "identity"
             return FakeResponse()
 
-    def fake_create_urllib_opener(target_url: str):
-        created_for.append(target_url)
+    def fake_create_urllib_opener(
+        target_url: str,
+        *,
+        follow_redirects: bool,
+    ):
+        created_for.append((target_url, follow_redirects))
         return FakeOpener()
 
     monkeypatch.setattr(
@@ -212,12 +222,106 @@ def test_default_transport_uses_repository_verified_opener(monkeypatch):
 
     assert payload == b"payload"
     assert content_type == "application/pdf"
-    assert created_for == [url]
+    assert created_for == [(url, False)]
     assert opened == [(url, 30)]
     assert not hasattr(
         attachment_downloader,
         "_download_with_unverified_context",
     )
+
+
+def test_default_transport_rebuilds_verified_opener_for_redirect(monkeypatch):
+    from src.modules.tender_operator_agent_demo import attachment_downloader
+
+    source_url = "https://zakupki.gov.ru/docs/file.pdf"
+    target_url = "https://int44.zakupki.gov.ru/docs/file.pdf"
+    created_for: list[tuple[str, bool]] = []
+
+    class FakeResponse:
+        status = 200
+        headers = {
+            "Content-Length": "7",
+            "Content-Type": "application/pdf",
+        }
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback):
+            return False
+
+        def read(self, _limit: int) -> bytes:
+            return b"payload"
+
+    class RedirectingOpener:
+        def open(self, request, timeout: int):
+            assert timeout == 30
+            raise HTTPError(
+                request.full_url,
+                302,
+                "Found",
+                {"Location": target_url},
+                None,
+            )
+
+    class SuccessfulOpener:
+        def open(self, request, timeout: int):
+            assert timeout == 30
+            assert request.full_url == target_url
+            return FakeResponse()
+
+    def fake_create_urllib_opener(
+        target: str,
+        *,
+        follow_redirects: bool,
+    ):
+        created_for.append((target, follow_redirects))
+        if target == source_url:
+            return RedirectingOpener()
+        return SuccessfulOpener()
+
+    monkeypatch.setattr(
+        attachment_downloader,
+        "create_urllib_opener",
+        fake_create_urllib_opener,
+    )
+
+    payload, content_type = attachment_downloader._default_transport(
+        source_url,
+        1024,
+    )
+
+    assert payload == b"payload"
+    assert content_type == "application/pdf"
+    assert created_for == [(source_url, False), (target_url, False)]
+
+
+def test_default_transport_rejects_foreign_redirect(monkeypatch):
+    from src.modules.tender_operator_agent_demo import attachment_downloader
+
+    source_url = "https://zakupki.gov.ru/docs/file.pdf"
+
+    class RedirectingOpener:
+        def open(self, request, timeout: int):
+            assert timeout == 30
+            raise HTTPError(
+                request.full_url,
+                302,
+                "Found",
+                {"Location": "https://evil.example/file.pdf"},
+                None,
+            )
+
+    monkeypatch.setattr(
+        attachment_downloader,
+        "create_urllib_opener",
+        lambda _url, *, follow_redirects: RedirectingOpener(),
+    )
+
+    with pytest.raises(AttachmentTransportError) as exc_info:
+        attachment_downloader._default_transport(source_url, 1024)
+
+    assert exc_info.value.code == "redirect_url_rejected"
 
 
 def test_default_transport_fails_closed_on_certificate_error(monkeypatch):
@@ -238,12 +342,13 @@ def test_default_transport_fails_closed_on_certificate_error(monkeypatch):
     monkeypatch.setattr(
         attachment_downloader,
         "create_urllib_opener",
-        lambda _url: opener,
+        lambda _url, *, follow_redirects: opener,
     )
 
-    with pytest.raises(RuntimeError, match="CERTIFICATE_VERIFY_FAILED"):
+    with pytest.raises(AttachmentTransportError) as exc_info:
         attachment_downloader._default_transport(url, 1024)
 
+    assert exc_info.value.code == "tls_certificate_verify_failed"
     assert opener.calls == 1
     assert not hasattr(
         attachment_downloader,
