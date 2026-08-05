@@ -8,7 +8,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request
 
-from src.modules.tender_operator_agent_demo.procurement_schemas import ProcurementAttachment
+from src.modules.tender_operator_agent_demo.procurement_schemas import (
+    ProcurementAttachment,
+)
 from src.shared.network.http_client import create_urllib_opener
 
 
