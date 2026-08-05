@@ -177,10 +177,11 @@ def test_default_transport_uses_repository_verified_opener(monkeypatch):
     created_for: list[str] = []
 
     class FakeResponse:
-        headers = {
-            "Content-Length": "7",
-            "Content-Type": "application/pdf",
-        }
+        def __init__(self) -> None:
+            self.headers = {
+                "Content-Length": "7",
+                "Content-Type": "application/pdf",
+            }
 
         def __enter__(self):
             return self
@@ -225,7 +226,8 @@ def test_default_transport_fails_closed_on_certificate_error(monkeypatch):
     url = "https://zakupki.gov.ru/docs/file.pdf"
 
     class FailingOpener:
-        calls = 0
+        def __init__(self) -> None:
+            self.calls = 0
 
         def open(self, _request, timeout: int):
             assert timeout == 30
