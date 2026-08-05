@@ -1,18 +1,30 @@
 from __future__ import annotations
 
 import re
-import ssl
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import HTTPSHandler, ProxyHandler, Request, build_opener
+from urllib.request import Request
 
 from src.modules.tender_operator_agent_demo.procurement_schemas import ProcurementAttachment
+from src.shared.network.http_client import create_urllib_opener
 
 
-ALLOWED_ATTACHMENT_EXTENSIONS = {".pdf", ".doc", ".docx", ".xlsx", ".xls", ".txt", ".csv", ".zip", ".xml", ".html", ".htm"}
+ALLOWED_ATTACHMENT_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xlsx",
+    ".xls",
+    ".txt",
+    ".csv",
+    ".zip",
+    ".xml",
+    ".html",
+    ".htm",
+}
 DEFAULT_ALLOWED_DOMAINS = {"zakupki.gov.ru", "int44.zakupki.gov.ru"}
 AttachmentTransport = Callable[[str, int], tuple[bytes, str | None]]
 
@@ -104,7 +116,10 @@ def download_procurement_attachments(
             continue
 
         try:
-            payload, content_type = (transport or _default_transport)(attachment.url, max_file_size_bytes)
+            payload, content_type = (transport or _default_transport)(
+                attachment.url,
+                max_file_size_bytes,
+            )
         except Exception as exc:  # noqa: BLE001
             result.skipped.append(
                 AttachmentDownloadManifestItem(
@@ -166,7 +181,10 @@ def download_procurement_attachments(
                 stored_name=stored_name,
                 extension=extension,
                 status="saved",
-                note=f"Файл сохранён локально. Content-Type: {content_type or 'unknown'}.",
+                note=(
+                    "Файл сохранён локально. "
+                    f"Content-Type: {content_type or 'unknown'}."
+                ),
                 size_bytes=size,
                 source_url=attachment.url,
                 source_type="remote_attachment",
@@ -192,46 +210,25 @@ def download_procurement_attachments(
     return result
 
 
-def _default_transport(url: str, max_file_size_bytes: int) -> tuple[bytes, str | None]:
-    request = Request(url, headers={"User-Agent": "ai-corporation-tender-demo/1.0"}, method="GET")
-    ssl_context = _build_ssl_context()
+def _default_transport(
+    url: str,
+    max_file_size_bytes: int,
+) -> tuple[bytes, str | None]:
+    request = Request(
+        url,
+        headers={"User-Agent": "ai-corporation-tender-demo/1.0"},
+        method="GET",
+    )
     try:
-        opener = build_opener(ProxyHandler({}), HTTPSHandler(context=ssl_context))
+        opener = create_urllib_opener(url)
         with opener.open(request, timeout=30) as response:
             content_length = response.headers.get("Content-Length")
             if content_length and int(content_length) > max_file_size_bytes:
                 raise RuntimeError("file exceeds size limit")
-            return response.read(max_file_size_bytes + 1), response.headers.get("Content-Type")
-    except ssl.SSLError as exc:
-        if "CERTIFICATE_VERIFY_FAILED" not in str(exc):
-            raise RuntimeError(str(exc)) from exc
-        return _download_with_unverified_context(request, max_file_size_bytes)
-    except HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code}") from exc
-    except URLError as exc:
-        if "CERTIFICATE_VERIFY_FAILED" in str(exc.reason):
-            return _download_with_unverified_context(request, max_file_size_bytes)
-        raise RuntimeError(str(exc.reason)) from exc
-
-
-def _build_ssl_context() -> ssl.SSLContext:
-    try:
-        import certifi
-
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        return ssl.create_default_context()
-
-
-def _download_with_unverified_context(request: Request, max_file_size_bytes: int) -> tuple[bytes, str | None]:
-    fallback_context = ssl._create_unverified_context()  # noqa: SLF001
-    opener = build_opener(ProxyHandler({}), HTTPSHandler(context=fallback_context))
-    try:
-        with opener.open(request, timeout=30) as response:
-            content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > max_file_size_bytes:
-                raise RuntimeError("file exceeds size limit")
-            return response.read(max_file_size_bytes + 1), response.headers.get("Content-Type")
+            return (
+                response.read(max_file_size_bytes + 1),
+                response.headers.get("Content-Type"),
+            )
     except HTTPError as exc:
         raise RuntimeError(f"HTTP {exc.code}") from exc
     except URLError as exc:
@@ -243,7 +240,10 @@ def _validate_url(url: str, allowed_domains: set[str]) -> str | None:
     if parsed.scheme not in {"http", "https"}:
         return "Разрешены только http/https ссылки."
     hostname = (parsed.hostname or "").lower()
-    if not any(hostname == domain or hostname.endswith(f".{domain}") for domain in allowed_domains):
+    if not any(
+        hostname == domain or hostname.endswith(f".{domain}")
+        for domain in allowed_domains
+    ):
         return "Домен вложения не входит в allowlist источника."
     return None
 
