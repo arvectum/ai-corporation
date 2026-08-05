@@ -374,7 +374,7 @@ def _extract_public_page_context(source_url: str) -> dict[str, Any]:
     try:
         with opener.open(request, timeout=20) as response:
             page_html = response.read(PUBLIC_EIS_MAX_RESPONSE_BYTES + 1).decode("utf-8", errors="replace")
-    except Exception:
+    except (OSError, ValueError):
         return {}
     if len(page_html) > PUBLIC_EIS_MAX_RESPONSE_BYTES:
         return {}
@@ -501,7 +501,7 @@ def _fetch_public_notice_attachments(source_url: str) -> list[ProcurementAttachm
     try:
         with opener.open(request, timeout=20) as response:
             page_html = response.read(PUBLIC_EIS_MAX_RESPONSE_BYTES + 1).decode("utf-8", errors="replace")
-    except Exception:
+    except (OSError, ValueError):
         return []
     if len(page_html) > PUBLIC_EIS_MAX_RESPONSE_BYTES:
         return []
@@ -514,6 +514,16 @@ def _role_hint_from_procurement_attachment(name: str) -> str | None:
         return None
     if any(token in lowered for token in ("ткп", "кп", "коммерческое предложение", "supplier quote")):
         return "tkp"
+    if any(
+        token in lowered
+        for token in (
+            "реквизиты обеспечения исполнения контракта",
+            "реквизиты для обеспечения исполнения",
+            "обеспечение исполнения контракта",
+            "contract performance security",
+        )
+    ):
+        return "contract_security"
     if any(
         token in lowered
         for token in (
@@ -553,6 +563,7 @@ def _document_kind_from_role_hint(role_hint: str | None) -> str:
         "notice": "eis_notice",
         "technical_spec": "technical_specification",
         "contract_draft": "contract_draft",
+        "contract_security": "contract_performance_security",
         "tkp": "attachment",
     }
     return mapping.get(role_hint or "", "attachment")

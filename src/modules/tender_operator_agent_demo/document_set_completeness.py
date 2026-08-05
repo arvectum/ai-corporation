@@ -26,6 +26,26 @@ SECURITY_KINDS = {
 
 
 def _normalized_kind(item: dict[str, Any]) -> str:
+    name = str(
+        item.get("original_name")
+        or item.get("display_name")
+        or item.get("stored_name")
+        or ""
+    ).strip()
+    lowered = name.lower()
+    # Older retained EIS runs could classify this attachment as a generic
+    # contract draft.  Its explicit security wording is more specific and
+    # must retain its own logical document group when the corpus is rebuilt.
+    if any(
+        token in lowered
+        for token in (
+            "реквизиты обеспечения исполнения контракта",
+            "реквизиты для обеспечения исполнения",
+            "обеспечение исполнения контракта",
+            "contract performance security",
+        )
+    ):
+        return "contract_performance_security"
     explicit_candidates = {
         str(item.get("role_hint") or "").strip().lower(),
         str(item.get("document_kind") or "").strip().lower(),
@@ -43,22 +63,6 @@ def _normalized_kind(item: dict[str, Any]) -> str:
     if explicit_candidates & SECURITY_KINDS:
         return "contract_performance_security"
 
-    name = str(
-        item.get("original_name")
-        or item.get("display_name")
-        or item.get("stored_name")
-        or ""
-    ).strip()
-    lowered = name.lower()
-    if any(
-        token in lowered
-        for token in (
-            "реквизиты обеспечения исполнения контракта",
-            "обеспечение исполнения контракта",
-            "contract performance security",
-        )
-    ):
-        return "contract_performance_security"
     if any(
         token in lowered
         for token in (

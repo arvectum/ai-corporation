@@ -10,6 +10,10 @@ from src.modules.tender_operator_agent_demo.document_set_completeness import (
 from src.modules.tender_operator_agent_demo.eis_notice_parser import (
     extract_notice_attachments,
 )
+from src.modules.tender_operator_agent_demo.procurement_intake_service import (
+    _document_kind_from_role_hint,
+    _role_hint_from_procurement_attachment,
+)
 
 
 def test_document_set_notice_only_is_fail_closed():
@@ -99,6 +103,24 @@ def test_complete_eis_corpus_keeps_six_customer_logical_documents():
         "price_justification": 1,
         "technical_specification": 1,
     }
+
+
+def test_contract_security_attachment_overrides_stale_contract_draft_kind():
+    item = {
+        "original_name": "Реквизиты для обеспечения исполнения контракта.docx",
+        "document_kind": "contract_draft",
+        "role_hint": "contract_draft",
+    }
+
+    assert build_document_set_summary([item])["kind_counts"] == {
+        "contract_performance_security": 1
+    }
+    assert _role_hint_from_procurement_attachment(item["original_name"]) == (
+        "contract_security"
+    )
+    assert _document_kind_from_role_hint("contract_security") == (
+        "contract_performance_security"
+    )
 
 
 def test_notice_attachment_parser_supports_elements_and_href_attributes():

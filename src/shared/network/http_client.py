@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import ssl
 from urllib.parse import urlparse
-from urllib.request import HTTPSHandler, ProxyHandler, build_opener
+from urllib.request import (
+    HTTPRedirectHandler,
+    HTTPSHandler,
+    ProxyHandler,
+    build_opener,
+)
 
 import httpx
 
@@ -12,6 +17,19 @@ from src.shared.network.etp_trust import (
     policy_from_environment,
     should_bypass_proxy,
 )
+
+
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(
+        self,
+        req,
+        fp,
+        code,
+        msg,
+        headers,
+        newurl,
+    ):
+        return None
 
 
 def create_httpx_client(
@@ -41,9 +59,16 @@ def create_urllib_context(
     )
 
 
-def create_urllib_opener(url: str, *, policy: TrustPolicy | None = None):
+def create_urllib_opener(
+    url: str,
+    *,
+    policy: TrustPolicy | None = None,
+    follow_redirects: bool = True,
+):
     context, bypass_proxy = create_urllib_context(url, policy=policy)
     handlers = [HTTPSHandler(context=context)]
     if bypass_proxy:
         handlers.append(ProxyHandler({}))
+    if not follow_redirects:
+        handlers.append(_NoRedirectHandler())
     return build_opener(*handlers)
