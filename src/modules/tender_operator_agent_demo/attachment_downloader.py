@@ -13,7 +13,6 @@ from src.modules.tender_operator_agent_demo.procurement_schemas import (
 )
 from src.shared.network.http_client import create_urllib_opener
 
-
 ALLOWED_ATTACHMENT_EXTENSIONS = {
     ".pdf",
     ".doc",
