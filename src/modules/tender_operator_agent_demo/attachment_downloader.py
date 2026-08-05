@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import re
+import ssl
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request
 
 from src.modules.tender_operator_agent_demo.procurement_schemas import (
@@ -27,7 +28,15 @@ ALLOWED_ATTACHMENT_EXTENSIONS = {
     ".htm",
 }
 DEFAULT_ALLOWED_DOMAINS = {"zakupki.gov.ru", "int44.zakupki.gov.ru"}
+REDIRECT_STATUS_CODES = {301, 302, 303, 307, 308}
+MAX_REDIRECTS = 5
 AttachmentTransport = Callable[[str, int], tuple[bytes, str | None]]
+
+
+class AttachmentTransportError(RuntimeError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 @dataclass
@@ -117,22 +126,46 @@ def download_procurement_attachments(
             continue
 
         try:
-            payload, content_type = (transport or _default_transport)(
-                attachment.url,
-                max_file_size_bytes,
-            )
-        except Exception as exc:  # noqa: BLE001
+            if transport is None:
+                payload, content_type = _default_transport(
+                    attachment.url,
+                    max_file_size_bytes,
+                    allowed_domains=allowed_domains,
+                )
+            else:
+                payload, content_type = transport(
+                    attachment.url,
+                    max_file_size_bytes,
+                )
+        except AttachmentTransportError as exc:
+            error_code = exc.code
             result.skipped.append(
                 AttachmentDownloadManifestItem(
                     name=display_name,
                     stored_name=None,
                     extension=extension,
                     status="skipped",
-                    note=f"Не удалось скачать вложение: {exc}",
+                    note=f"Не удалось скачать вложение ({error_code}).",
                     source_url=attachment.url,
                     source_type="remote_attachment",
                     document_kind=getattr(attachment, "document_kind", None),
-                    error=str(exc),
+                    error=error_code,
+                )
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001
+            error_code = f"transport_error:{type(exc).__name__}"
+            result.skipped.append(
+                AttachmentDownloadManifestItem(
+                    name=display_name,
+                    stored_name=None,
+                    extension=extension,
+                    status="skipped",
+                    note=f"Не удалось скачать вложение ({error_code}).",
+                    source_url=attachment.url,
+                    source_type="remote_attachment",
+                    document_kind=getattr(attachment, "document_kind", None),
+                    error=error_code,
                 )
             )
             continue
@@ -214,26 +247,124 @@ def download_procurement_attachments(
 def _default_transport(
     url: str,
     max_file_size_bytes: int,
+    *,
+    allowed_domains: set[str] | None = None,
+    max_redirects: int = MAX_REDIRECTS,
 ) -> tuple[bytes, str | None]:
-    request = Request(
-        url,
-        headers={"User-Agent": "ai-corporation-tender-demo/1.0"},
-        method="GET",
-    )
-    try:
-        opener = create_urllib_opener(url)
-        with opener.open(request, timeout=30) as response:
+    allowed_domains = allowed_domains or DEFAULT_ALLOWED_DOMAINS
+    current_url = url
+    visited: set[str] = set()
+
+    for redirect_count in range(max_redirects + 1):
+        url_error = _validate_url(current_url, allowed_domains)
+        if url_error:
+            code = "url_rejected" if redirect_count == 0 else "redirect_url_rejected"
+            raise AttachmentTransportError(code)
+        if current_url in visited:
+            raise AttachmentTransportError("redirect_loop")
+        visited.add(current_url)
+
+        request = Request(
+            current_url,
+            headers={
+                "Accept": "*/*",
+                "Accept-Encoding": "identity",
+                "Connection": "close",
+                "User-Agent": "ai-corporation-tender-demo/1.0",
+            },
+            method="GET",
+        )
+        try:
+            opener = create_urllib_opener(
+                current_url,
+                follow_redirects=False,
+            )
+            response = opener.open(request, timeout=30)
+        except HTTPError as exc:
+            if exc.code in REDIRECT_STATUS_CODES:
+                current_url = _next_redirect_url(
+                    current_url,
+                    exc.headers.get("Location") if exc.headers else None,
+                    redirect_count=redirect_count,
+                    max_redirects=max_redirects,
+                    allowed_domains=allowed_domains,
+                )
+                continue
+            raise AttachmentTransportError(f"http_status:{exc.code}") from exc
+        except URLError as exc:
+            raise _normalized_url_error(exc) from exc
+        except ssl.SSLCertVerificationError as exc:
+            raise AttachmentTransportError(
+                "tls_certificate_verify_failed"
+            ) from exc
+        except ssl.SSLError as exc:
+            raise AttachmentTransportError("tls_error") from exc
+        except TimeoutError as exc:
+            raise AttachmentTransportError("network_timeout") from exc
+        except OSError as exc:
+            raise AttachmentTransportError(
+                f"network_os_error:{type(exc).__name__}"
+            ) from exc
+
+        with response:
+            status = getattr(response, "status", None)
+            if status in REDIRECT_STATUS_CODES:
+                current_url = _next_redirect_url(
+                    current_url,
+                    response.headers.get("Location"),
+                    redirect_count=redirect_count,
+                    max_redirects=max_redirects,
+                    allowed_domains=allowed_domains,
+                )
+                continue
             content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > max_file_size_bytes:
-                raise RuntimeError("file exceeds size limit")
+            if content_length:
+                try:
+                    if int(content_length) > max_file_size_bytes:
+                        raise AttachmentTransportError("file_too_large")
+                except ValueError as exc:
+                    raise AttachmentTransportError(
+                        "invalid_content_length"
+                    ) from exc
             return (
                 response.read(max_file_size_bytes + 1),
                 response.headers.get("Content-Type"),
             )
-    except HTTPError as exc:
-        raise RuntimeError(f"HTTP {exc.code}") from exc
-    except URLError as exc:
-        raise RuntimeError(str(exc.reason)) from exc
+
+    raise AttachmentTransportError("too_many_redirects")
+
+
+def _next_redirect_url(
+    current_url: str,
+    location: str | None,
+    *,
+    redirect_count: int,
+    max_redirects: int,
+    allowed_domains: set[str],
+) -> str:
+    if redirect_count >= max_redirects:
+        raise AttachmentTransportError("too_many_redirects")
+    if not location:
+        raise AttachmentTransportError("redirect_missing_location")
+    next_url = urljoin(current_url, location)
+    if _validate_url(next_url, allowed_domains):
+        raise AttachmentTransportError("redirect_url_rejected")
+    return next_url
+
+
+def _normalized_url_error(exc: URLError) -> AttachmentTransportError:
+    reason = exc.reason
+    if isinstance(reason, ssl.SSLCertVerificationError) or (
+        "CERTIFICATE_VERIFY_FAILED" in str(reason)
+    ):
+        return AttachmentTransportError("tls_certificate_verify_failed")
+    if isinstance(reason, ssl.SSLError):
+        return AttachmentTransportError("tls_error")
+    if isinstance(reason, TimeoutError):
+        return AttachmentTransportError("network_timeout")
+    return AttachmentTransportError(
+        f"network_error:{type(reason).__name__}"
+    )
 
 
 def _validate_url(url: str, allowed_domains: set[str]) -> str | None:
