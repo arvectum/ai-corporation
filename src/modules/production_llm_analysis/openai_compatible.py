@@ -76,7 +76,7 @@ _ALLOWED_RISK_CLASSIFICATIONS = (
 )
 
 
-def build_compact_wire_output_schema(
+def _build_compact_wire_output_schema_internal(
     *,
     max_claims: int | None,
     allowed_field_paths: list[str] | None = None,
@@ -239,6 +239,11 @@ def build_compact_wire_output_schema(
     return schema
 
 
+# Public alias kept for backward compat in non-live contexts;
+# live contract is build_live_compact_llama_schema(request).
+build_compact_wire_output_schema = _build_compact_wire_output_schema_internal
+
+
 @dataclass(frozen=True)
 class OpenAICompatibleTransportConfig:
     base_url: str
@@ -384,6 +389,7 @@ class OpenAICompatibleProductionLLMProvider:
             **self._failure_metadata(analysis_started, attempt_latencies_ms),
         )
 
+
     def _headers(self) -> dict[str, str]:
         headers = {
             "Accept": "application/json",
@@ -400,11 +406,15 @@ class OpenAICompatibleProductionLLMProvider:
         if request.map_mode and request.provider_wire_contract_version not in {"compact-safe-v1", "compact-safe-v2"}:
             raise ValueError("provider_wire_contract_unsupported")
         if compact and request.provider_wire_contract_version == "compact-safe-v2":
-            output_contract = build_compact_wire_output_schema(
-                max_claims=request.max_claims,
-                allowed_field_paths=list(request.allowed_field_paths) if request.allowed_field_paths else None,
+            # Unified live schema: single canonical implementation used for
+            # response_format.schema, output_contract, hashing, batch measurement,
+            # exact tokenizer proof, parser and pre-provider verification.
+            from src.modules.production_llm_analysis.llama_schema_constraint import (
+                build_live_compact_llama_schema as _build_live_schema,
             )
-            claim_schema: dict[str, Any] | None = None  # bounded schema already built
+
+            output_contract = _build_live_schema(request)
+            claim_schema: dict[str, Any] | None = None  # live schema already built
         else:
             claim_schema = CompactWireProviderClaim.model_json_schema() if compact else ProviderClaim.model_json_schema()
             if request.allowed_field_paths and compact:

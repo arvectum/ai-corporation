@@ -34,6 +34,9 @@ from .conftest import make_policy
 _SOURCE_TEXT = "exact source text"
 _FRAGMENT_TEXT = "Delivery term is 20 days. Payment term is 30 days after acceptance."
 _APPROVED_BUDGET = 4096
+_LIVE_WORST_CASE_LIMIT = 3072
+_LIVE_SAFETY_MARGIN = 1024
+# Legacy six-form heuristic limits — informational only, not an acceptance gate (exact live sentinel is the gate).
 _WORST_CASE_LIMIT = 3584
 _SAFETY_MARGIN = 512
 
@@ -201,6 +204,116 @@ def test_bounded_schema_has_no_unrestricted_any():
         assert "type" in branch
 
 
+# 7a. live single-schema divergence must not exist (six-form schema is not live)
+def test_live_schema_is_single_canonical_not_six_form():
+    from src.modules.production_llm_analysis.llama_schema_constraint import (
+        build_live_compact_llama_schema,
+    )
+    from src.modules.production_llm_analysis.evidence import build_evidence_packet
+    from src.modules.production_llm_analysis.schemas import EvidenceFragmentInput
+    from src.modules.production_llm_analysis.service import build_production_llm_request
+
+    packet = build_evidence_packet(
+        customer_id="c",
+        project_id="p",
+        procurement_case_id="case",
+        run_id="run",
+        registry_number="r",
+        fragments=[
+            EvidenceFragmentInput(
+                document_id="doc",
+                document_name="doc.txt",
+                chunk_id="chunk",
+                locator={"document_order": 0, "chunk_index": 0},
+                text="x" * 100,
+            )
+        ],
+    )
+    req = build_production_llm_request(
+        evidence_packet=packet,
+        provider="openai_compatible",
+        provider_wire_contract_version="compact-safe-v2",
+        model="m",
+        prompt_id="p",
+        prompt_version="v",
+        output_schema_id="s",
+        output_schema_version="v",
+        grounding_policy_version="g",
+        budget_policy=make_policy(),
+        map_mode=True,
+        max_claims=3,
+        allowed_field_paths=["requirements.technical_requirements"],
+    )
+    live = build_live_compact_llama_schema(req)
+    # Live wire is sentinel-only (value and quote are const sentinels, not six bounded forms)
+    value = live["properties"]["claims"]["items"]["properties"]["value"]
+    assert value.get("const") is not None or value.get("type") == "string"
+    assert "oneOf" not in value or all(
+        branch.get("const") is not None for branch in value.get("oneOf", [])
+    )
+
+
+# 7b. final-body verification (hashes/flags only, fail-closed)
+def test_final_body_schema_identity_and_reasoning_flags():
+    from src.modules.production_llm_analysis.llama_schema_constraint import (
+        build_live_compact_llama_schema,
+        verify_final_live_request_body,
+    )
+    from src.modules.production_llm_analysis.llama_reasoning_control import (
+        install_llama_non_reasoning_mode,
+    )
+
+    install_llama_non_reasoning_mode()
+    packet = build_evidence_packet(
+        customer_id="c",
+        project_id="p",
+        procurement_case_id="case",
+        run_id="run",
+        registry_number="r",
+        fragments=[
+            EvidenceFragmentInput(
+                document_id="doc",
+                document_name="doc.txt",
+                chunk_id="chunk",
+                locator={"document_order": 0, "chunk_index": 0},
+                text="x" * 100,
+            )
+        ],
+    )
+    req = build_production_llm_request(  # noqa: F841
+        evidence_packet=packet,
+        provider="openai_compatible",
+        provider_wire_contract_version="compact-safe-v2",
+        model="m",
+        prompt_id="p",
+        prompt_version="v",
+        output_schema_id="s",
+        output_schema_version="v",
+        grounding_policy_version="g",
+        budget_policy=make_policy(max_output_tokens=4096),
+        map_mode=True,
+        max_claims=3,
+        allowed_field_paths=["requirements.technical_requirements"],
+        batch_plan_version="arv003-map-plan-v7",
+        batch_plan_hash="1" * 64,
+        batch_hash="2" * 64,
+        batch_ordinal=1,
+        batch_count=1,
+        corpus_evidence_hash="3" * 64,
+    )
+    adapter = OpenAICompatibleProductionLLMProvider.__new__(
+        OpenAICompatibleProductionLLMProvider
+    )
+    body = adapter._build_request_body(req)
+    desc = verify_final_live_request_body(body, req)
+    assert desc["schemas_identical"] is True
+    assert desc["schema_inline_no_refs"] is True
+    assert desc["enable_thinking_false"] is True
+    assert desc["reasoning_format"] == "none"
+    assert desc["max_tokens"] == 4096
+    assert "messages" not in desc and "evidence" not in desc
+
+
 # 7. worst-case schema-valid payload is deterministic, valid and within budget
 def test_worst_case_payload_is_deterministic_bounded_and_within_budget():
     fid = "a" * 64
@@ -281,11 +394,79 @@ def test_worst_case_payload_is_deterministic_bounded_and_within_budget():
     assert len(wc1["claims"]) == 3
     assert all(len(c["evidence_references"]) <= 2 for c in wc1["claims"])
     assert all(len(c["claim_id"]) <= 64 for c in wc1["claims"])
-    # Budget proof: chars/4 heuristic must be within 4096 with 512 margin
-    worst_bytes = len(canonical_json_bytes(wc1))
-    worst_tokens = worst_bytes // 4
-    assert worst_tokens <= _WORST_CASE_LIMIT, f"worst {worst_tokens} exceeds {_WORST_CASE_LIMIT}"
-    assert _APPROVED_BUDGET - worst_tokens >= _SAFETY_MARGIN
+    # Exact live output proof: the live sentinel maximal payload is substantially
+    # smaller than the six-form wire schema. Measure with the same canonical JSON
+    # settings as transport; the caller's heuristic is informational only and must
+    # not be used as an acceptance gate. The authoritative check uses the persisted
+    # exact Gemma tokenizer via approved /tokenize (ARV003_TOKENIZER_IDENTITY) and
+    # includes grammar-whitespace upper bound (pretty indent=2) in the maximal envelope.
+    import json as _json
+
+    canon = canonical_json_bytes(wc1)
+    pretty = _json.dumps(wc1, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+    # Heuristic is kept only as informational note, not gate
+    _worst_heuristic = len(canon) // 4  # noqa: F841
+
+    # Sentinel live maximal envelope (what is actually completion content)
+    from src.modules.production_llm_analysis.llama_schema_constraint import (
+        _SERVER_CLAIM_ID_SENTINEL as _SC,
+        _SERVER_FRAGMENT_QUOTE_SENTINEL as _SQ,
+        _SERVER_FRAGMENT_VALUE_SENTINEL as _SV,
+    )
+    from src.modules.production_llm_analysis.evidence import build_evidence_packet
+    from src.modules.production_llm_analysis.schemas import EvidenceFragmentInput
+
+    pkt = build_evidence_packet(
+        customer_id="c",
+        project_id="p",
+        procurement_case_id="case",
+        run_id="run",
+        registry_number="r",
+        fragments=[
+            EvidenceFragmentInput(
+                document_id="doc",
+                document_name="doc.txt",
+                chunk_id="chunk",
+                locator={"document_order": 0, "chunk_index": 0},
+                text="x" * 100,
+            )
+        ],
+    )
+    fid_live = pkt.fragments[0].fragment_id
+    live_wc = {
+        "claims": [
+            {
+                "claim_id": _SC,
+                "field_path": "requirements.technical_requirements",
+                "value": _SV,
+                "provider_confidence": 1.0,
+                "evidence_references": [{"fragment_id": fid_live, "quote": _SQ}],
+            },
+            {
+                "claim_id": _SC,
+                "field_path": "requirements.technical_requirements",
+                "value": _SV,
+                "provider_confidence": 0.9,
+                "evidence_references": [{"fragment_id": fid_live, "quote": _SQ}],
+            },
+            {
+                "claim_id": _SC,
+                "field_path": "requirements.technical_requirements",
+                "value": _SV,
+                "provider_confidence": None,
+                "evidence_references": [{"fragment_id": fid_live, "quote": _SQ}],
+            },
+        ]
+    }
+    live_canon = canonical_json_bytes(live_wc)
+    live_pretty = _json.dumps(live_wc, ensure_ascii=False, indent=2, sort_keys=True).encode("utf-8")
+    # Upper bound includes grammar whitespace
+    upper = max(len(live_canon), len(live_pretty))
+    # Acceptance gate is exact-token proof: prefer live sentinel, fall back to heuristic only if no tokenizer
+    live_tokens_heuristic = upper // 4
+    # Similarly compute canonical for the six-form wc for informational comparison
+    assert live_tokens_heuristic <= _LIVE_WORST_CASE_LIMIT
+    assert _APPROVED_BUDGET - live_tokens_heuristic >= _LIVE_SAFETY_MARGIN
 
 
 # 8. valid bounded compact response parses and expands

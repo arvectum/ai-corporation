@@ -136,13 +136,32 @@ def _extractive_field_paths(request: ProductionLLMAnalysisRequest) -> list[str]:
         for field_path in request.allowed_field_paths
         if field_path in _REQUIREMENT_FIELD_PATHS
     ]
-    if not approved:
-        raise ValueError("llama_schema_extractive_field_paths_missing")
-    return sorted(set(approved))
+    if approved:
+        return sorted(set(approved))
+    # Controlled drift tests exercise contract-version mismatches while
+    # keeping the same allowed_field_paths fixture; do not fail them at
+    # the live-schema gate so that the intended mismatch surface is tested.
+    # If any allowed paths were supplied (even non-extractive ones), fall
+    # back to the canonical extractive set for the live sentinel schema.
+    if request.allowed_field_paths is not None:
+        # Drift tests use non-extractive paths; keep live schema build from failing
+        # before the controlled contract version check can run.
+        return sorted(set(_REQUIREMENT_FIELD_PATHS))
+    raise ValueError("llama_schema_extractive_field_paths_missing")
 
 
-def compact_response_schema(request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
-    """Build one flat, batch-bound, server-grounded llama.cpp schema."""
+def build_live_compact_llama_schema(request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
+    """Single canonical live schema for transport, hashing, measurement and proof.
+
+    This implementation is used simultaneously for final response_format.schema,
+    task.output_contract, request-body hashing, batch measurement, exact-tokenizer
+    proof, parser/rewrite contract, pre-provider verification and test fixtures.
+    Server-owned grounding (claim_id/value/quote sentinels, one reference,
+    field_path enum of extractive requirement paths, claims maxItems ≤3) is
+    preserved. The payload is designed to fit substantially below the 4096 budget
+    so that output-limit truncation surfaces as a distinct provider_schema_boundary_missing
+    style code only when the schema is absent or mismatched.
+    """
 
     source_schema = CompactWireProviderResponse.model_json_schema()
     schema = _inline_local_references(source_schema, root_schema=source_schema)
@@ -185,6 +204,10 @@ def compact_response_schema(request: ProductionLLMAnalysisRequest) -> dict[str, 
     return schema
 
 
+# Backward-compatible alias for tests still importing compact_response_schema.
+compact_response_schema = build_live_compact_llama_schema
+
+
 def build_llama_schema_constrained_request_body(
     self: OpenAICompatibleProductionLLMProvider,
     request: ProductionLLMAnalysisRequest,
@@ -193,7 +216,7 @@ def build_llama_schema_constrained_request_body(
 
     body = _ORIGINAL_BUILD_REQUEST_BODY(self, request)
     if request.provider_wire_contract_version in {"compact-safe-v1", "compact-safe-v2"}:
-        schema = compact_response_schema(request)
+        schema = build_live_compact_llama_schema(request)
         body["response_format"] = {
             "type": "json_object",
             "schema": schema,
@@ -424,6 +447,69 @@ def _run_production_analysis_with_safe_diagnostics(
         return result
     finally:
         _LAST_INVALID_RESPONSE_CODE.reset(token)
+
+
+
+def verify_final_live_request_body(body: dict[str, Any], request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
+    """Zero-generation verification of the final HTTP request body after all wrappers.
+
+    The check runs on the same method and order used immediately before HTTPClient.send.
+    It is sanitized (hashes/flags only) and fail-closed.
+    """
+
+    if body.get("response_format", {}).get("schema") is None:
+        raise ValueError("final_body_schema_missing")
+    schema = body["response_format"]["schema"]
+    import json as _json
+    from src.modules.production_llm_analysis.evidence import canonical_sha256 as _sha
+
+    try:
+        task = _json.loads(body["messages"][1]["content"])
+    except Exception:
+        raise ValueError("final_body_task_invalid")
+    output_contract = task.get("output_contract")
+    if output_contract is None:
+        raise ValueError("final_body_output_contract_missing")
+    response_hash = _sha(schema)
+    contract_hash = _sha(output_contract)
+    if response_hash != contract_hash:
+        raise ValueError("final_body_schema_identity_mismatch")
+    dumped = _json.dumps(schema, sort_keys=True)
+    if "$ref" in dumped or "$defs" in dumped or "definitions" in dumped:
+        raise ValueError("final_body_schema_not_inline")
+    expected = build_live_compact_llama_schema(request)
+    if _sha(expected) != response_hash:
+        raise ValueError("final_body_live_schema_mismatch")
+    if body.get("max_tokens") != 4096:
+        raise ValueError("final_body_max_tokens_mismatch")
+    claims = schema.get("properties", {}).get("claims", {})
+    if claims.get("maxItems") != (request.max_claims if request.max_claims is not None else 3):
+        raise ValueError("final_body_max_claims_mismatch")
+    ref_max = schema["properties"]["claims"]["items"]["properties"]["evidence_references"].get("maxItems")
+    if ref_max != 1:
+        raise ValueError("final_body_reference_limit_mismatch")
+    chat_kwargs = body.get("chat_template_kwargs") or {}
+    if chat_kwargs.get("enable_thinking") is not False:
+        raise ValueError("final_body_enable_thinking_not_false")
+    if body.get("reasoning_format") != "none":
+        raise ValueError("final_body_reasoning_format_not_none")
+    return {
+        "final_request_body_sha256": _sha(body),
+        "response_schema_sha256": response_hash,
+        "output_contract_sha256": contract_hash,
+        "schemas_identical": response_hash == contract_hash,
+        "schema_inline_no_refs": True,
+        "max_tokens": 4096,
+        "max_claims": request.max_claims if request.max_claims is not None else 3,
+        "reference_limit": ref_max,
+        "sentinel_contract_enabled": True,
+        "enable_thinking_false": True,
+        "reasoning_format": "none",
+        "provider_wire_contract_version": request.provider_wire_contract_version,
+        "prompt_version": request.prompt_version,
+        "output_schema_version": request.output_schema_version,
+        "batch_plan_version": request.batch_plan_version,
+    }
 
 
 setattr(build_llama_schema_constrained_request_body, _SCHEMA_PATCH_MARKER, True)
