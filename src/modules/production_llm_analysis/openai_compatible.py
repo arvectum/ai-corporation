@@ -6,6 +6,7 @@ import math
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -13,6 +14,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from src.modules.production_llm_analysis.evidence import (
     canonical_json_bytes,
+    canonical_sha256,
     text_sha256,
 )
 from src.modules.production_llm_analysis.schemas import (
@@ -23,6 +25,9 @@ from src.modules.production_llm_analysis.schemas import (
     ProductionLLMAnalysisRequest,
     ProviderAnalysisResponse,
     ProviderClaim,
+)
+from src.modules.production_llm_analysis.transport_boundary import (
+    write_transport_start_marker,
 )
 from src.shared.llm.transport import (
     HTTPClient,
@@ -82,10 +87,21 @@ class OpenAICompatibleProductionLLMProvider:
         *,
         http_client: HTTPClient | None = None,
         clock: Callable[[], float] = time.monotonic,
+        transport_boundary: Path | None = None,
+        execution_ordinal: int = 1,
     ) -> None:
         self._config = config
         self._http_client = http_client or UrllibHTTPClient()
         self._clock = clock
+        self._transport_boundary = transport_boundary
+        self._execution_ordinal = execution_ordinal
+
+    def set_transport_boundary(
+        self, transport_boundary: Path, execution_ordinal: int
+    ) -> None:
+        """Attach a durable boundary root (idempotent, before first HTTP send)."""
+        self._transport_boundary = transport_boundary
+        self._execution_ordinal = execution_ordinal
 
     def generate(self, request: ProductionLLMAnalysisRequest) -> ProviderAnalysisResponse:
         body = canonical_json_bytes(self._build_request_body(request))
@@ -119,6 +135,7 @@ class OpenAICompatibleProductionLLMProvider:
                 timeout_ms=timeout_ms,
             )
             attempt_started = self._clock()
+            self._record_transport_start(request, attempt_index)
             try:
                 response = self._http_client.send(http_request)
             except ProviderPermanentError:
@@ -458,6 +475,36 @@ class OpenAICompatibleProductionLLMProvider:
             "attempt_latencies_ms": tuple(attempt_latencies_ms),
             "total_latency_ms": self._total_latency_ms(analysis_started, attempt_latencies_ms),
         }
+
+    def _record_transport_start(
+        self,
+        request: ProductionLLMAnalysisRequest,
+        attempt_ordinal: int,
+    ) -> None:
+        """Persist a sanitized durable marker immediately before HTTP send.
+
+        The marker proves the transport boundary was crossed even when the
+        surrounding partial output stage is later removed. Only sanitized
+        identifiers are stored; the prompt, tender text, credential, provider
+        body, URL and private paths never enter the marker.
+        """
+        if self._transport_boundary is None:
+            return
+        request_identity_hash = canonical_sha256(
+            {
+                "request_id": request.request_id,
+                "evidence_packet_hash": request.evidence_packet.packet_hash,
+                "provider": request.provider,
+                "model": request.model,
+            }
+        )
+        write_transport_start_marker(
+            self._transport_boundary,
+            execution_ordinal=self._execution_ordinal,
+            batch_ordinal=request.batch_ordinal,
+            attempt_ordinal=attempt_ordinal,
+            request_identity_hash=request_identity_hash,
+        )
 
     def _total_latency_ms(self, analysis_started: float, attempt_latencies_ms: list[int]) -> int:
         return max(self._elapsed_ms(analysis_started), sum(attempt_latencies_ms))
