@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -21,8 +22,15 @@ from src.modules.production_llm_analysis.contracts import (
     R10_1_CONTROLLED_MAP_CONTRACT,
 )
 from src.modules.production_llm_analysis.evidence import canonical_sha256
+from src.modules.production_llm_analysis.openai_compatible import (
+    OpenAICompatibleProductionLLMProvider,
+)
 from src.modules.production_llm_analysis.schemas import BudgetPolicy
 from src.modules.production_llm_analysis.service import ProductionLLMProvider
+from src.modules.production_llm_analysis.transport_boundary import (
+    boundary_root,
+    write_controlled_failure_descriptor,
+)
 
 MANIFEST_VERSION = "r10.1-controlled-provider-evidence-v3"
 
@@ -301,6 +309,21 @@ def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
     )
 
 
+_FAILURE_CODE_RE = re.compile(r"^[a-z0-9_.:-]{1,160}$")
+
+
+def _sanitized_failure_code(exc: BaseException) -> str:
+    """Map a controlled failure to a stable sanitized code, never raw text."""
+    code = str(getattr(exc, "code", "") or "").strip().lower()
+    if _FAILURE_CODE_RE.fullmatch(code):
+        return code
+    text = str(exc).strip().lower()
+    if _FAILURE_CODE_RE.fullmatch(text):
+        return text
+    name = type(exc).__name__
+    return f"controlled_failure:{name}"
+
+
 def _relocate_production(
     production: R10_1CanonicalProduction,
     destination: Path,
@@ -348,10 +371,14 @@ def run_controlled_provider_evidence(
     if stage.exists():
         raise ControlledEvidenceConflictError("controlled_evidence_stage_exists")
     stage.mkdir(mode=0o750)
+    durable = boundary_root(target)
 
     try:
         productions: list[R10_1CanonicalProduction] = []
         for index in (1, 2):
+            provider = provider_factory()
+            if isinstance(provider, OpenAICompatibleProductionLLMProvider):
+                provider.set_transport_boundary(durable, execution_ordinal=index)
             production = produce_r10_1_canonical_analysis(
                 customer_id=customer_id,
                 project_id=project_id,
@@ -364,7 +391,7 @@ def run_controlled_provider_evidence(
                 evidence_chunks=evidence_chunks,
                 token_counter=token_counter,
                 controlled=controlled,
-                provider=provider_factory(),
+                provider=provider,
                 budget_policy=policy.budget,
                 provider_name=policy.provider,
                 model=policy.model,
@@ -385,6 +412,9 @@ def run_controlled_provider_evidence(
         )
         os.replace(stage, target)
         return bundle
-    except BaseException:
+    except BaseException as exc:
+        write_controlled_failure_descriptor(
+            durable, sanitized_failure_code=_sanitized_failure_code(exc)
+        )
         shutil.rmtree(stage, ignore_errors=True)
         raise

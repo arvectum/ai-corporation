@@ -75,3 +75,5 @@ tmp/*_context.json
 /arv076_backup_sets/
 /arv076_restore_runs/
 /arv076_acceptance/
+# uv ephemeral lockfile (repo uses requirements-style pinning)
+/uv.lock
