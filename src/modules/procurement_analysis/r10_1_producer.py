@@ -1027,6 +1027,9 @@ def produce_r10_1_canonical_analysis(
         final_projected_tokens.append(final_measurement.full_request_tokens)
         result = run_production_llm_analysis(request, provider)
         if result.status != AnalysisStatus.SUCCESS:
+            sanitized = result.sanitized_error_code or ""
+            if sanitized == "provider_response_truncated":
+                raise R10_1AnalysisRejectedError("evidence_batch_output_truncated")
             error_code = (result.sanitized_error_code if not controlled else None) or {
                 AnalysisStatus.TIMEOUT: "evidence_batch_execution_timeout",
                 AnalysisStatus.PROVIDER_UNAVAILABLE: "evidence_batch_provider_failed",

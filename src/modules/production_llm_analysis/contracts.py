@@ -2,12 +2,12 @@
 from dataclasses import dataclass
 
 R10_1_PROMPT_ID = "procurement-analysis"
-R10_1_BATCH_PROMPT_VERSION = "r10.1-batched-compact-v2"
+R10_1_BATCH_PROMPT_VERSION = "r10.1-batched-compact-v3"
 R10_1_OUTPUT_SCHEMA_ID = "production-llm-analysis"
-R10_1_OUTPUT_SCHEMA_VERSION = "v1"
+R10_1_OUTPUT_SCHEMA_VERSION = "v2"
 R10_1_GROUNDING_POLICY_VERSION = "grounding-v1"
-R10_1_PROVIDER_WIRE_CONTRACT_VERSION = "compact-safe-v1"
-R10_1_BATCH_PLAN_VERSION = "arv003-map-plan-v6"
+R10_1_PROVIDER_WIRE_CONTRACT_VERSION = "compact-safe-v2"
+R10_1_BATCH_PLAN_VERSION = "arv003-map-plan-v7"
 R10_1_COMPACT_INPUT_FRAGMENT_FIELDS = ("fragment_id", "document_order", "chunk_index", "text")
 R10_1_COMPACT_OUTPUT_REFERENCE_FIELDS = ("fragment_id", "quote")
 

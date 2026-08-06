@@ -192,7 +192,7 @@ def build_llama_schema_constrained_request_body(
     """Reuse the canonical adapter and add deterministic server-owned grounding."""
 
     body = _ORIGINAL_BUILD_REQUEST_BODY(self, request)
-    if request.provider_wire_contract_version == "compact-safe-v1":
+    if request.provider_wire_contract_version in {"compact-safe-v1", "compact-safe-v2"}:
         schema = compact_response_schema(request)
         body["response_format"] = {
             "type": "json_object",
@@ -262,7 +262,7 @@ def _rewrite_server_grounded_response(
     total_latency_ms: int | None,
 ) -> tuple[HTTPResponse, str]:
     raw_response_sha256 = hashlib.sha256(response.body).hexdigest()
-    if request.provider_wire_contract_version != "compact-safe-v1":
+    if request.provider_wire_contract_version not in {"compact-safe-v1", "compact-safe-v2"}:
         return response, raw_response_sha256
 
     try:

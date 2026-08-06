@@ -15,7 +15,7 @@ def test_llama_manifest_profile_is_sanitized_stable_and_rehashed():
         "manifest_version": "test-v1",
         "stable_identity": {"provider": "openai_compatible"},
         "wire_contract": {
-            "provider_wire_contract_version": "compact-safe-v1",
+            "provider_wire_contract_version": "compact-safe-v2",
             "server_side_reference_expansion": True,
         },
         "safety": {"raw_provider_body_recorded": False},

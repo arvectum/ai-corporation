@@ -231,7 +231,7 @@ def test_matching_semantics_publish_despite_volatile_provider_metadata(tmp_path)
             bundle.second.llm_result, field
         )
     assert bundle.manifest["wire_contract"] == {
-        "provider_wire_contract_version": "compact-safe-v1",
+        "provider_wire_contract_version": "compact-safe-v2",
         "input_fragment_schema": [
             "fragment_id",
             "document_order",
