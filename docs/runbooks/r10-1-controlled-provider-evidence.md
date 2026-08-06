@@ -10,8 +10,8 @@ each batch carries the plan hash, batch hash, ordinal and corpus evidence hash.
 The approved exact tokenizer must be configured for the provider/model before
 any live execution; character estimates are not an acceptance basis.
 
-The current planner identity is `arv003-map-plan-v6`. Its provider wire contract is
-`compact-safe-v1`: the provider receives only fragment identity, source order, chunk
+The current planner identity is `arv003-map-plan-v7`. Its provider wire contract is
+`compact-safe-v2`: the provider receives only fragment identity, source order, chunk
 index and text; server-side expansion restores canonical provenance before grounding.
 Producer and diagnostic verifier share the repository-owned controlled-map contract;
 the verifier intentionally has no prompt-version override and rejects a mismatch before

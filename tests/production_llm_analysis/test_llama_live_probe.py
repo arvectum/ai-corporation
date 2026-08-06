@@ -36,7 +36,7 @@ def test_probe_request_is_synthetic_compact_and_batch_bound():
 
     assert request.provider == "openai_compatible"
     assert request.model == "arvectum-gemma4-12b-q4km"
-    assert request.provider_wire_contract_version == "compact-safe-v1"
+    assert request.provider_wire_contract_version == "compact-safe-v2"
     assert request.map_mode is True
     assert request.max_claims == 1
     assert request.allowed_field_paths == [_ALLOWED_FIELD_PATH]

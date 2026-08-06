@@ -17,7 +17,7 @@ def apply_llama_non_reasoning_mode(
 ) -> dict[str, Any]:
     """Disable template-level thinking for compact schema-constrained requests."""
 
-    if request.provider_wire_contract_version != "compact-safe-v1":
+    if request.provider_wire_contract_version not in {"compact-safe-v1", "compact-safe-v2"}:
         return body
 
     existing = body.get("chat_template_kwargs")

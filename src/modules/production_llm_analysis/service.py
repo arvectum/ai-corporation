@@ -229,6 +229,17 @@ def run_production_llm_analysis(
         )
     except InvalidProviderResponseError as exc:
         failure_budget, retry_count, response_hash = _transport_failure_values(exc, preflight)
+        code = str(exc).strip()
+        if code == "provider_response_truncated":
+            return _failure_result(
+                request,
+                status=AnalysisStatus.INVALID_RESPONSE,
+                budget=failure_budget,
+                error_code="provider_response_truncated",
+                limitation="Provider response was truncated at the output limit; no partial claim was accepted.",
+                retry_count=retry_count,
+                raw_response_sha256=response_hash,
+            )
         return _failure_result(
             request,
             status=AnalysisStatus.INVALID_RESPONSE,

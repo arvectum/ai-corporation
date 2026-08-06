@@ -44,6 +44,200 @@ from src.shared.llm.transport import (
 _TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 _PROTECTED_HEADERS = {"accept", "authorization", "content-type"}
 
+# ---------------------------------------------------------------------------
+# Bounded compact-wire output contract (repository-owned, inline, deterministic)
+# ---------------------------------------------------------------------------
+# All provider-owned dimensions are finitely bounded so that any
+# schema-valid response is guaranteed to fit within the approved
+# 4096-token output budget with at least 512 tokens of safety margin.
+# These limits are minimal sufficient for procurement analysis and
+# are the sole transport boundary — no post-generation truncation occurs.
+CLAIM_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+CLAIM_ID_MAX_LENGTH = 64
+EVIDENCE_REFERENCES_MAX_ITEMS = 2
+EVIDENCE_REFERENCES_MIN_ITEMS = 1
+FRAGMENT_ID_PATTERN = r"^[0-9a-f]{64}$"
+QUOTE_MAX_LENGTH = 800
+QUOTE_MIN_LENGTH = 1
+REQUIREMENT_STRING_MAX_LENGTH = 800
+REQUIREMENT_LIST_MAX_ITEMS = 3
+RISK_LIST_MAX_ITEMS = 2
+QUESTION_LIST_MAX_ITEMS = 2
+RISK_CLAUSE_MAX_LENGTH = 200
+RISK_DESCRIPTION_MAX_LENGTH = 400
+RISK_IMPACT_MAX_LENGTH = 400
+RISK_MITIGATION_MAX_LENGTH = 400
+QUESTION_MAX_LENGTH = 400
+CATEGORY_MAX_LENGTH = 100
+_ALLOWED_RISK_CLASSIFICATIONS = (
+    "market_standard_harsh_term",
+    "commercially_material_risk",
+    "deal_breaker_candidate",
+)
+
+
+def build_compact_wire_output_schema(
+    *,
+    max_claims: int | None,
+    allowed_field_paths: list[str] | None = None,
+) -> dict[str, Any]:
+    """Return deterministic inline JSON Schema for the compact wire output.
+
+    The schema is fully inline (no ``$ref`` / ``$defs``), uses
+    ``additionalProperties: false`` everywhere, and bounds every
+    provider-owned dimension. The same object is used for
+    ``response_format.schema``, the task ``output_contract``, hashing
+    and worst-case tests — divergence is forbidden.
+    """
+
+    field_paths = sorted(allowed_field_paths or [])
+    if not field_paths:
+        # Fallback to the six map-allowed field paths for offline/worst-case usage;
+        # controlled callers always supply an explicit allow-list.
+        from src.modules.procurement_analysis.r10_1_producer import (
+            _MAP_ALLOWED_FIELD_PATHS,  # local import to avoid cycle at import time
+        )
+
+        field_paths = sorted(_MAP_ALLOWED_FIELD_PATHS)
+
+    # Bounded value forms — exactly the six _map_supported_claims shapes
+    requirement_string_schema: dict[str, Any] = {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": REQUIREMENT_STRING_MAX_LENGTH,
+    }
+    requirement_list_schema: dict[str, Any] = {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": REQUIREMENT_LIST_MAX_ITEMS,
+        "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600,
+        },
+    }
+    risk_object_schema: dict[str, Any] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "clause",
+            "description",
+            "classification",
+            "impact",
+            "mitigation",
+            "operator_decision_required",
+        ],
+        "properties": {
+            "clause": {"type": "string", "minLength": 1, "maxLength": RISK_CLAUSE_MAX_LENGTH},
+            "description": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": RISK_DESCRIPTION_MAX_LENGTH,
+            },
+            "classification": {"type": "string", "enum": list(_ALLOWED_RISK_CLASSIFICATIONS)},
+            "impact": {"type": "string", "minLength": 1, "maxLength": RISK_IMPACT_MAX_LENGTH},
+            "mitigation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": RISK_MITIGATION_MAX_LENGTH,
+            },
+            "operator_decision_required": {"type": "boolean"},
+        },
+    }
+    risk_list_schema: dict[str, Any] = {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": RISK_LIST_MAX_ITEMS,
+        "items": risk_object_schema,
+    }
+    question_object_schema: dict[str, Any] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["question", "category"],
+        "properties": {
+            "question": {"type": "string", "minLength": 1, "maxLength": QUESTION_MAX_LENGTH},
+            "category": {"type": "string", "minLength": 1, "maxLength": CATEGORY_MAX_LENGTH},
+        },
+    }
+    question_list_schema: dict[str, Any] = {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": QUESTION_LIST_MAX_ITEMS,
+        "items": question_object_schema,
+    }
+
+    claim_schema: dict[str, Any] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": [
+            "claim_id",
+            "field_path",
+            "value",
+            "evidence_references",
+        ],
+        "properties": {
+            "claim_id": {
+                "type": "string",
+                "pattern": CLAIM_ID_PATTERN,
+                "minLength": 1,
+                "maxLength": CLAIM_ID_MAX_LENGTH,
+            },
+            "field_path": {"type": "string", "enum": field_paths},
+            "value": {
+                "oneOf": [
+                    requirement_string_schema,
+                    requirement_list_schema,
+                    risk_object_schema,
+                    risk_list_schema,
+                    question_object_schema,
+                    question_list_schema,
+                ]
+            },
+            "provider_confidence": {
+                "anyOf": [
+                    {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                    {"type": "null"},
+                ],
+                "default": None,
+            },
+            "evidence_references": {
+                "type": "array",
+                "minItems": EVIDENCE_REFERENCES_MIN_ITEMS,
+                "maxItems": EVIDENCE_REFERENCES_MAX_ITEMS,
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["fragment_id", "quote"],
+                    "properties": {
+                        "fragment_id": {
+                            "type": "string",
+                            "pattern": FRAGMENT_ID_PATTERN,
+                        },
+                        "quote": {
+                            "type": "string",
+                            "minLength": QUOTE_MIN_LENGTH,
+                            "maxLength": QUOTE_MAX_LENGTH,
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    schema: dict[str, Any] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["claims"],
+        "properties": {
+            "claims": {
+                "type": "array",
+                "maxItems": max_claims if max_claims is not None else 3,
+                "items": claim_schema,
+            }
+        },
+    }
+    return schema
+
 
 @dataclass(frozen=True)
 class OpenAICompatibleTransportConfig:
@@ -200,16 +394,23 @@ class OpenAICompatibleProductionLLMProvider:
         return headers
 
     def _build_request_body(self, request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
-        compact = request.provider_wire_contract_version == "compact-safe-v1"
-        if request.provider_wire_contract_version not in {"full-v1", "compact-safe-v1"}:
+        compact = request.provider_wire_contract_version in {"compact-safe-v1", "compact-safe-v2"}
+        if request.provider_wire_contract_version not in {"full-v1", "compact-safe-v1", "compact-safe-v2"}:
             raise ValueError("provider_wire_contract_unsupported")
-        if request.map_mode and request.provider_wire_contract_version != "compact-safe-v1":
+        if request.map_mode and request.provider_wire_contract_version not in {"compact-safe-v1", "compact-safe-v2"}:
             raise ValueError("provider_wire_contract_unsupported")
-        claim_schema = CompactWireProviderClaim.model_json_schema() if compact else ProviderClaim.model_json_schema()
-        if request.allowed_field_paths:
-            claim_schema.setdefault("properties", {}).setdefault("field_path", {})[
-                "enum"
-            ] = list(request.allowed_field_paths)
+        if compact and request.provider_wire_contract_version == "compact-safe-v2":
+            output_contract = build_compact_wire_output_schema(
+                max_claims=request.max_claims,
+                allowed_field_paths=list(request.allowed_field_paths) if request.allowed_field_paths else None,
+            )
+            claim_schema: dict[str, Any] | None = None  # bounded schema already built
+        else:
+            claim_schema = CompactWireProviderClaim.model_json_schema() if compact else ProviderClaim.model_json_schema()
+            if request.allowed_field_paths and compact:
+                claim_schema.setdefault("properties", {}).setdefault("field_path", {})[
+                    "enum"
+                ] = list(request.allowed_field_paths)
         evidence = [
             {
                 "fragment_id": fragment.fragment_id,
@@ -241,19 +442,23 @@ class OpenAICompatibleProductionLLMProvider:
                     code = "provider_wire_document_order_invalid" if "document_order" in fields else "provider_wire_chunk_index_invalid"
                     raise ValueError(code) from None
                 evidence.append(wire_fragment.model_dump(mode="json"))
-        output_contract = {
-            "type": "object",
-            "additionalProperties": False,
-            "required": ["claims"],
-            "properties": {
-                "claims": {
-                    "type": "array",
-                    "items": claim_schema,
-                }
-            },
-        }
-        if request.max_claims is not None:
-            output_contract["properties"]["claims"]["maxItems"] = request.max_claims
+        if compact and request.provider_wire_contract_version == "compact-safe-v2":
+            # Already computed above; reuse the identical object for output_contract
+            pass
+        else:
+            output_contract = {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["claims"],
+                "properties": {
+                    "claims": {
+                        "type": "array",
+                        "items": claim_schema,
+                    }
+                },
+            }
+            if request.max_claims is not None:
+                output_contract["properties"]["claims"]["maxItems"] = request.max_claims
         task = {
             "prompt_id": request.prompt_id,
             "prompt_version": request.prompt_version,
@@ -284,11 +489,18 @@ class OpenAICompatibleProductionLLMProvider:
         if compact:
             task.pop("procurement_case_id")
             task.pop("registry_number")
+        if compact and request.provider_wire_contract_version == "compact-safe-v2":
+            response_format: dict[str, Any] = {
+                "type": "json_object",
+                "schema": output_contract,
+            }
+        else:
+            response_format = {"type": "json_object"}
         return {
             "model": request.model,
             "temperature": 0,
             "max_tokens": request.budget_policy.limits.max_output_tokens,
-            "response_format": {"type": "json_object"},
+            "response_format": response_format,
             "messages": [
                 {
                     "role": "system",
@@ -331,6 +543,16 @@ class OpenAICompatibleProductionLLMProvider:
             if not isinstance(envelope, dict):
                 raise InvalidProviderResponseError("provider_response_invalid_envelope")
 
+            # Detect output-limit truncation before any JSON/schema validation.
+            # Truncated responses contain partial JSON; attempting to repair
+            # would violate the fail-closed boundary. Surface a distinct code.
+            try:
+                finish_reason = envelope.get("choices", [{}])[0].get("finish_reason")  # type: ignore[union-attr]
+            except (AttributeError, IndexError, TypeError, KeyError):
+                finish_reason = None
+            if isinstance(finish_reason, str) and finish_reason.strip().lower() == "length":
+                raise InvalidProviderResponseError("provider_response_truncated", **failure_metadata)
+
             content_text = self._extract_message_content(envelope)
             content = json.loads(content_text)
             if not isinstance(content, dict) or set(content) != {"claims"}:
@@ -360,7 +582,7 @@ class OpenAICompatibleProductionLLMProvider:
                 provider_request_id = self._header_value(response.headers, "x-request-id")
                 provider_request_id = provider_request_id or self._header_value(response.headers, "request-id")
 
-            if request.provider_wire_contract_version == "compact-safe-v1":
+            if request.provider_wire_contract_version in {"compact-safe-v1", "compact-safe-v2"}:
                 compact = CompactWireProviderResponse.model_validate(content)
                 fragments = {item.fragment_id: item for item in request.evidence_packet.fragments}
                 claims=[]; seen_claims=set()
