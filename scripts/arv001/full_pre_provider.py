@@ -668,7 +668,6 @@ def main() -> int:
 
                         # Byte-identically copy old metadata for current-head re-verification.
                         shutil.copy2(old_descriptor_path, staging / "prepared-verification.json")
-                        shutil.copy2(args.prepared_snapshot_root / "runtime-profile.json", staging / "runtime-profile.json")
                         # For live output budget proof we need a request object.
                         # Since request.json might be missing, reconstruct it from DB fragments.
                         conn = sqlite3.connect(staging / "prepared.sqlite3")
@@ -720,6 +719,10 @@ def main() -> int:
                             allowed_field_paths=[] # Will default to all requirement paths
                         )
 
+                        # Copy application-data for publication.
+                        data_dir = staging / "application-data"
+                        shutil.copytree(args.prepared_snapshot_root / "application-data", data_dir, dirs_exist_ok=True)
+
                         # Re-verify the copied DB against current code rules (read-only).
                         descriptor_data = parse_private_descriptor(
                             staging / "prepared-verification.json",
@@ -729,7 +732,7 @@ def main() -> int:
                         verification = _verify_prepared_database(
                             path=staging / "prepared.sqlite3",
                             descriptor=descriptor_data,
-                            data_dir=args.prepared_snapshot_root / "application-data",
+                            data_dir=data_dir,
                         )
                         if verification is None:
                             raise RuntimeError("prepared_database_reverification_failed")
