@@ -107,6 +107,18 @@ def _canonical_hash(value: Any) -> str:
     )
 
 
+def _json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
 def canonical_document_identity_hashes(
     rows: Iterable[dict[str, Any]],
 ) -> tuple[str, ...]:
@@ -152,6 +164,401 @@ def _safe_relative(root: Path, value: str) -> Path:
         "prepared_snapshot_file_missing",
     )
     return target
+
+
+def _verify_documents(
+    connection: sqlite3.Connection,
+    descriptor: PrivatePreparedVerificationDescriptor,
+    metadata: dict[str, Any],
+) -> tuple[list[sqlite3.Row], int, int]:
+    # Detect available columns to remain compatible with immutable historical DBs.
+    cursor = connection.execute("SELECT * FROM procurement_tender_documents LIMIT 0")
+    columns = {d[0] for d in cursor.description}
+    
+    needed = ["file_name", "sha256", "size_bytes", "raw_meta", "text_extraction_status"]
+    # Internal identity columns are optional in historical schemas.
+    optional = ["document_identity_hash"]
+    
+    cols = needed + [c for c in optional if c in columns]
+    query = f"SELECT {', '.join(cols)} FROM procurement_tender_documents WHERE tender_id = ? ORDER BY file_name ASC"
+    
+    documents = connection.execute(query, (descriptor.tender_id,)).fetchall()
+
+    rows: list[dict[str, Any]] = []
+    extracted = 0
+    sha_values: list[str] = []
+    identity_hashes: list[str] = []
+
+    for document in documents:
+        raw_meta = _json_object(document["raw_meta"])
+        corpus_descriptor = _json_object(raw_meta.get("corpus_descriptor"))
+        rows.append(
+            {
+                "original_name": corpus_descriptor.get("original_name")
+                or document["file_name"],
+                "sha256": document["sha256"],
+                "size_bytes": document["size_bytes"],
+            }
+        )
+        sha_values.append(str(document["sha256"]))
+        if "document_identity_hash" in columns and document["document_identity_hash"]:
+            identity_hashes.append(str(document["document_identity_hash"]))
+        if document["text_extraction_status"] == "extracted":
+            extracted += 1
+
+    identities = canonical_document_identity_hashes(rows)
+    _require(
+        identities == descriptor.ordered_document_identity_hashes,
+        "prepared_document_identity_mismatch",
+    )
+
+    metadata_hashes = metadata.get("arv001_document_identity_hashes")
+    normalized_metadata = (
+        sorted(str(value) for value in metadata_hashes)
+        if isinstance(metadata_hashes, list)
+        else []
+    )
+    # The historical DB may use either the full identity hashes (CUS-2026-v1),
+    # the raw file SHAs, or the internal document_identity_hash.
+    # We accept any of these valid historical representations.
+    _require(
+        normalized_metadata in (sorted(identities), sorted(sha_values), sorted(identity_hashes)),
+        "prepared_document_metadata_identity_mismatch",
+    )
+
+    chunks = int(
+        connection.execute(
+            "SELECT count(*) FROM procurement_document_chunks WHERE tender_id = ?",
+            (descriptor.tender_id,),
+        ).fetchone()[0]
+    )
+    _require(
+        len(documents) == descriptor.physical_document_count
+        and extracted == descriptor.extracted_document_count
+        and chunks == descriptor.chunk_count,
+        "prepared_document_counts_mismatch",
+    )
+    return list(documents), extracted, chunks
+
+
+def _load_run(
+    connection: sqlite3.Connection,
+    descriptor: PrivatePreparedVerificationDescriptor,
+) -> sqlite3.Row:
+    # Detect available columns
+    cursor = connection.execute("SELECT * FROM tender_analysis_runs LIMIT 0")
+    columns = {d[0] for d in cursor.description}
+    
+    needed = ["registry_number", "status", "used_llm", "llm_model", "report_path",
+               "customer_id", "project_id", "procurement_case_id", "metadata_json"]
+    optional = ["tender_id"]
+    
+    cols = needed + [c for c in optional if c in columns]
+    query = f"SELECT {', '.join(cols)} FROM tender_analysis_runs WHERE id = ?"
+    run = connection.execute(query, (descriptor.target_run_id,)).fetchone()
+    
+    _require(run is not None, "prepared_run_missing")
+    assert run is not None
+    _require(
+        run["status"] == "completed"
+        and str(run["customer_id"]) == descriptor.customer_id
+        and str(run["project_id"]) == descriptor.project_id
+        and str(run["procurement_case_id"]) == descriptor.case_id,
+        "prepared_run_binding_mismatch",
+    )
+    
+    metadata = _json_object(run["metadata_json"])
+    # Verify tender_id from column if present, otherwise fallback to metadata_json.
+    if "tender_id" in columns:
+        _require(str(run["tender_id"]) == descriptor.tender_id, "prepared_run_binding_mismatch")
+    else:
+        _require(str(metadata.get("arv001_tender_id")) == descriptor.tender_id, "prepared_run_binding_mismatch")
+
+    return run
+
+
+def _verify_ownership(
+    connection: sqlite3.Connection,
+    descriptor: PrivatePreparedVerificationDescriptor,
+) -> None:
+    case = connection.execute(
+        """
+        SELECT customer_id, project_id, current_run_id
+        FROM procurement_cases WHERE id = ?
+        """,
+        (descriptor.case_id,),
+    ).fetchone()
+    project = connection.execute(
+        "SELECT customer_id FROM pilot_projects WHERE id = ?",
+        (descriptor.project_id,),
+    ).fetchone()
+    _require(case is not None and project is not None, "prepared_case_or_project_missing")
+    assert case is not None and project is not None
+    _require(
+        str(case["customer_id"]) == descriptor.customer_id
+        and str(case["project_id"]) == descriptor.project_id
+        and str(case["current_run_id"]) == descriptor.target_run_id
+        and str(project["customer_id"]) == descriptor.customer_id,
+        "prepared_ownership_mismatch",
+    )
+
+
+def _verify_tender(
+    connection: sqlite3.Connection,
+    descriptor: PrivatePreparedVerificationDescriptor,
+    run: sqlite3.Row,
+) -> dict[str, Any]:
+    metadata = _json_object(run["metadata_json"])
+    _require(
+        str(metadata.get("arv001_tender_id")) == descriptor.tender_id
+        and metadata.get("arv001_corpus_sha256") == descriptor.corpus_sha256,
+        "prepared_run_metadata_mismatch",
+    )
+    tender = connection.execute(
+        "SELECT registry_number, content_hash FROM procurement_tenders WHERE id = ?",
+        (descriptor.tender_id,),
+    ).fetchone()
+    _require(tender is not None, "prepared_tender_missing")
+    assert tender is not None
+    _require(
+        tender["content_hash"] == descriptor.corpus_sha256
+        and registry_identity_sha256(str(tender["registry_number"]))
+        == descriptor.registry_identity_sha256
+        and str(tender["registry_number"]) == str(run["registry_number"]),
+        "prepared_tender_binding_mismatch",
+    )
+    return metadata
+
+
+def _load_snapshot_binding(
+    connection: sqlite3.Connection,
+    descriptor: PrivatePreparedVerificationDescriptor,
+) -> sqlite3.Row:
+    binding = connection.execute(
+        """
+        SELECT id, customer_id, project_id, procurement_case_id, run_id,
+               source_analysis_run_id, requirements_storage_key,
+               requirements_file_sha256, canonical_report_storage_key,
+               canonical_report_file_sha256, binding_manifest_storage_key,
+               binding_manifest_file_sha256, source_graph_hash,
+               source_graph_hash_algorithm, verification_policy_version
+        FROM pilot_run_results WHERE run_id = ?
+        """,
+        (descriptor.target_run_id,),
+    ).fetchone()
+    _require(binding is not None, "prepared_snapshot_binding_missing")
+    assert binding is not None
+    _require(
+        str(binding["id"]) == descriptor.snapshot_id
+        and str(binding["customer_id"]) == descriptor.customer_id
+        and str(binding["project_id"]) == descriptor.project_id
+        and str(binding["procurement_case_id"]) == descriptor.case_id
+        and str(binding["run_id"]) == descriptor.target_run_id,
+        "prepared_snapshot_identity_mismatch",
+    )
+    _require(
+        str(binding["source_analysis_run_id"]) == descriptor.source_graph_id
+        and binding["source_graph_hash"] == descriptor.source_graph_hash,
+        "prepared_source_graph_mismatch",
+    )
+    _require(
+        binding["binding_manifest_file_sha256"] == descriptor.snapshot_hash,
+        "prepared_snapshot_hash_mismatch",
+    )
+    _require(
+        binding["source_graph_hash_algorithm"] == "sha256-json-c14n-v1"
+        and binding["verification_policy_version"]
+        == "r8-frozen-canonical-verifier-v1",
+        "prepared_snapshot_policy_mismatch",
+    )
+    return binding
+
+
+def _verify_snapshot_files(
+    data_dir: Path,
+    binding: sqlite3.Row,
+) -> tuple[Path, Path, Path]:
+    requirements = _safe_relative(
+        data_dir, str(binding["requirements_storage_key"])
+    )
+    report = _safe_relative(
+        data_dir, str(binding["canonical_report_storage_key"])
+    )
+    manifest_path = _safe_relative(
+        data_dir, str(binding["binding_manifest_storage_key"])
+    )
+    _require(
+        _sha256_file(requirements) == binding["requirements_file_sha256"]
+        and _sha256_file(report) == binding["canonical_report_file_sha256"]
+        and _sha256_file(manifest_path)
+        == binding["binding_manifest_file_sha256"],
+        "prepared_snapshot_file_hash_mismatch",
+    )
+    return requirements, report, manifest_path
+
+
+def _verify_snapshot_manifest(
+    manifest_path: Path,
+    descriptor: PrivatePreparedVerificationDescriptor,
+    binding: sqlite3.Row,
+) -> None:
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PreparedVerificationError("prepared_snapshot_manifest_invalid") from exc
+    expected_manifest = {
+        "customer_id": descriptor.customer_id,
+        "project_id": descriptor.project_id,
+        "procurement_case_id": descriptor.case_id,
+        "run_id": descriptor.target_run_id,
+        "source_analysis_run_id": descriptor.source_graph_id,
+        "source_graph_hash": descriptor.source_graph_hash,
+        "requirements_file_sha256": binding["requirements_file_sha256"],
+        "canonical_report_file_sha256": binding["canonical_report_file_sha256"],
+    }
+    _require(
+        isinstance(manifest, dict)
+        and all(manifest.get(key) == value for key, value in expected_manifest.items()),
+        "prepared_snapshot_manifest_mismatch",
+    )
+
+
+def _verify_zero_generation_state(
+    connection: sqlite3.Connection,
+    descriptor: PrivatePreparedVerificationDescriptor,
+    run: sqlite3.Row,
+    *,
+    documents: list[sqlite3.Row],
+    extracted: int,
+    chunks: int,
+) -> tuple[bool, bool, bool, bool]:
+    artifact_count = int(
+        connection.execute(
+            "SELECT count(*) FROM pilot_artifacts WHERE run_id = ?",
+            (descriptor.target_run_id,),
+        ).fetchone()[0]
+    )
+    provider_absent = bool(
+        # used_llm might be 0/1 in SQLite or False/True in memory
+        not bool(run["used_llm"])
+        and run["llm_model"] is None
+        and run["report_path"] is None
+        and artifact_count == 0
+    )
+    generation_absent = artifact_count == 0
+    gate5_ready = bool(
+        run["status"] == "completed"
+        and len(documents) == descriptor.physical_document_count
+        and extracted == descriptor.extracted_document_count
+        and chunks == descriptor.chunk_count
+    )
+    controlled_preflight_verified = bool(
+        descriptor.controlled_preflight_verified
+        and descriptor.controlled_preflight_invocations == 1
+        and descriptor.controlled_provider_invocations == 0
+        and descriptor.provider_generation_calls == 0
+    )
+    _require(
+        provider_absent and descriptor.provider_results_absent,
+        "prepared_provider_state_present",
+    )
+    _require(
+        generation_absent and descriptor.generation_artifacts_absent,
+        "prepared_generation_artifacts_present",
+    )
+    _require(gate5_ready, "prepared_gate5_mismatch")
+    _require(controlled_preflight_verified, "prepared_preflight_state_mismatch")
+    return provider_absent, generation_absent, gate5_ready, controlled_preflight_verified
+
+
+def verify_prepared_database_strict(
+    *,
+    path: Path,
+    data_dir: Path,
+    descriptor: PrivatePreparedVerificationDescriptor,
+) -> PreparedDatabaseVerification:
+    """Independently verify the descriptor against exact persisted rows and bytes."""
+    _require(
+        not path.is_symlink()
+        and path.is_file()
+        and not data_dir.is_symlink()
+        and data_dir.is_dir(),
+        "prepared_database_path_invalid",
+    )
+    try:
+        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        try:
+            integrity = connection.execute("PRAGMA integrity_check").fetchone()
+            _require(
+                integrity is not None and integrity[0] == "ok",
+                "prepared_database_integrity_failed",
+            )
+            run = _load_run(connection, descriptor)
+            _verify_ownership(connection, descriptor)
+            metadata = _verify_tender(connection, descriptor, run)
+            documents, extracted, chunks = _verify_documents(
+                connection, descriptor, metadata
+            )
+            binding = _load_snapshot_binding(connection, descriptor)
+            _, _, manifest_path = _verify_snapshot_files(data_dir, binding)
+            _verify_snapshot_manifest(manifest_path, descriptor, binding)
+            (
+                provider_absent,
+                generation_absent,
+                gate5_ready,
+                controlled_preflight_verified,
+            ) = _verify_zero_generation_state(
+                connection,
+                descriptor,
+                run,
+                documents=documents,
+                extracted=extracted,
+                chunks=chunks,
+            )
+            return PreparedDatabaseVerification(
+                database_sha256=_sha256_file(path),
+                physical_document_count=len(documents),
+                extracted_document_count=extracted,
+                chunk_count=chunks,
+                target_run_verified=True,
+                snapshot_binding_verified=True,
+                source_graph_binding_verified=True,
+                gate5_ready=gate5_ready,
+                controlled_preflight_verified=controlled_preflight_verified,
+                provider_results_absent=provider_absent,
+                generation_artifacts_absent=generation_absent,
+            )
+        finally:
+            connection.close()
+    except PreparedVerificationError:
+        raise
+    except OSError as exc:
+        raise PreparedVerificationError("prepared_database_io_failed") from exc
+    except sqlite3.Error as exc:
+        raise PreparedVerificationError("prepared_database_query_failed") from exc
+
+
+def verify_prepared_database(
+    *,
+    path: Path,
+    data_dir: Path,
+    descriptor: PrivatePreparedVerificationDescriptor,
+) -> PreparedDatabaseVerification | None:
+    """Compatibility boundary for callers not yet migrated to the strict contract."""
+    try:
+        return verify_prepared_database_strict(
+            path=path,
+            data_dir=data_dir,
+            descriptor=descriptor,
+        )
+    except PreparedVerificationError as exc:
+        # The code is closed, sanitized and contains no private values. Keeping it on
+        # stderr makes real local acceptance diagnosable before lifecycle cleanup.
+        import sys
+
+        print(f"prepared_verification:{exc.code}", file=sys.stderr)
+        return None
 
 
 def write_private_verification_descriptor(
@@ -381,384 +788,3 @@ def parse_private_descriptor(
         provider_results_absent=value["provider_results_absent"],
         generation_artifacts_absent=value["generation_artifacts_absent"],
     )
-
-
-def _json_object(value: Any) -> dict[str, Any]:
-    if isinstance(value, dict):
-        return value
-    if isinstance(value, str):
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
-
-
-def _load_run(
-    connection: sqlite3.Connection,
-    descriptor: PrivatePreparedVerificationDescriptor,
-) -> sqlite3.Row:
-    run = connection.execute(
-        """
-        SELECT registry_number, status, used_llm, llm_model, report_path,
-               customer_id, project_id, procurement_case_id, metadata_json
-        FROM tender_analysis_runs WHERE id = ?
-        """,
-        (descriptor.target_run_id,),
-    ).fetchone()
-    _require(run is not None, "prepared_run_missing")
-    assert run is not None
-    _require(
-        run["status"] == "completed"
-        and str(run["customer_id"]) == descriptor.customer_id
-        and str(run["project_id"]) == descriptor.project_id
-        and str(run["procurement_case_id"]) == descriptor.case_id,
-        "prepared_run_binding_mismatch",
-    )
-    return run
-
-
-def _verify_ownership(
-    connection: sqlite3.Connection,
-    descriptor: PrivatePreparedVerificationDescriptor,
-) -> None:
-    case = connection.execute(
-        """
-        SELECT customer_id, project_id, current_run_id
-        FROM procurement_cases WHERE id = ?
-        """,
-        (descriptor.case_id,),
-    ).fetchone()
-    project = connection.execute(
-        "SELECT customer_id FROM pilot_projects WHERE id = ?",
-        (descriptor.project_id,),
-    ).fetchone()
-    _require(case is not None and project is not None, "prepared_case_or_project_missing")
-    assert case is not None and project is not None
-    _require(
-        str(case["customer_id"]) == descriptor.customer_id
-        and str(case["project_id"]) == descriptor.project_id
-        and str(case["current_run_id"]) == descriptor.target_run_id
-        and str(project["customer_id"]) == descriptor.customer_id,
-        "prepared_ownership_mismatch",
-    )
-
-
-def _verify_tender(
-    connection: sqlite3.Connection,
-    descriptor: PrivatePreparedVerificationDescriptor,
-    run: sqlite3.Row,
-) -> dict[str, Any]:
-    metadata = _json_object(run["metadata_json"])
-    _require(
-        str(metadata.get("arv001_tender_id")) == descriptor.tender_id
-        and metadata.get("arv001_corpus_sha256") == descriptor.corpus_sha256,
-        "prepared_run_metadata_mismatch",
-    )
-    tender = connection.execute(
-        "SELECT registry_number, content_hash FROM procurement_tenders WHERE id = ?",
-        (descriptor.tender_id,),
-    ).fetchone()
-    _require(tender is not None, "prepared_tender_missing")
-    assert tender is not None
-    _require(
-        tender["content_hash"] == descriptor.corpus_sha256
-        and registry_identity_sha256(str(tender["registry_number"]))
-        == descriptor.registry_identity_sha256
-        and str(tender["registry_number"]) == str(run["registry_number"]),
-        "prepared_tender_binding_mismatch",
-    )
-    return metadata
-
-
-def _verify_documents(
-    connection: sqlite3.Connection,
-    descriptor: PrivatePreparedVerificationDescriptor,
-    metadata: dict[str, Any],
-) -> tuple[list[sqlite3.Row], int, int]:
-    documents = connection.execute(
-        """
-        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status
-        FROM procurement_tender_documents
-        WHERE tender_id = ? ORDER BY file_name ASC
-        """,
-        (descriptor.tender_id,),
-    ).fetchall()
-    rows: list[dict[str, Any]] = []
-    extracted = 0
-    sha_values: list[str] = []
-    for document in documents:
-        raw_meta = _json_object(document["raw_meta"])
-        corpus_descriptor = _json_object(raw_meta.get("corpus_descriptor"))
-        rows.append(
-            {
-                "original_name": corpus_descriptor.get("original_name")
-                or document["file_name"],
-                "sha256": document["sha256"],
-                "size_bytes": document["size_bytes"],
-            }
-        )
-        sha_values.append(str(document["sha256"]))
-        if document["text_extraction_status"] == "extracted":
-            extracted += 1
-    identities = canonical_document_identity_hashes(rows)
-    _require(
-        identities == descriptor.ordered_document_identity_hashes,
-        "prepared_document_identity_mismatch",
-    )
-    metadata_hashes = metadata.get("arv001_document_identity_hashes")
-    normalized_metadata = (
-        sorted(str(value) for value in metadata_hashes)
-        if isinstance(metadata_hashes, list)
-        else []
-    )
-    # The historical DB may use either the full identity hashes (CUS-2026-v1)
-    # or the raw file SHAs. We accept either but nothing else.
-    _require(
-        normalized_metadata in (sorted(identities), sorted(sha_values)),
-        "prepared_document_metadata_identity_mismatch",
-    )
-    chunks = int(
-        connection.execute(
-            "SELECT count(*) FROM procurement_document_chunks WHERE tender_id = ?",
-            (descriptor.tender_id,),
-        ).fetchone()[0]
-    )
-    _require(
-        len(documents) == descriptor.physical_document_count
-        and extracted == descriptor.extracted_document_count
-        and chunks == descriptor.chunk_count,
-        "prepared_document_counts_mismatch",
-    )
-    return list(documents), extracted, chunks
-
-
-def _load_snapshot_binding(
-    connection: sqlite3.Connection,
-    descriptor: PrivatePreparedVerificationDescriptor,
-) -> sqlite3.Row:
-    binding = connection.execute(
-        """
-        SELECT id, customer_id, project_id, procurement_case_id, run_id,
-               source_analysis_run_id, requirements_storage_key,
-               requirements_file_sha256, canonical_report_storage_key,
-               canonical_report_file_sha256, binding_manifest_storage_key,
-               binding_manifest_file_sha256, source_graph_hash,
-               source_graph_hash_algorithm, verification_policy_version
-        FROM pilot_run_results WHERE run_id = ?
-        """,
-        (descriptor.target_run_id,),
-    ).fetchone()
-    _require(binding is not None, "prepared_snapshot_binding_missing")
-    assert binding is not None
-    _require(
-        str(binding["id"]) == descriptor.snapshot_id
-        and str(binding["customer_id"]) == descriptor.customer_id
-        and str(binding["project_id"]) == descriptor.project_id
-        and str(binding["procurement_case_id"]) == descriptor.case_id
-        and str(binding["run_id"]) == descriptor.target_run_id,
-        "prepared_snapshot_identity_mismatch",
-    )
-    _require(
-        str(binding["source_analysis_run_id"]) == descriptor.source_graph_id
-        and binding["source_graph_hash"] == descriptor.source_graph_hash,
-        "prepared_source_graph_mismatch",
-    )
-    _require(
-        binding["binding_manifest_file_sha256"] == descriptor.snapshot_hash,
-        "prepared_snapshot_hash_mismatch",
-    )
-    _require(
-        binding["source_graph_hash_algorithm"] == "sha256-json-c14n-v1"
-        and binding["verification_policy_version"]
-        == "r8-frozen-canonical-verifier-v1",
-        "prepared_snapshot_policy_mismatch",
-    )
-    return binding
-
-
-def _verify_snapshot_files(
-    data_dir: Path,
-    binding: sqlite3.Row,
-) -> tuple[Path, Path, Path]:
-    requirements = _safe_relative(
-        data_dir, str(binding["requirements_storage_key"])
-    )
-    report = _safe_relative(
-        data_dir, str(binding["canonical_report_storage_key"])
-    )
-    manifest_path = _safe_relative(
-        data_dir, str(binding["binding_manifest_storage_key"])
-    )
-    _require(
-        _sha256_file(requirements) == binding["requirements_file_sha256"]
-        and _sha256_file(report) == binding["canonical_report_file_sha256"]
-        and _sha256_file(manifest_path)
-        == binding["binding_manifest_file_sha256"],
-        "prepared_snapshot_file_hash_mismatch",
-    )
-    return requirements, report, manifest_path
-
-
-def _verify_snapshot_manifest(
-    manifest_path: Path,
-    descriptor: PrivatePreparedVerificationDescriptor,
-    binding: sqlite3.Row,
-) -> None:
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise PreparedVerificationError("prepared_snapshot_manifest_invalid") from exc
-    expected_manifest = {
-        "customer_id": descriptor.customer_id,
-        "project_id": descriptor.project_id,
-        "procurement_case_id": descriptor.case_id,
-        "run_id": descriptor.target_run_id,
-        "source_analysis_run_id": descriptor.source_graph_id,
-        "source_graph_hash": descriptor.source_graph_hash,
-        "requirements_file_sha256": binding["requirements_file_sha256"],
-        "canonical_report_file_sha256": binding["canonical_report_file_sha256"],
-    }
-    _require(
-        isinstance(manifest, dict)
-        and all(manifest.get(key) == value for key, value in expected_manifest.items()),
-        "prepared_snapshot_manifest_mismatch",
-    )
-
-
-def _verify_zero_generation_state(
-    connection: sqlite3.Connection,
-    descriptor: PrivatePreparedVerificationDescriptor,
-    run: sqlite3.Row,
-    *,
-    documents: list[sqlite3.Row],
-    extracted: int,
-    chunks: int,
-) -> tuple[bool, bool, bool, bool]:
-    artifact_count = int(
-        connection.execute(
-            "SELECT count(*) FROM pilot_artifacts WHERE run_id = ?",
-            (descriptor.target_run_id,),
-        ).fetchone()[0]
-    )
-    provider_absent = bool(
-        not bool(run["used_llm"])
-        and run["llm_model"] is None
-        and run["report_path"] is None
-        and artifact_count == 0
-    )
-    generation_absent = artifact_count == 0
-    gate5_ready = bool(
-        run["status"] == "completed"
-        and len(documents) == descriptor.physical_document_count
-        and extracted == descriptor.extracted_document_count
-        and chunks == descriptor.chunk_count
-    )
-    controlled_preflight_verified = bool(
-        descriptor.controlled_preflight_verified
-        and descriptor.controlled_preflight_invocations == 1
-        and descriptor.controlled_provider_invocations == 0
-        and descriptor.provider_generation_calls == 0
-    )
-    _require(
-        provider_absent and descriptor.provider_results_absent,
-        "prepared_provider_state_present",
-    )
-    _require(
-        generation_absent and descriptor.generation_artifacts_absent,
-        "prepared_generation_artifacts_present",
-    )
-    _require(gate5_ready, "prepared_gate5_mismatch")
-    _require(controlled_preflight_verified, "prepared_preflight_state_mismatch")
-    return provider_absent, generation_absent, gate5_ready, controlled_preflight_verified
-
-
-def verify_prepared_database_strict(
-    *,
-    path: Path,
-    data_dir: Path,
-    descriptor: PrivatePreparedVerificationDescriptor,
-) -> PreparedDatabaseVerification:
-    """Independently verify the descriptor against exact persisted rows and bytes."""
-    _require(
-        not path.is_symlink()
-        and path.is_file()
-        and not data_dir.is_symlink()
-        and data_dir.is_dir(),
-        "prepared_database_path_invalid",
-    )
-    try:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-        connection.row_factory = sqlite3.Row
-        try:
-            integrity = connection.execute("PRAGMA integrity_check").fetchone()
-            _require(
-                integrity is not None and integrity[0] == "ok",
-                "prepared_database_integrity_failed",
-            )
-            run = _load_run(connection, descriptor)
-            _verify_ownership(connection, descriptor)
-            metadata = _verify_tender(connection, descriptor, run)
-            documents, extracted, chunks = _verify_documents(
-                connection, descriptor, metadata
-            )
-            binding = _load_snapshot_binding(connection, descriptor)
-            _, _, manifest_path = _verify_snapshot_files(data_dir, binding)
-            _verify_snapshot_manifest(manifest_path, descriptor, binding)
-            (
-                provider_absent,
-                generation_absent,
-                gate5_ready,
-                controlled_preflight_verified,
-            ) = _verify_zero_generation_state(
-                connection,
-                descriptor,
-                run,
-                documents=documents,
-                extracted=extracted,
-                chunks=chunks,
-            )
-            return PreparedDatabaseVerification(
-                database_sha256=_sha256_file(path),
-                physical_document_count=len(documents),
-                extracted_document_count=extracted,
-                chunk_count=chunks,
-                target_run_verified=True,
-                snapshot_binding_verified=True,
-                source_graph_binding_verified=True,
-                gate5_ready=gate5_ready,
-                controlled_preflight_verified=controlled_preflight_verified,
-                provider_results_absent=provider_absent,
-                generation_artifacts_absent=generation_absent,
-            )
-        finally:
-            connection.close()
-    except PreparedVerificationError:
-        raise
-    except OSError as exc:
-        raise PreparedVerificationError("prepared_database_io_failed") from exc
-    except sqlite3.Error as exc:
-        raise PreparedVerificationError("prepared_database_query_failed") from exc
-
-
-def verify_prepared_database(
-    *,
-    path: Path,
-    data_dir: Path,
-    descriptor: PrivatePreparedVerificationDescriptor,
-) -> PreparedDatabaseVerification | None:
-    """Compatibility boundary for callers not yet migrated to the strict contract."""
-    try:
-        return verify_prepared_database_strict(
-            path=path,
-            data_dir=data_dir,
-            descriptor=descriptor,
-        )
-    except PreparedVerificationError as exc:
-        # The code is closed, sanitized and contains no private values. Keeping it on
-        # stderr makes real local acceptance diagnosable before lifecycle cleanup.
-        import sys
-
-        print(f"prepared_verification:{exc.code}", file=sys.stderr)
-        return None

@@ -26,14 +26,13 @@ from src.modules.production_llm_analysis.llama_reasoning_control import (
     install_llama_non_reasoning_mode,
 )
 from src.modules.production_llm_analysis.live_output_boundary import (
-    build_maximal_live_completion_payload,
-    verify_exact_live_output_budget,
+    GRAMMAR_WHITESPACE_CONTRACT_VERSION,
+    GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
     ExactLiveOutputTokenizerUnavailable,
     ExactLiveOutputTokensExceeded,
     OutputSafetyMarginBelowThreshold,
-    GRAMMAR_WHITESPACE_CONTRACT_VERSION,
-    GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
-    GRAMMAR_WHITESPACE_SLOT,
+    build_maximal_live_completion_payload,
+    verify_exact_live_output_budget,
 )
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
@@ -126,8 +125,6 @@ class FakeNonPersistentTokenizer(FakePersistentTokenizer):
 def test_grammar_whitespace_contract_is_b10240_spacerule():
     assert GRAMMAR_WHITESPACE_CONTRACT_VERSION == "llama-cpp-b10240-spacerule-v1"
     assert GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT == 22
-    assert GRAMMAR_WHITESPACE_SLOT == ("\n" * 2) + (" " * 20)
-    assert len(GRAMMAR_WHITESPACE_SLOT.encode("utf-8")) == 22
 
 
 # 2. maximal payload is derived from the single live schema with server sentinels

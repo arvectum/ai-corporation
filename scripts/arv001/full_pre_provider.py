@@ -26,6 +26,7 @@ from scripts.arv001.prepared_publication import (
 )
 from scripts.arv001.prepared_verification import (
     PreparedDatabaseVerification,
+    PreparedVerificationError,
     PrivatePreparedVerificationDescriptor,
     parse_private_descriptor,
     verify_prepared_database,
@@ -457,9 +458,9 @@ def _exception_reason_code(exc: Exception, phase: str) -> str:
         return str(exc.code)
     if isinstance(exc, FileNotFoundError):
         return f"{phase}_file_missing"
-    if "No item with that key" in str(exc) or "OperationalError" in str(exc):
-        return "prepared_database_query_failed"
     message = str(exc).lower()
+    if "no item with that key" in str(exc) or "operationalerror" in message:
+        return "prepared_database_query_failed"
     if "git_head_mismatch" in message: return "git_head_mismatch"
     if "git_invocation_failure" in message: return "git_invocation_failure"
     if "snapshot_head_not_ancestor" in message: return "snapshot_head_not_ancestor"
@@ -640,6 +641,7 @@ def main() -> int:
         )
         return 2
 
+    attestation = None
     if snapshot_mode:
         try:
             # A. Attest original published snapshot
@@ -735,7 +737,7 @@ def main() -> int:
                         raise RuntimeError("runtime_profile_write_failed")
                     recorder.passed("runtime_profile")
 
-                    if snapshot_mode:
+                    if snapshot_mode and attestation:
                         # C. Byte-identical copy
                         if not _copy_snapshot(args.prepared_snapshot_root, staging, attestation.database_sha256):
                             raise RuntimeError("prepared_database_copy_failed")
@@ -805,7 +807,7 @@ def main() -> int:
                     counters = {"controlled_preflight_invocations": 1, "controlled_provider_invocations": 0, "provider_generation_calls": 0, "production_db_mutations": 0, "old_arv003_mutations": 0, "git_data_leaks": 0}
                     acceptance = {"application_prepared": True, "post_persistence_gate5_ready": True, "controlled_preflight_only": True, "physical_file_count": 10, "logical_document_count": 6, "extracted_document_count": 10, "prepared_chunk_count": 233, "raw_byte_replay": raw_mode, "attested_prepared_snapshot_replay": snapshot_mode}
                     
-                    if snapshot_mode:
+                    if snapshot_mode and attestation:
                         acceptance.update({
                             "prepared_snapshot_original_head": "5f6aa316f6f66306794e72bbcb90ad7bba3fba34",
                             "protected_path_contract_version": ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS_VERSION,
@@ -836,15 +838,16 @@ def main() -> int:
                     final_result = _result(head_sha=args.expected_head, recorder=final_recorder, status="PASS", counters=counters, acceptance=acceptance)
                     base_manifest = _prepared_manifest_base(payload=payload, binary_profile=binary_profile, gguf_profile=gguf_profile, probe=probe, corpus_sha=args.expected_corpus_sha, policy_sha=args.expected_policy_sha, verification=verification)
                     
-                    if snapshot_mode:
+                    if snapshot_mode and attestation:
                         base_manifest.update({
                             "prepared_snapshot_db_sha256": attestation.database_sha256,
                             "protected_source_graph_drift": False,
-                            "relevant_migration_drift": migration_drift
+                            "relevant_migration_drift": migration_drift,
+                            "original_manifest_sha256": attestation.manifest_sha256,
                         })
                     
                     try:
-                        publish_prepared_state(staging=staging, final=final_state, base_manifest=base_manifest, result=final_result, forbidden_literals=(attestation.descriptor.target_run_id, attestation.descriptor.customer_id, attestation.descriptor.project_id, attestation.descriptor.case_id, attestation.descriptor.tender_id, attestation.descriptor.snapshot_id, attestation.descriptor.source_graph_id) if snapshot_mode else ())
+                        publish_prepared_state(staging=staging, final=final_state, base_manifest=base_manifest, result=final_result, forbidden_literals=(attestation.descriptor.target_run_id, attestation.descriptor.customer_id, attestation.descriptor.project_id, attestation.descriptor.case_id, attestation.descriptor.tender_id, attestation.descriptor.snapshot_id, attestation.descriptor.source_graph_id) if snapshot_mode and attestation else ())
                     except PreparedPublicationError as exc:
                         phase = "privacy_scan" if exc.code == "prepared_privacy_violation" else "prepared_state_persistence"
                         recorder.failed(phase, *exc.reason_codes)
