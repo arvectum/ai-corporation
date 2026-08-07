@@ -868,6 +868,8 @@ def main() -> int:
                     return 0
 
         except Exception as exc:
+            import traceback
+            traceback.print_exc()
             shutil.rmtree(staging, ignore_errors=True)
             print(json.dumps(_failure(head_sha=args.expected_head, phase="runtime_start", code=_exception_reason_code(exc, "runtime_start"), recorder=recorder), sort_keys=False))
             return 2
