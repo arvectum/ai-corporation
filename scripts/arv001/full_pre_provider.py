@@ -489,6 +489,14 @@ def _reconstruct_actual_batch_requests(
     )
     from src.modules.production_llm_analysis.service import build_production_llm_request
     from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
+    from src.modules.production_llm_analysis.openai_compatible import (
+        OpenAICompatibleProductionLLMProvider,
+        OpenAICompatibleTransportConfig,
+    )
+
+    provider = OpenAICompatibleProductionLLMProvider(
+        OpenAICompatibleTransportConfig(base_url="http://127.0.0.1", api_key="dummy")
+    )
 
     conn = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
@@ -563,8 +571,9 @@ def _reconstruct_actual_batch_requests(
             budget_policy=budget_policy,
             map_mode=True
         )
+        body = provider._build_request_body(req)
         return measure_openai_request_tokens(
-            req.model_dump(mode="json"),
+            body,
             tokenizer=tokenizer,
             chat_template_overhead=batch_policy.chat_template_overhead
         )
