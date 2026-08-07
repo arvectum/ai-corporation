@@ -14,11 +14,19 @@ def _attach_failure_metadata(
     attempt_latencies_ms: tuple[int, ...],
     total_latency_ms: int | None,
     raw_response_sha256: str | None,
+    truncation_finish_reason: str | None = None,
+    truncation_prompt_tokens: int | None = None,
+    truncation_completion_tokens: int | None = None,
+    truncation_response_utf8_bytes: int | None = None,
 ) -> None:
     error.retry_count = retry_count  # type: ignore[attr-defined]
     error.attempt_latencies_ms = attempt_latencies_ms  # type: ignore[attr-defined]
     error.total_latency_ms = total_latency_ms  # type: ignore[attr-defined]
     error.raw_response_sha256 = raw_response_sha256  # type: ignore[attr-defined]
+    error.truncation_finish_reason = truncation_finish_reason  # type: ignore[attr-defined]
+    error.truncation_prompt_tokens = truncation_prompt_tokens  # type: ignore[attr-defined]
+    error.truncation_completion_tokens = truncation_completion_tokens  # type: ignore[attr-defined]
+    error.truncation_response_utf8_bytes = truncation_response_utf8_bytes  # type: ignore[attr-defined]
 
 
 class ProviderTimeoutError(TimeoutError):
@@ -120,6 +128,10 @@ class InvalidProviderResponseError(ValueError):
         attempt_latencies_ms: tuple[int, ...] = (),
         total_latency_ms: int | None = None,
         raw_response_sha256: str | None = None,
+        truncation_finish_reason: str | None = None,
+        truncation_prompt_tokens: int | None = None,
+        truncation_completion_tokens: int | None = None,
+        truncation_response_utf8_bytes: int | None = None,
     ) -> None:
         super().__init__(code)
         _attach_failure_metadata(
@@ -128,6 +140,10 @@ class InvalidProviderResponseError(ValueError):
             attempt_latencies_ms=attempt_latencies_ms,
             total_latency_ms=total_latency_ms,
             raw_response_sha256=raw_response_sha256,
+            truncation_finish_reason=truncation_finish_reason,
+            truncation_prompt_tokens=truncation_prompt_tokens,
+            truncation_completion_tokens=truncation_completion_tokens,
+            truncation_response_utf8_bytes=truncation_response_utf8_bytes,
         )
 
 

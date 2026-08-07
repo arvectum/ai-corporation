@@ -28,6 +28,9 @@ def apply_llama_non_reasoning_mode(
         raise ValueError("llama_thinking_mode_conflict")
     kwargs["enable_thinking"] = False
     body["chat_template_kwargs"] = kwargs
+    if body.get("reasoning_format") is not None and body["reasoning_format"] != "none":
+        raise ValueError("llama_reasoning_format_conflict")
+    body["reasoning_format"] = "none"
     return body
 
 
@@ -49,3 +52,8 @@ def install_llama_non_reasoning_mode() -> None:
     OpenAICompatibleProductionLLMProvider._build_request_body = (
         _build_request_body_without_thinking
     )
+    from src.modules.production_llm_analysis.openai_compatible import (
+        enable_live_boundary_verification,
+    )
+
+    enable_live_boundary_verification()
