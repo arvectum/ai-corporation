@@ -562,6 +562,7 @@ def _reconstruct_actual_batch_requests(
                 fragments=candidate
             ),
             provider="openai_compatible",
+            provider_wire_contract_version=R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
             model=model,
             prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
             prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
