@@ -51,6 +51,7 @@ _SAFE_INVALID_RESPONSE_CODES = frozenset(
         "provider_response_invalid",
         "provider_response_invalid_envelope",
         "provider_response_invalid_json",
+        "provider_response_truncated",
         "provider_usage_invalid",
         "provider_wire_claim_id_sentinel_invalid",
         "provider_wire_claim_schema_invalid",
@@ -136,18 +137,17 @@ def _extractive_field_paths(request: ProductionLLMAnalysisRequest) -> list[str]:
         for field_path in request.allowed_field_paths
         if field_path in _REQUIREMENT_FIELD_PATHS
     ]
-    if approved:
-        return sorted(set(approved))
-    # Controlled drift tests exercise contract-version mismatches while
-    # keeping the same allowed_field_paths fixture; do not fail them at
-    # the live-schema gate so that the intended mismatch surface is tested.
-    # If any allowed paths were supplied (even non-extractive ones), fall
-    # back to the canonical extractive set for the live sentinel schema.
-    if request.allowed_field_paths is not None:
-        # Drift tests use non-extractive paths; keep live schema build from failing
-        # before the controlled contract version check can run.
+    if request.allowed_field_paths and not approved:
+        # Fail closed: the live schema's field_path enum is derived from the
+        # extractive requirement paths only. A non-empty allow-list that supplies
+        # no extractive path must not silently fall back to a canonical set, which
+        # would let a non-extractive allow-list reach the wire.
+        raise ValueError("llama_schema_extractive_field_paths_missing")
+    if not approved:
+        # Empty allow-list is the planner/measurement default: derive the enum
+        # from the canonical extractive requirement set for schema measurement.
         return sorted(set(_REQUIREMENT_FIELD_PATHS))
-    raise ValueError("llama_schema_extractive_field_paths_missing")
+    return sorted(set(approved))
 
 
 def build_live_compact_llama_schema(request: ProductionLLMAnalysisRequest) -> dict[str, Any]:
@@ -428,6 +428,14 @@ def _parse_success_response_with_safe_diagnostics(
             total_latency_ms=getattr(exc, "total_latency_ms", total_latency_ms),
             raw_response_sha256=(
                 raw_response_sha256 or getattr(exc, "raw_response_sha256", None)
+            ),
+            truncation_finish_reason=getattr(exc, "truncation_finish_reason", None),
+            truncation_prompt_tokens=getattr(exc, "truncation_prompt_tokens", None),
+            truncation_completion_tokens=getattr(
+                exc, "truncation_completion_tokens", None
+            ),
+            truncation_response_utf8_bytes=getattr(
+                exc, "truncation_response_utf8_bytes", None
             ),
         ) from None
 

@@ -354,3 +354,16 @@ def test_document_metadata_uses_persisted_identity_hashes() -> None:
     assert len(documents) == 2
     assert extracted == 2
     assert chunks == 2
+
+
+def test_live_output_boundary_acceptance_is_zero_generation() -> None:
+    from scripts.arv001 import full_pre_provider as implementation
+
+    acceptance = implementation._live_output_boundary_acceptance()
+    assert acceptance["provider_generation_calls"] == 0
+    assert acceptance["controlled_provider_invocations"] == 0
+    assert acceptance["grammar_whitespace_max_bytes_per_slot"] == 22
+    assert acceptance["exact_live_output_tokenizer_available"] is False
+    assert acceptance["grammar_whitespace_contract_version"].startswith(
+        "llama-cpp-b10240-"
+    )

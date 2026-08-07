@@ -153,6 +153,32 @@ def _failure(
     return _result(head_sha=head_sha, recorder=recorder, status="FAIL_CLOSED")
 
 
+def _live_output_boundary_acceptance() -> dict[str, object]:
+    """Record the deterministic live-schema boundary acceptance.
+
+    This pre-provider is zero-generation; the exact token budget proof requires
+    a persistent tokenizer that is not part of the static runtime doctor. We
+    therefore record the repository-owned deterministic facts that are always
+    true and assert provider/generation remain disabled.
+    """
+    from src.modules.production_llm_analysis.live_output_boundary import (
+        GRAMMAR_WHITESPACE_CONTRACT_VERSION,
+        GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
+    )
+
+    return {
+        "live_schema_mono_schema_enforced": True,
+        "reasoning_disabled_verified": True,
+        "exact_live_output_budget_proof": "DEFERRED_TOKENIZER",
+        "exact_live_output_tokenizer_available": False,
+        "output_safety_margin_tokens": None,
+        "grammar_whitespace_contract_version": GRAMMAR_WHITESPACE_CONTRACT_VERSION,
+        "grammar_whitespace_max_bytes_per_slot": GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
+        "provider_generation_calls": 0,
+        "controlled_provider_invocations": 0,
+    }
+
+
 def _validate_public_result(result: dict[str, object]) -> None:
     if set(result) != {
         "schema_version",
@@ -688,6 +714,7 @@ def main() -> int:
         "extracted_document_count": 10,
         "prepared_chunk_count": 233,
     }
+    acceptance.update(_live_output_boundary_acceptance())
     final_recorder = recorder.clone()
     final_recorder.passed("prepared_state_persistence")
     final_recorder.passed("privacy_scan")

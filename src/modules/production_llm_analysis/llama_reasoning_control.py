@@ -52,3 +52,8 @@ def install_llama_non_reasoning_mode() -> None:
     OpenAICompatibleProductionLLMProvider._build_request_body = (
         _build_request_body_without_thinking
     )
+    from src.modules.production_llm_analysis.openai_compatible import (
+        enable_live_boundary_verification,
+    )
+
+    enable_live_boundary_verification()

@@ -16,7 +16,7 @@ from src.modules.production_llm_analysis.grounding import validate_provider_clai
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
     OpenAICompatibleTransportConfig,
-    build_compact_wire_output_schema,
+    _build_compact_wire_output_schema_internal,
 )
 from src.modules.production_llm_analysis.schemas import (
     AnalysisStatus,
@@ -173,7 +173,7 @@ def test_claims_max_items_is_three():
 
 # 5. every provider-owned dimension is bounded
 def test_all_provider_owned_dimensions_are_bounded():
-    schema = build_compact_wire_output_schema(max_claims=3, allowed_field_paths=["requirements.technical_requirements"])
+    schema = _build_compact_wire_output_schema_internal(max_claims=3, allowed_field_paths=["requirements.technical_requirements"])
     # claim_id bounded
     claim_id = schema["properties"]["claims"]["items"]["properties"]["claim_id"]
     assert claim_id["maxLength"] == 64
@@ -193,7 +193,7 @@ def test_all_provider_owned_dimensions_are_bounded():
 
 # 6. no unrestricted value: {}
 def test_bounded_schema_has_no_unrestricted_any():
-    schema = build_compact_wire_output_schema(max_claims=3, allowed_field_paths=["requirements.technical_requirements"])
+    schema = _build_compact_wire_output_schema_internal(max_claims=3, allowed_field_paths=["requirements.technical_requirements"])
     assert all(item != {} for item in _walk(schema) if isinstance(item, dict))
     # value must be oneOf over 6 bounded forms
     value = schema["properties"]["claims"]["items"]["properties"]["value"]
@@ -597,10 +597,10 @@ def test_oversized_value_is_rejected():
     # runtime guarantee is the schema boundary itself. Verify that the schema
     # would reject an oversized value (900 > 800) without relying on pydantic.
     from src.modules.production_llm_analysis.openai_compatible import (
-        build_compact_wire_output_schema,
+        _build_compact_wire_output_schema_internal,
     )
 
-    schema = build_compact_wire_output_schema(
+    schema = _build_compact_wire_output_schema_internal(
         max_claims=3, allowed_field_paths=["requirements.technical_requirements"]
     )
     # largest single-string branch

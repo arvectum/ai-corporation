@@ -44,6 +44,12 @@ from src.shared.llm.transport import (
 _TRANSIENT_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
 _PROTECTED_HEADERS = {"accept", "authorization", "content-type"}
 
+# Set by install_llama_non_reasoning_mode() to enable zero-generation
+# verification of the final body immediately before HTTPClient.send. When
+# False (tests and non-controlled transports), the transport sends the body
+# unverified so existing raw-transport tests remain unaffected.
+_LIVE_BOUNDARY_VERIFICATION_ENABLED = False
+
 # ---------------------------------------------------------------------------
 # Bounded compact-wire output contract (repository-owned, inline, deterministic)
 # ---------------------------------------------------------------------------
@@ -239,9 +245,10 @@ def _build_compact_wire_output_schema_internal(
     return schema
 
 
-# Public alias kept for backward compat in non-live contexts;
-# live contract is build_live_compact_llama_schema(request).
-build_compact_wire_output_schema = _build_compact_wire_output_schema_internal
+def enable_live_boundary_verification() -> None:
+    """Turn on zero-generation final-body verification in generate()."""
+    global _LIVE_BOUNDARY_VERIFICATION_ENABLED
+    _LIVE_BOUNDARY_VERIFICATION_ENABLED = True
 
 
 @dataclass(frozen=True)
@@ -294,6 +301,7 @@ class OpenAICompatibleProductionLLMProvider:
         self._clock = clock
         self._transport_boundary = transport_boundary
         self._execution_ordinal = execution_ordinal
+        self._last_boundary_verification: dict[str, Any] | None = None
 
     def set_transport_boundary(
         self, transport_boundary: Path, execution_ordinal: int
@@ -303,7 +311,19 @@ class OpenAICompatibleProductionLLMProvider:
         self._execution_ordinal = execution_ordinal
 
     def generate(self, request: ProductionLLMAnalysisRequest) -> ProviderAnalysisResponse:
-        body = canonical_json_bytes(self._build_request_body(request))
+        final_body = self._build_request_body(request)
+        if _LIVE_BOUNDARY_VERIFICATION_ENABLED and request.provider_wire_contract_version in {
+            "compact-safe-v1",
+            "compact-safe-v2",
+        }:
+            from src.modules.production_llm_analysis.llama_schema_constraint import (
+                verify_final_live_request_body as _verify_final_live_body,
+            )
+
+            self._last_boundary_verification = _verify_final_live_body(
+                final_body, request
+            )
+        body = canonical_json_bytes(final_body)
         limits = request.budget_policy.limits
         estimated_attempt_cost = self._estimate_attempt_cost(request, len(body))
         maximum_attempts = limits.max_retries + 1
@@ -555,13 +575,35 @@ class OpenAICompatibleProductionLLMProvider:
 
             # Detect output-limit truncation before any JSON/schema validation.
             # Truncated responses contain partial JSON; attempting to repair
-            # would violate the fail-closed boundary. Surface a distinct code.
+            # would violate the fail-closed boundary. Surface a distinct code
+            # and sanitized diagnostics only (no raw content/reasoning).
             try:
                 finish_reason = envelope.get("choices", [{}])[0].get("finish_reason")  # type: ignore[union-attr]
             except (AttributeError, IndexError, TypeError, KeyError):
                 finish_reason = None
             if isinstance(finish_reason, str) and finish_reason.strip().lower() == "length":
-                raise InvalidProviderResponseError("provider_response_truncated", **failure_metadata)
+                usage = envelope.get("usage")
+                try:
+                    prompt_tokens = (
+                        self._optional_non_negative_int(usage.get("prompt_tokens"), "provider_input_tokens_invalid")
+                        if isinstance(usage, dict)
+                        else None
+                    )
+                    completion_tokens = (
+                        self._optional_non_negative_int(usage.get("completion_tokens"), "provider_output_tokens_invalid")
+                        if isinstance(usage, dict)
+                        else None
+                    )
+                except InvalidProviderResponseError:
+                    prompt_tokens = None
+                    completion_tokens = None
+                sanitized = {
+                    "truncation_finish_reason": "length",
+                    "truncation_prompt_tokens": prompt_tokens,
+                    "truncation_completion_tokens": completion_tokens,
+                    "truncation_response_utf8_bytes": len(response.body),
+                }
+                raise InvalidProviderResponseError("provider_response_truncated", **sanitized, **failure_metadata)
 
             content_text = self._extract_message_content(envelope)
             content = json.loads(content_text)
@@ -620,7 +662,18 @@ class OpenAICompatibleProductionLLMProvider:
                 raw_response_sha256=response_hash,
             )
         except InvalidProviderResponseError as exc:
-            raise InvalidProviderResponseError(str(exc), **failure_metadata) from None
+            truncation_kwargs = {
+                key: getattr(exc, key, None)
+                for key in (
+                    "truncation_finish_reason",
+                    "truncation_prompt_tokens",
+                    "truncation_completion_tokens",
+                    "truncation_response_utf8_bytes",
+                )
+            }
+            raise InvalidProviderResponseError(
+                str(exc), **failure_metadata, **truncation_kwargs
+            ) from None
         except (UnicodeDecodeError, json.JSONDecodeError):
             raise InvalidProviderResponseError("provider_response_invalid_json", **failure_metadata) from None
         except PydanticValidationError as exc:
