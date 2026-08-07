@@ -133,7 +133,8 @@ def test_grammar_whitespace_contract_is_b10240_spacerule():
 # 2. maximal payload is derived from the single live schema with server sentinels
 def test_maximal_payload_is_live_schema_derived():
     request = _request()
-    maximal = build_maximal_live_completion_payload(request)
+    tokenizer = FakePersistentTokenizer(10)
+    maximal = build_maximal_live_completion_payload(request, tokenizer)
     payload = json.loads(maximal.content)
     assert len(payload["claims"]) == 3
     claim = payload["claims"][0]
@@ -149,9 +150,12 @@ def test_maximal_payload_is_live_schema_derived():
 # 3. whitespace slot count is deterministic
 def test_whitespace_slot_count_is_deterministic():
     request = _request()
-    a = build_maximal_live_completion_payload(request)
-    b = build_maximal_live_completion_payload(request)
-    assert a.grammar_whitespace_slots == a.content.count(GRAMMAR_WHITESPACE_SLOT)
+    tokenizer = FakePersistentTokenizer(10)
+    a = build_maximal_live_completion_payload(request, tokenizer)
+    b = build_maximal_live_completion_payload(request, tokenizer)
+    from src.modules.production_llm_analysis.live_output_boundary import _maximal_whitespace_slot
+    ws = _maximal_whitespace_slot(tokenizer)
+    assert a.grammar_whitespace_slots == a.content.count(ws)
     assert a.grammar_whitespace_slots == b.grammar_whitespace_slots
     assert a.content_sha256 == b.content_sha256
 

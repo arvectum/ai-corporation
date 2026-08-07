@@ -73,40 +73,47 @@ class MaximalLiveCompletion:
     grammar_whitespace_slots: int
 
 
-def _longest_value(values: list[str]) -> str:
-    """Return the lexicographically-last of the equally-longest enum literals."""
-    longest = max(len(v) for v in values) if values else 0
-    longest_values = sorted(v for v in values if len(v) == longest)
-    return longest_values[-1] if longest_values else ""
+def _maximal_token_value(values: list[str], tokenizer: Any) -> str:
+    """Return the value from the list that results in the most tokens."""
+    if not values:
+        return ""
+    # We use a tuple of (token_count, lexicographical_order) to ensure deterministic
+    # results if multiple values have the same token count.
+    counts = []
+    for v in values:
+        try:
+            count = int(tokenizer(v))
+        except (TypeError, ValueError):
+            count = 0
+        counts.append((count, v))
+    return max(counts, key=lambda x: (x[0], x[1]))[1]
 
 
-def _max_object_value(pairs: list[tuple[str, str]]) -> str:
-    """Serialize an object with maximal grammar whitespace in every slot.
+def _maximal_whitespace_slot(tokenizer: Any) -> str:
+    """Find the maximal-token whitespace sequence allowed by b10240."""
+    # SPACE_RULE = "| \" \" | \"\\n\"{1,2} [ \\t]{0,20}"
+    # We must maximize over 1..2 newlines and 0..20 spaces/tabs.
+    candidates = [" "]  # The first alternative: single space.
+    for nl in [1, 2]:
+        for total_ws in range(21):
+            # We check pure spaces and pure tabs for the bounds.
+            # Usually Gemma merges spaces, while tabs are single tokens.
+            candidates.append("\n" * nl + " " * total_ws)
+            candidates.append("\n" * nl + "\t" * total_ws)
 
-    Matches b10240 ``_build_object_rule``: ``"{" space (kv ("," space kv)* )?
-    space "}"`` where each ``kv`` is ``"key" space ":" space value``.
-    """
-    ws = GRAMMAR_WHITESPACE_SLOT
-    kv = [f'"{k}"{ws}:{ws}{v}' for k, v in pairs]
-    return "{" + ws + ("," + ws).join(kv) + ws + "}"
-
-
-def _max_array_value(values: list[str]) -> str:
-    """Serialize an array with maximal grammar whitespace in every slot.
-
-    Matches the b10240 ``array`` builtin: ``"[" space (value ("," space value)*)?
-    space "]"``.
-    """
-    ws = GRAMMAR_WHITESPACE_SLOT
-    return "[" + ws + ("," + ws).join(values) + ws + "]"
-
-
-def _count_whitespace_slots(text: str) -> int:
-    return text.count(GRAMMAR_WHITESPACE_SLOT)
+    counts = []
+    for c in candidates:
+        try:
+            count = int(tokenizer(c))
+        except (TypeError, ValueError):
+            count = 0
+        counts.append((count, c))
+    # Maximize by token count, then string content for determinism.
+    return max(counts, key=lambda x: (x[0], x[1]))[1]
 
 
 def build_maximal_live_completion_payload(
-    request: ProductionLLMAnalysisRequest,
+    request: ProductionLLMAnalysisRequest, tokenizer: Any
 ) -> MaximalLiveCompletion:
     """Return the exact maximal live-sentinel completion the provider may emit.
 
@@ -114,14 +121,23 @@ def build_maximal_live_completion_payload(
     (``build_live_compact_llama_schema``) so the bound cannot diverge from the
     schema enforced on the wire. It uses:
       * claims = maxItems (every claim present, one evidence reference);
-      * the longest ``field_path`` enum literal and ``fragment_id`` enum literal;
+      * the maximal ``field_path`` enum literal and ``fragment_id`` enum literal;
       * the server-owned ``const`` sentinels for claim_id/value/quote;
       * ``provider_confidence = 1.0`` (longest schema-valid number in [0, 1]).
-    Every grammar ``space`` slot is replaced by the b10240 maximal whitespace
-    (2 newlines + 20 spaces). Because the JSON-schema grammar only permits
-    whitespace at named ``space`` slots (never inside a ``string`` production),
-    this serialization is an exact upper-bound representation.
+    Every grammar ``space`` slot is replaced by the b10240 maximal whitespace.
+    Because the JSON-schema grammar only permits whitespace at named ``space``
+    slots (never inside a ``string`` production), this serialization is an
+    exact upper-bound representation.
     """
+    ws = _maximal_whitespace_slot(tokenizer)
+
+    def max_object(pairs: list[tuple[str, str]]) -> str:
+        kv = [f'"{k}"{ws}:{ws}{v}' for k, v in pairs]
+        return "{" + ws + ("," + ws).join(kv) + ws + "}"
+
+    def max_array(values: list[str]) -> str:
+        return "[" + ws + ("," + ws).join(values) + ws + "]"
+
     schema = build_live_compact_llama_schema(request)
     claims_schema = schema["properties"]["claims"]
     max_claims = request.max_claims if request.max_claims else CLOSED_MAX_CLAIMS
@@ -132,21 +148,21 @@ def build_maximal_live_completion_payload(
     ]
     ref_enum = evidence_schema["fragment_id"]["enum"]
 
-    claim = _max_object_value(
+    claim = max_object(
         [
             ("claim_id", f'"{_SERVER_CLAIM_ID_SENTINEL}"'),
-            ("field_path", f'"{_longest_value(field_enum)}"'),
+            ("field_path", f'"{_maximal_token_value(field_enum, tokenizer)}"'),
             ("value", f'"{_SERVER_FRAGMENT_VALUE_SENTINEL}"'),
             ("provider_confidence", "1.0"),
             (
                 "evidence_references",
-                _max_array_value(
+                max_array(
                     [
-                        _max_object_value(
+                        max_object(
                             [
                                 (
                                     "fragment_id",
-                                    f'"{_longest_value(ref_enum)}"',
+                                    f'"{_maximal_token_value(ref_enum, tokenizer)}"',
                                 ),
                                 ("quote", f'"{_SERVER_FRAGMENT_QUOTE_SENTINEL}"'),
                             ]
@@ -156,12 +172,12 @@ def build_maximal_live_completion_payload(
             ),
         ]
     )
-    claims = _max_array_value([claim] * max_claims)
-    payload = _max_object_value([("claims", claims)])
+    claims = max_array([claim] * max_claims)
+    payload = max_object([("claims", claims)])
     return MaximalLiveCompletion(
         content=payload,
         content_sha256=canonical_sha256(payload),
-        grammar_whitespace_slots=_count_whitespace_slots(payload),
+        grammar_whitespace_slots=payload.count(ws),
     )
 
 
@@ -182,7 +198,6 @@ def verify_exact_live_output_budget(
     exact tokenizer is available the proof raises
     ``exact_live_output_tokenizer_unavailable``.
     """
-    tokenizer = tokenizer
     if tokenizer is None:
         try:
             tokenizer = tokenizer_from_environment()
@@ -191,7 +206,7 @@ def verify_exact_live_output_budget(
     identity = str(getattr(tokenizer, "identity", "") or "")
     if not identity or not bool(getattr(tokenizer, "persistent", False)):
         raise ExactLiveOutputTokenizerUnavailable
-    maximal = build_maximal_live_completion_payload(request)
+    maximal = build_maximal_live_completion_payload(request, tokenizer)
     try:
         exact_tokens = int(tokenizer(maximal.content))
     except (ExactTokenizerUnavailable, OSError, ValueError) as exc:
