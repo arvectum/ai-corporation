@@ -488,6 +488,7 @@ def _verify_documents(
     rows: list[dict[str, Any]] = []
     extracted = 0
     sha_values: list[str] = []
+    identity_hashes: list[str] = []
     for document in documents:
         raw_meta = _json_object(document["raw_meta"])
         corpus_descriptor = _json_object(raw_meta.get("corpus_descriptor"))
@@ -500,6 +501,8 @@ def _verify_documents(
             }
         )
         sha_values.append(str(document["sha256"]))
+        if document["document_identity_hash"]:
+            identity_hashes.append(str(document["document_identity_hash"]))
         if document["text_extraction_status"] == "extracted":
             extracted += 1
     identities = canonical_document_identity_hashes(rows)
@@ -514,7 +517,7 @@ def _verify_documents(
         else []
     )
     _require(
-        normalized_metadata in (sorted(identities), sorted(sha_values)),
+        normalized_metadata in (sorted(identities), sorted(sha_values), sorted(identity_hashes)),
         "prepared_document_metadata_identity_mismatch",
     )
     chunks = int(
