@@ -141,7 +141,8 @@ def test_maximal_payload_is_live_schema_derived():
     assert claim["claim_id"] == "__ARVECTUM_SERVER_CLAIM_ID__"
     assert claim["value"] == "__ARVECTUM_SERVER_FRAGMENT_VALUE__"
     assert claim["evidence_references"][0]["quote"] == "__ARVECTUM_SERVER_FRAGMENT_QUOTE__"
-    assert claim["provider_confidence"] == 1.0
+    # provider_confidence is removed from live generatable schema
+    assert "provider_confidence" not in claim
     schema = build_live_compact_llama_schema(request)
     refs = schema["properties"]["claims"]["items"]["properties"]["evidence_references"]
     assert refs["maxItems"] == 1

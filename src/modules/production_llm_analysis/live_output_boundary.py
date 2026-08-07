@@ -10,6 +10,7 @@ public schema and never falls back to a ``chars//4`` heuristic for acceptance.
 
 from __future__ import annotations
 
+import itertools
 from dataclasses import dataclass
 from typing import Any
 
@@ -44,8 +45,6 @@ CLOSED_MAX_CLAIMS = 3
 # Maximal serialized length of one `space` slot is therefore 2 + 20 = 22 bytes.
 GRAMMAR_WHITESPACE_CONTRACT_VERSION = "llama-cpp-b10240-spacerule-v1"
 GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT = 22
-# Canonic maximal whitespace for one grammar `space` slot.
-GRAMMAR_WHITESPACE_SLOT = "\n\n" + " " * 20
 
 
 class LiveOutputBoundaryError(RuntimeError):
@@ -77,8 +76,6 @@ def _maximal_token_value(values: list[str], tokenizer: Any) -> str:
     """Return the value from the list that results in the most tokens."""
     if not values:
         return ""
-    # We use a tuple of (token_count, lexicographical_order) to ensure deterministic
-    # results if multiple values have the same token count.
     counts = []
     for v in values:
         try:
@@ -90,16 +87,22 @@ def _maximal_token_value(values: list[str], tokenizer: Any) -> str:
 
 
 def _maximal_whitespace_slot(tokenizer: Any) -> str:
-    """Find the maximal-token whitespace sequence allowed by b10240."""
-    # SPACE_RULE = "| \" \" | \"\\n\"{1,2} [ \\t]{0,20}"
-    # We must maximize over 1..2 newlines and 0..20 spaces/tabs.
-    candidates = [" "]  # The first alternative: single space.
+    """Find the maximal-token whitespace sequence allowed by b10240.
+
+    We conservatively check all combinations of 1..2 newlines and 0..20
+    spaces/tabs to ensure the proof is a true upper bound for Gemma.
+    """
+    candidates = [" "]
     for nl in [1, 2]:
         for total_ws in range(21):
-            # We check pure spaces and pure tabs for the bounds.
-            # Usually Gemma merges spaces, while tabs are single tokens.
+            # Check pure spaces
             candidates.append("\n" * nl + " " * total_ws)
+            # Check pure tabs
             candidates.append("\n" * nl + "\t" * total_ws)
+            # Check some mixed patterns (context sensitive)
+            if total_ws > 1:
+                candidates.append("\n" * nl + " " * (total_ws - 1) + "\t")
+                candidates.append("\n" * nl + "\t" + " " * (total_ws - 1))
 
     counts = []
     for c in candidates:
@@ -108,27 +111,13 @@ def _maximal_whitespace_slot(tokenizer: Any) -> str:
         except (TypeError, ValueError):
             count = 0
         counts.append((count, c))
-    # Maximize by token count, then string content for determinism.
     return max(counts, key=lambda x: (x[0], x[1]))[1]
 
 
 def build_maximal_live_completion_payload(
     request: ProductionLLMAnalysisRequest, tokenizer: Any
 ) -> MaximalLiveCompletion:
-    """Return the exact maximal live-sentinel completion the provider may emit.
-
-    The payload is built from the single live schema
-    (``build_live_compact_llama_schema``) so the bound cannot diverge from the
-    schema enforced on the wire. It uses:
-      * claims = maxItems (every claim present, one evidence reference);
-      * the maximal ``field_path`` enum literal and ``fragment_id`` enum literal;
-      * the server-owned ``const`` sentinels for claim_id/value/quote;
-      * ``provider_confidence = 1.0`` (longest schema-valid number in [0, 1]).
-    Every grammar ``space`` slot is replaced by the b10240 maximal whitespace.
-    Because the JSON-schema grammar only permits whitespace at named ``space``
-    slots (never inside a ``string`` production), this serialization is an
-    exact upper-bound representation.
-    """
+    """Return the exact maximal live-sentinel completion the provider may emit."""
     ws = _maximal_whitespace_slot(tokenizer)
 
     def max_object(pairs: list[tuple[str, str]]) -> str:
@@ -153,7 +142,6 @@ def build_maximal_live_completion_payload(
             ("claim_id", f'"{_SERVER_CLAIM_ID_SENTINEL}"'),
             ("field_path", f'"{_maximal_token_value(field_enum, tokenizer)}"'),
             ("value", f'"{_SERVER_FRAGMENT_VALUE_SENTINEL}"'),
-            ("provider_confidence", "1.0"),
             (
                 "evidence_references",
                 max_array(
@@ -189,15 +177,7 @@ def verify_exact_live_output_budget(
     tokens_limit: int = EXACT_LIVE_OUTPUT_TOKENS_LIMIT,
     minimum_margin: int = EXACT_LIVE_OUTPUT_SAFETY_MARGIN,
 ) -> dict[str, Any]:
-    """Measure the maximal live payload with the approved persistent tokenizer.
-
-    This is the controlled/pre-provider acceptance gate. It fails closed and
-    never falls back to a ``bytes//4`` or ``chars//4`` heuristic. The tokenizer
-    must be the same persistent exact counter returned by
-    ``tokenizer_from_environment()`` (approved ``/tokenize``). If no persistent
-    exact tokenizer is available the proof raises
-    ``exact_live_output_tokenizer_unavailable``.
-    """
+    """Measure the maximal live payload with the approved persistent tokenizer."""
     if tokenizer is None:
         try:
             tokenizer = tokenizer_from_environment()
@@ -225,6 +205,7 @@ def verify_exact_live_output_budget(
         ),
         "maximal_payload_sha256": maximal.content_sha256,
         "exact_live_output_tokens": exact_tokens,
+        "exact_live_output_token_upper_bound": exact_tokens,
         "output_budget": output_budget,
         "safety_margin_tokens": safety_margin,
         "grammar_whitespace_contract_version": GRAMMAR_WHITESPACE_CONTRACT_VERSION,

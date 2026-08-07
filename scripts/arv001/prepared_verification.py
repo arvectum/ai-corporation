@@ -479,8 +479,7 @@ def _verify_documents(
 ) -> tuple[list[sqlite3.Row], int, int]:
     documents = connection.execute(
         """
-        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status,
-               document_identity_hash
+        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status
         FROM procurement_tender_documents
         WHERE tender_id = ? ORDER BY file_name ASC
         """,
@@ -489,7 +488,6 @@ def _verify_documents(
     rows: list[dict[str, Any]] = []
     extracted = 0
     sha_values: list[str] = []
-    identity_hashes: list[str] = []
     for document in documents:
         raw_meta = _json_object(document["raw_meta"])
         corpus_descriptor = _json_object(raw_meta.get("corpus_descriptor"))
@@ -502,8 +500,6 @@ def _verify_documents(
             }
         )
         sha_values.append(str(document["sha256"]))
-        if document["document_identity_hash"]:
-            identity_hashes.append(str(document["document_identity_hash"]))
         if document["text_extraction_status"] == "extracted":
             extracted += 1
     identities = canonical_document_identity_hashes(rows)
@@ -517,8 +513,10 @@ def _verify_documents(
         if isinstance(metadata_hashes, list)
         else []
     )
+    # The historical DB may use either the full identity hashes (CUS-2026-v1)
+    # or the raw file SHAs. We accept either but nothing else.
     _require(
-        normalized_metadata in (sorted(identities), sorted(sha_values), sorted(identity_hashes)),
+        normalized_metadata in (sorted(identities), sorted(sha_values)),
         "prepared_document_metadata_identity_mismatch",
     )
     chunks = int(

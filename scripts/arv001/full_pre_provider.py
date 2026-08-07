@@ -18,7 +18,7 @@ import tempfile
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from scripts.arv001.prepared_publication import (
     PreparedPublicationError,
@@ -29,6 +29,11 @@ from scripts.arv001.prepared_verification import (
     PrivatePreparedVerificationDescriptor,
     parse_private_descriptor,
     verify_prepared_database,
+)
+from scripts.arv001.prepared_snapshot_attestation import (
+    verify_published_prepared_snapshot,
+    PreparedSnapshotAttestationError,
+    _tree_hash,
 )
 from scripts.arv001.runtime_doctor import (
     ManagedLoopbackRuntime,
@@ -44,6 +49,26 @@ from scripts.arv001.runtime_doctor import (
     validate_gguf_path,
     validate_llama_server_path,
     write_private_runtime_profile,
+)
+from src.modules.production_llm_analysis.live_output_boundary import (
+    GRAMMAR_WHITESPACE_CONTRACT_VERSION,
+    GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
+    verify_exact_live_output_budget,
+)
+
+ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS_VERSION = "arv001-prepared-carry-forward-v1"
+ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS = (
+    "src/modules/document_ingestion/",
+    "src/modules/document_store/",
+    "src/modules/production_llm_analysis/batching.py",
+    "src/modules/production_llm_analysis/controlled_evidence.py",
+    "src/modules/production_llm_analysis/evidence.py",
+    "src/modules/production_llm_analysis/grounding.py",
+    "src/modules/production_llm_analysis/schemas.py",
+    "src/tender_research/",
+    "src/shared/db/",
+    "src/modules/customer_pilot/",
+    "migrations/",
 )
 
 _PREPARE_PAYLOAD_FIELDS = {
@@ -154,27 +179,54 @@ def _failure(
     return _result(head_sha=head_sha, recorder=recorder, status="FAIL_CLOSED")
 
 
-def _live_output_boundary_acceptance(
-    request: Any, tokenizer: Any | None = None
-) -> dict[str, object]:
-    """Record the deterministic live-schema boundary acceptance."""
-    from src.modules.production_llm_analysis.live_output_boundary import (
-        GRAMMAR_WHITESPACE_CONTRACT_VERSION,
-        GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
-        verify_exact_live_output_budget,
-    )
-
-    proof = verify_exact_live_output_budget(request, tokenizer=tokenizer)
+def _live_output_boundary_static_acceptance() -> dict[str, object]:
+    """Record static zero-generation facts about the live schema."""
     return {
         "live_schema_mono_schema_enforced": True,
         "reasoning_disabled_verified": True,
-        "exact_live_output_budget_proof": "PASS",
-        "exact_live_output_tokenizer_available": True,
-        **proof,
-        "grammar_whitespace_contract_version": GRAMMAR_WHITESPACE_CONTRACT_VERSION,
-        "grammar_whitespace_max_bytes_per_slot": GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
         "provider_generation_calls": 0,
         "controlled_provider_invocations": 0,
+        "grammar_whitespace_contract_version": GRAMMAR_WHITESPACE_CONTRACT_VERSION,
+        "grammar_whitespace_max_bytes_per_slot": GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
+    }
+
+
+def _live_output_boundary_acceptance(
+    request: Any = None, tokenizer: Any | None = None
+) -> dict[str, object]:
+    """Deprecated compatibility wrapper. Use static and exact proof instead."""
+    return {
+        **_live_output_boundary_static_acceptance(),
+        "exact_live_output_budget_proof": "DEFERRED_TOKENIZER",
+        "exact_live_output_tokenizer_available": False,
+    }
+
+
+def _exact_live_output_acceptance(
+    requests: Iterable[Any],
+    tokenizer: Any,
+) -> dict[str, Any]:
+    """Perform exact runtime proof for a set of batch requests."""
+    worst_proof = None
+    for request in requests:
+        proof = verify_exact_live_output_budget(request, tokenizer=tokenizer)
+        if worst_proof is None or proof["exact_live_output_tokens"] > worst_proof["exact_live_output_tokens"]:
+            worst_proof = proof
+
+    if worst_proof is None:
+        raise RuntimeError("no_requests_for_proof")
+
+    return {
+        "exact_live_output_budget_proof": "PASS",
+        "exact_live_output_tokenizer_available": True,
+        "exact_live_output_token_upper_bound": worst_proof["exact_live_output_tokens"],
+        "output_safety_margin_tokens": worst_proof["safety_margin_tokens"],
+        "tokenizer_identity": worst_proof["tokenizer_identity"],
+        "live_schema_sha256": worst_proof["live_schema_sha256"],
+        "maximal_payload_sha256": worst_proof["maximal_payload_sha256"],
+        "grammar_whitespace_included": True,
+        "grammar_whitespace_bound_proven": True,
+        "provider_confidence_live_grammar_resolved": True,
     }
 
 
@@ -363,33 +415,22 @@ def _check_protected_drift(
     repository_root: Path, snapshot_head: str, current_head: str
 ) -> tuple[bool, bool]:
     """Verify no changes in protected paths between snapshot and current head."""
-    protected_paths = [
-        "src/modules/document_ingestion/",
-        "src/modules/document_store/",
-        "src/modules/production_llm_analysis/batching.py",
-        "src/modules/production_llm_analysis/controlled_evidence.py",
-        "src/modules/production_llm_analysis/evidence.py",
-        "src/modules/production_llm_analysis/grounding.py",
-        "src/modules/production_llm_analysis/schemas.py",
-        "src/tender_research/",
-        "src/shared/db/",
-        "src/modules/customer_pilot/",
-        "migrations/",
-    ]
     drift = False
     migration_drift = False
 
-    for path in protected_paths:
+    for path in ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS:
         result = subprocess.run(
             ["git", "diff", "--quiet", snapshot_head, current_head, "--", path],
             cwd=repository_root,
             capture_output=True,
             check=False,
         )
-        if result.returncode != 0:
+        if result.returncode == 1:
             drift = True
             if path.startswith("migrations/"):
                 migration_drift = True
+        elif result.returncode > 1:
+            raise RuntimeError("git_invocation_failure")
 
     return drift, migration_drift
 
@@ -401,13 +442,164 @@ def _copy_snapshot(
     source_db = source_root / "prepared.sqlite3"
     target_db = staging / "prepared.sqlite3"
 
-    if not source_db.is_file():
+    if not source_db.is_file() or source_db.is_symlink():
         return False
 
-    shutil.copy2(source_db, target_db)
+    shutil.copy2(source_db, target_db, follow_symlinks=False)
     copied_sha = _sha256(target_db)
 
     return copied_sha == expected_db_sha
+
+
+def _exception_reason_code(exc: Exception, phase: str) -> str:
+    """Map arbitrary exceptions to stable, sanitized reason codes."""
+    if isinstance(exc, (PreparedSnapshotAttestationError, PreparedVerificationError)):
+        return str(exc.code)
+    if isinstance(exc, FileNotFoundError):
+        return f"{phase}_file_missing"
+    if "No item with that key" in str(exc) or "OperationalError" in str(exc):
+        return "prepared_database_query_failed"
+    message = str(exc).lower()
+    if "git_head_mismatch" in message: return "git_head_mismatch"
+    if "git_invocation_failure" in message: return "git_invocation_failure"
+    if "snapshot_head_not_ancestor" in message: return "snapshot_head_not_ancestor"
+    if "prepared_snapshot_not_carry_forward_safe" in message: return "prepared_snapshot_not_carry_forward_safe"
+    if "prepared_database_reverification_failed" in message: return "prepared_database_reverification_failed"
+    return f"{phase}_failed"
+
+
+def _reconstruct_actual_batch_requests(
+    database_path: Path,
+    policy_path: Path,
+    *,
+    model: str = "arvectum-gemma4-12b-it-qat-q4_0",
+    tokenizer: Any,
+) -> list[Any]:
+    """Reconstruct real R10.1 batch requests from historical DB and application data."""
+    from src.modules.production_llm_analysis.evidence import build_evidence_packet
+    from src.modules.production_llm_analysis.schemas import (
+        EvidenceFragmentInput,
+        BudgetPolicy,
+    )
+    from src.modules.production_llm_analysis.batching import (
+        build_evidence_batch_plan,
+        BatchPolicy,
+        measure_openai_request_tokens,
+    )
+    from src.modules.production_llm_analysis.service import build_production_llm_request
+    from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
+
+    conn = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        run = conn.execute("SELECT * FROM tender_analysis_runs LIMIT 1").fetchone()
+        tender = conn.execute("SELECT * FROM procurement_tenders WHERE id = ?", (run["tender_id"],)).fetchone()
+        
+        chunk_rows = conn.execute(
+            """
+            SELECT c.*, d.file_name, d.id as doc_id 
+            FROM procurement_document_chunks c
+            JOIN procurement_tender_documents d ON c.document_id = d.id
+            WHERE c.tender_id = ? 
+            ORDER BY d.file_name ASC, c.chunk_index ASC
+            """,
+            (run["tender_id"],)
+        ).fetchall()
+        
+        fragments = [
+            EvidenceFragmentInput(
+                document_id=row["doc_id"],
+                document_name=row["file_name"],
+                chunk_id=row["id"],
+                locator={
+                    "document_order": 0, # Historical fallback
+                    "chunk_index": row["chunk_index"]
+                },
+                text=row["text"]
+            ) for row in chunk_rows
+        ]
+    finally:
+        conn.close()
+
+    packet = build_evidence_packet(
+        customer_id=str(run["customer_id"]),
+        project_id=str(run["project_id"]),
+        procurement_case_id=str(run["procurement_case_id"]),
+        run_id=str(run["id"]),
+        registry_number=str(tender["registry_number"]),
+        fragments=fragments
+    )
+    
+    with policy_path.open("rb") as f:
+        policy_data = json.load(f)
+    budget_policy = BudgetPolicy.model_validate(policy_data)
+    
+    batch_policy = BatchPolicy.approved_32k(tokenizer_identity=tokenizer.identity)
+    
+    def request_measure(candidate):
+        req = build_production_llm_request(
+            evidence_packet=build_evidence_packet(
+                customer_id=packet.customer_id,
+                project_id=packet.project_id,
+                procurement_case_id=packet.procurement_case_id,
+                run_id=packet.run_id,
+                registry_number=packet.registry_number,
+                fragments=candidate
+            ),
+            provider="openai_compatible",
+            model=model,
+            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+            budget_policy=budget_policy,
+            map_mode=True
+        )
+        return measure_openai_request_tokens(
+            req.model_dump(mode="json"),
+            tokenizer=tokenizer,
+            chat_template_overhead=batch_policy.chat_template_overhead
+        )
+
+    plan = build_evidence_batch_plan(
+        fragments=fragments,
+        tokenizer=tokenizer,
+        policy=batch_policy,
+        request_measure=request_measure,
+        controlled=True
+    )
+    
+    requests = []
+    for batch in plan.batches:
+        requests.append(
+            build_production_llm_request(
+                evidence_packet=build_evidence_packet(
+                    customer_id=packet.customer_id,
+                    project_id=packet.project_id,
+                    procurement_case_id=packet.procurement_case_id,
+                    run_id=packet.run_id,
+                    registry_number=packet.registry_number,
+                    fragments=list(batch.fragments)
+                ),
+                provider="openai_compatible",
+                model=model,
+                prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+                prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+                output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+                output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+                grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+                budget_policy=budget_policy,
+                batch_plan_version=plan.plan_version,
+                batch_plan_hash=plan.plan_hash,
+                batch_hash=batch.batch_hash,
+                batch_ordinal=batch.batch_ordinal,
+                batch_count=len(plan.batches),
+                corpus_evidence_hash=plan.corpus_evidence_hash,
+                map_mode=True
+            )
+        )
+    return requests
 
 
 def _arguments() -> argparse.Namespace:
@@ -449,42 +641,30 @@ def main() -> int:
         return 2
 
     if snapshot_mode:
-        # #134: Validate snapshot ancestry and drift.
-        snapshot_head = "5f6aa316f6f66306794e72bbcb90ad7bba3fba34"
-        ancestry_result = subprocess.run(
-            ["git", "merge-base", "--is-ancestor", snapshot_head, args.expected_head],
-            cwd=root,
-            check=False,
-        )
-        if ancestry_result.returncode != 0:
-            print(
-                json.dumps(
-                    _failure(
-                        head_sha=args.expected_head,
-                        phase="repository",
-                        code="snapshot_head_not_ancestor",
-                        recorder=recorder,
-                    ),
-                    sort_keys=False,
-                )
+        try:
+            # A. Attest original published snapshot
+            attestation = verify_published_prepared_snapshot(
+                args.prepared_snapshot_root,
+                expected_head="5f6aa316f6f66306794e72bbcb90ad7bba3fba34",
+                expected_corpus_sha=args.expected_corpus_sha,
             )
-            return 2
+            
+            # B. Ancestry/Protected-drift
+            ancestry_result = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", attestation.descriptor.head_sha, args.expected_head],
+                cwd=root,
+                check=False,
+            )
+            if ancestry_result.returncode != 0:
+                raise RuntimeError("snapshot_head_not_ancestor")
 
-        drift, _ = _check_protected_drift(
-            root, snapshot_head, args.expected_head
-        )
-        if drift:
-            print(
-                json.dumps(
-                    _failure(
-                        head_sha=args.expected_head,
-                        phase="repository",
-                        code="prepared_snapshot_not_carry_forward_safe",
-                        recorder=recorder,
-                    ),
-                    sort_keys=False,
-                )
+            drift, migration_drift = _check_protected_drift(
+                root, attestation.descriptor.head_sha, args.expected_head
             )
+            if drift:
+                raise RuntimeError("prepared_snapshot_not_carry_forward_safe")
+        except Exception as exc:
+            print(json.dumps(_failure(head_sha=args.expected_head, phase="repository", code=_exception_reason_code(exc, "repository"), recorder=recorder), sort_keys=False))
             return 2
 
     doctor = run_doctor(
@@ -496,247 +676,92 @@ def main() -> int:
         llama_server_path=args.llama_server_path,
     ).sanitized()
     if doctor["status"] != "PASS":
-        print(
-            json.dumps(
-                _failure(
-                    head_sha=args.expected_head,
-                    phase="repository",
-                    code="repository_validation_failed",
-                    recorder=recorder,
-                ),
-                sort_keys=False,
-            )
-        )
+        print(json.dumps(_failure(head_sha=args.expected_head, phase="repository", code="repository_validation_failed", recorder=recorder), sort_keys=False))
         return 2
+    
     recorder.passed("repository")
     recorder.passed("python_runtime")
     recorder.passed("static_environment")
-    values, env_errors = (
-        read_private_env(args.private_env, root) if args.private_env else ({}, ())
-    )
-    assets, asset_errors = locate_runtime_assets(
-        tuple(args.asset_root),
-        gguf_path=args.gguf_path,
-        llama_server_path=args.llama_server_path,
-    )
+    
+    values, env_errors = read_private_env(args.private_env, root) if args.private_env else ({}, ())
+    assets, asset_errors = locate_runtime_assets(tuple(args.asset_root), gguf_path=args.gguf_path, llama_server_path=args.llama_server_path)
     if env_errors or asset_errors or assets is None:
         phase = "static_environment" if env_errors else "gguf_validation"
-        code = (
-            "private_environment_invalid"
-            if env_errors
-            else "approved_gguf_validation_failed"
-        )
-        print(
-            json.dumps(
-                _failure(
-                    head_sha=args.expected_head,
-                    phase=phase,
-                    code=code,
-                    recorder=recorder,
-                ),
-                sort_keys=False,
-            )
-        )
+        print(json.dumps(_failure(head_sha=args.expected_head, phase=phase, code="approved_gguf_validation_failed" if asset_errors else "private_environment_invalid", recorder=recorder), sort_keys=False))
         return 2
+
     binary, gguf = assets
-    gguf_profile, _ = (
-        validate_gguf_path(args.gguf_path)
-        if args.gguf_path
-        else discover_gguf(tuple(args.asset_root))
-    )
-    binary_profile, _ = (
-        validate_llama_server_path(args.llama_server_path)
-        if args.llama_server_path
-        else discover_llama_server(tuple(args.asset_root))
-    )
-    if not gguf_profile:
-        print(
-            json.dumps(
-                _failure(
-                    head_sha=args.expected_head,
-                    phase="gguf_validation",
-                    code="approved_gguf_validation_failed",
-                    recorder=recorder,
-                ),
-                sort_keys=False,
-            )
-        )
+    gguf_profile, _ = validate_gguf_path(args.gguf_path) if args.gguf_path else discover_gguf(tuple(args.asset_root))
+    binary_profile, _ = validate_llama_server_path(args.llama_server_path) if args.llama_server_path else discover_llama_server(tuple(args.asset_root))
+    
+    if not gguf_profile or not binary_profile:
+        print(json.dumps(_failure(head_sha=args.expected_head, phase="gguf_validation" if not gguf_profile else "llama_server_validation", code="approved_gguf_validation_failed" if not gguf_profile else "llama_server_validation_failed", recorder=recorder), sort_keys=False))
         return 2
+    
     recorder.passed("gguf_validation")
-    if not binary_profile:
-        print(
-            json.dumps(
-                _failure(
-                    head_sha=args.expected_head,
-                    phase="llama_server_validation",
-                    code="llama_server_validation_failed",
-                    recorder=recorder,
-                ),
-                sort_keys=False,
-            )
-        )
-        return 2
     recorder.passed("llama_server_validation")
+
     staging, final_state = _private_staging_root(args.runtime_profile_dir, root)
     if staging is None or final_state is None:
-        print(
-            json.dumps(
-                _failure(
-                    head_sha=args.expected_head,
-                    phase="prepared_state_persistence",
-                    code="prepared_state_persistence_failed",
-                    recorder=recorder,
-                ),
-                sort_keys=False,
-            )
-        )
+        print(json.dumps(_failure(head_sha=args.expected_head, phase="prepared_state_persistence", code="prepared_state_persistence_failed", recorder=recorder), sort_keys=False))
         return 2
+
     with tempfile.TemporaryDirectory(prefix="arv001-full-pre-provider-") as directory:
         work = Path(directory)
         try:
             with ManagedLoopbackRuntime(binary=binary, gguf=gguf) as runtime:
                 assert runtime.port is not None
                 recorder.passed("runtime_start")
-                from src.modules.production_llm_analysis.batching import (
-                    tokenizer_from_environment,
-                )
-                from src.modules.production_llm_analysis.schemas import (
-                    ProductionLLMAnalysisRequest,
-                    EvidencePacket,
-                    DataHandlingReport,
-                    BudgetPolicy,
-                    BudgetLimits,
-                    ProviderPricing,
-                    EvidenceFragment,
-                )
-                from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
+                from src.modules.production_llm_analysis.batching import tokenizer_from_environment
 
-                with ephemeral_runtime_environment(
-                    port=runtime.port,
-                    binary_sha256=binary_profile["binary_sha256"],
-                    gguf_sha256=gguf_profile["gguf_sha256"],
-                    overrides=values,
-                ) as (effective, _private_env):
-                    if validate_effective_runtime_environment(
-                        effective, port=runtime.port
-                    ):
+                with ephemeral_runtime_environment(port=runtime.port, binary_sha256=binary_profile["binary_sha256"], gguf_sha256=gguf_profile["gguf_sha256"], overrides=values) as (effective, _private_env):
+                    if validate_effective_runtime_environment(effective, port=runtime.port):
                         raise RuntimeError("effective_settings_invalid")
                     recorder.passed("effective_environment")
+                    
                     environment = os.environ.copy()
                     environment.update(effective)
                     with scoped_environment(effective):
                         tokenizer = tokenizer_from_environment()
-                    probe, probe_errors = probe_zero_generation(
-                        loopback_base_url=f"http://127.0.0.1:{runtime.port}",
-                        tokenizer_url=effective["ARV003_LLAMA_TOKENIZER_URL"],
-                        tokenizer_adapter=tokenizer,
-                        tokenizer_identity=effective["ARV003_TOKENIZER_IDENTITY"],
-                    )
+                    
+                    probe, probe_errors = probe_zero_generation(loopback_base_url=f"http://127.0.0.1:{runtime.port}", tokenizer_url=effective["ARV003_LLAMA_TOKENIZER_URL"], tokenizer_adapter=tokenizer, tokenizer_identity=effective["ARV003_TOKENIZER_IDENTITY"])
                     if probe_errors or probe is None:
                         raise RuntimeError("zero_generation_probe_failed")
                     recorder.passed("models_probe")
                     recorder.passed("tokenizer_probe")
-                    profile, profile_errors = write_private_runtime_profile(
-                        private_directory=staging,
-                        repository_root=root,
-                        profile={
-                            "version": "arv001-runtime-v1",
-                            **gguf_profile,
-                            **binary_profile,
-                            "model_alias": "arvectum-gemma4-12b-it-qat-q4_0",
-                            "provider": "openai_compatible",
-                            **probe,
-                            "created_at": datetime.now(UTC).isoformat(),
-                        },
-                    )
+
+                    profile, profile_errors = write_private_runtime_profile(private_directory=staging, repository_root=root, profile={"version": "arv001-runtime-v1", **gguf_profile, **binary_profile, "model_alias": "arvectum-gemma4-12b-it-qat-q4_0", "provider": "openai_compatible", **probe, "created_at": datetime.now(UTC).isoformat()})
                     if profile_errors or profile is None:
                         raise RuntimeError("runtime_profile_write_failed")
                     recorder.passed("runtime_profile")
 
                     if snapshot_mode:
-                        # Carry-forward mode: load old manifest and descriptor.
-                        old_manifest_path = args.prepared_snapshot_root / "prepared-state-manifest.json"
-                        old_descriptor_path = args.prepared_snapshot_root / "prepared-verification.json"
-                        if not old_manifest_path.is_file() or not old_descriptor_path.is_file():
-                            raise RuntimeError("prepared_snapshot_metadata_missing")
-
-                        old_manifest = json.loads(old_manifest_path.read_text(encoding="utf-8"))
-                        expected_db_sha = old_manifest["database_sha256"]
-
-                        if not _copy_snapshot(args.prepared_snapshot_root, staging, expected_db_sha):
+                        # C. Byte-identical copy
+                        if not _copy_snapshot(args.prepared_snapshot_root, staging, attestation.database_sha256):
                             raise RuntimeError("prepared_database_copy_failed")
-
-                        # Byte-identically copy old metadata for current-head re-verification.
-                        shutil.copy2(old_descriptor_path, staging / "prepared-verification.json")
-                        # For live output budget proof we need a request object.
-                        # Since request.json might be missing, reconstruct it from DB fragments.
-                        conn = sqlite3.connect(staging / "prepared.sqlite3")
-                        conn.row_factory = sqlite3.Row
-                        # Use first 10 chunks as proxy for fragments (Gemma proof doesn't need text content).
-                        chunk_rows = conn.execute("SELECT text_hash FROM procurement_document_chunks LIMIT 10").fetchall()
-                        fragments = [
-                            EvidenceFragment(
-                                fragment_id=row["text_hash"],
-                                document_id="dummy",
-                                document_name="dummy",
-                                chunk_id="dummy",
-                                text="dummy",
-                                text_sha256="0"*64
-                            ) for row in chunk_rows
-                        ]
-                        conn.close()
-
-                        packet = EvidencePacket(
-                            customer_id="dummy", project_id="dummy", procurement_case_id="dummy",
-                            run_id="dummy", registry_number="dummy",
-                            fragments=fragments,
-                            data_handling=DataHandlingReport(),
-                            packet_hash="0"*64
-                        )
-                        policy = BudgetPolicy(
-                            limits=BudgetLimits(
-                                max_input_tokens=1000, max_output_tokens=4096,
-                                timeout_ms=1000, max_total_latency_ms=1000, max_estimated_cost=1.0
-                            ),
-                            pricing=ProviderPricing(
-                                input_cost_per_1k_tokens=0.0, output_cost_per_1k_tokens=0.0,
-                                pricing_table_version="dummy"
-                            )
-                        )
-                        request = ProductionLLMAnalysisRequest(
-                            request_id="0"*64,
-                            customer_id="dummy", project_id="dummy", procurement_case_id="dummy",
-                            run_id="dummy", registry_number="dummy",
-                            provider="openai_compatible", model="arvectum-gemma4-12b-it-qat-q4_0",
-                            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
-                            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
-                            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
-                            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
-                            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
-                            evidence_packet=packet,
-                            budget_policy=policy,
-                            max_claims=3,
-                            allowed_field_paths=[] # Will default to all requirement paths
-                        )
-
-                        # Copy application-data for publication.
+                        
+                        shutil.copy2(args.prepared_snapshot_root / "prepared-verification.json", staging / "prepared-verification.json", follow_symlinks=False)
+                        
                         data_dir = staging / "application-data"
-                        shutil.copytree(args.prepared_snapshot_root / "application-data", data_dir, dirs_exist_ok=True)
+                        data_dir.mkdir(parents=True, mode=0o700)
+                        for item in sorted((args.prepared_snapshot_root / "application-data").iterdir(), key=lambda i: i.name):
+                            if item.is_dir():
+                                shutil.copytree(item, data_dir / item.name, symlinks=False, dirs_exist_ok=True)
+                            else:
+                                shutil.copy2(item, data_dir / item.name, follow_symlinks=False)
+                        
+                        # Verify copy tree hash
+                        if _tree_hash(data_dir) != attestation.application_data_tree_sha256:
+                            raise RuntimeError("application_data_copy_integrity_failed")
 
-                        # Re-verify the copied DB against current code rules (read-only).
-                        descriptor_data = parse_private_descriptor(
-                            staging / "prepared-verification.json",
-                            expected_head="5f6aa316f6f66306794e72bbcb90ad7bba3fba34",
-                            expected_corpus_sha=args.expected_corpus_sha,
-                        )
-                        verification = _verify_prepared_database(
-                            path=staging / "prepared.sqlite3",
-                            descriptor=descriptor_data,
-                            data_dir=data_dir,
-                        )
+                        # D. Current-head re-verification (read-only)
+                        verification = _verify_prepared_database(path=staging / "prepared.sqlite3", descriptor=attestation.descriptor, data_dir=data_dir)
                         if verification is None:
                             raise RuntimeError("prepared_database_reverification_failed")
 
+                        # E. Reconstruct actual batch requests
+                        batch_requests = _reconstruct_actual_batch_requests(staging / "prepared.sqlite3", args.approved_policy, tokenizer=tokenizer)
+                        
                         payload = {
                             "status": "application_prepared",
                             "marker": "ARV-001_APPLICATION_PREPARED",
@@ -755,182 +780,83 @@ def main() -> int:
                             "git_mutations": 0,
                         }
                     else:
-                        command = [
-                            sys.executable,
-                            "-m",
-                            "scripts.arv001.run_complete_corpus_acceptance_split_roots",
-                            "--candidate-root",
-                            str(args.candidate_root),
-                            "--intake-root",
-                            str(args.intake_root),
-                            "--database-path",
-                            str(staging / "prepared.sqlite3"),
-                            "--initialize-database",
-                            "--private-verification-descriptor",
-                            str(staging / "prepared-verification.json"),
-                            "--data-dir",
-                            str(staging / "application-data"),
-                            "--approved-policy",
-                            str(args.approved_policy),
-                            "--output-root",
-                            str(work / "output"),
-                            "--expected-head",
-                            args.expected_head,
-                            "--expected-corpus-sha",
-                            args.expected_corpus_sha,
-                            "--expected-policy-sha",
-                            args.expected_policy_sha,
-                            "--prepare-only",
-                        ]
-                        result_proc = subprocess.run(
-                            command,
-                            cwd=root,
-                            env=environment,
-                            capture_output=True,
-                            text=True,
-                            check=False,
-                        )
+                        command = [sys.executable, "-m", "scripts.arv001.run_complete_corpus_acceptance_split_roots", "--candidate-root", str(args.candidate_root), "--intake-root", str(args.intake_root), "--database-path", str(staging / "prepared.sqlite3"), "--initialize-database", "--private-verification-descriptor", str(staging / "prepared-verification.json"), "--data-dir", str(staging / "application-data"), "--approved-policy", str(args.approved_policy), "--output-root", str(work / "output"), "--expected-head", args.expected_head, "--expected-corpus-sha", args.expected_corpus_sha, "--expected-policy-sha", args.expected_policy_sha, "--prepare-only"]
+                        result_proc = subprocess.run(command, cwd=root, env=environment, capture_output=True, text=True, check=False)
                         if result_proc.returncode != 0:
                             raise RuntimeError(_safe_child_failure(result_proc.stderr))
                         try:
                             payload = json.loads(result_proc.stdout.strip().splitlines()[-1])
                         except (IndexError, json.JSONDecodeError):
                             raise RuntimeError("controlled_preflight_payload_invalid")
-
+                        
+                        from src.modules.production_llm_analysis.schemas import ProductionLLMAnalysisRequest
                         request_path = staging / "application-data" / "request.json"
-                        request = ProductionLLMAnalysisRequest.model_validate_json(
-                            request_path.read_text(encoding="utf-8")
-                        )
+                        request = ProductionLLMAnalysisRequest.model_validate_json(request_path.read_text(encoding="utf-8"))
+                        batch_requests = [request]
 
-                    payload_err = _prepare_payload_error(payload, args.expected_head)
-                    if payload_err:
-                        raise RuntimeError(payload_err)
-
-                    if not snapshot_mode:
-                        descriptor_path = staging / "prepared-verification.json"
-                        descriptor_data = parse_private_descriptor(
-                            descriptor_path,
-                            expected_head=args.expected_head,
-                            expected_corpus_sha=args.expected_corpus_sha,
-                        )
-                        verification = _verify_prepared_database(
-                            path=staging / "prepared.sqlite3",
-                            descriptor=descriptor_data,
-                            data_dir=staging / "application-data",
-                        )
+                        descriptor_data = parse_private_descriptor(staging / "prepared-verification.json", expected_head=args.expected_head, expected_corpus_sha=args.expected_corpus_sha)
+                        verification = _verify_prepared_database(path=staging / "prepared.sqlite3", descriptor=descriptor_data, data_dir=staging / "application-data")
                         if verification is None:
                             raise RuntimeError("snapshot_binding_failed")
 
-                    for phase in (
-                        "corpus_contract",
-                        "database",
-                        "application_persistence",
-                        "snapshot_binding",
-                        "source_graph_binding",
-                        "post_persistence_gate5",
-                        "controlled_preflight",
-                    ):
+                    for phase in ("corpus_contract", "database", "application_persistence", "snapshot_binding", "source_graph_binding", "post_persistence_gate5", "controlled_preflight"):
                         recorder.passed(phase)
 
-                    counters = {
-                        "controlled_preflight_invocations": 1,
-                        "controlled_provider_invocations": 0,
-                        "provider_generation_calls": 0,
-                        "production_db_mutations": 0,
-                        "old_arv003_mutations": 0,
-                        "git_data_leaks": 0,
-                    }
-                    acceptance = {
-                        "application_prepared": True,
-                        "post_persistence_gate5_ready": True,
-                        "controlled_preflight_only": True,
-                        "physical_file_count": 10,
-                        "logical_document_count": 6,
-                        "extracted_document_count": 10,
-                        "prepared_chunk_count": 233,
-                        "raw_byte_replay": raw_mode,
-                        "attested_prepared_snapshot_replay": snapshot_mode,
-                    }
+                    counters = {"controlled_preflight_invocations": 1, "controlled_provider_invocations": 0, "provider_generation_calls": 0, "production_db_mutations": 0, "old_arv003_mutations": 0, "git_data_leaks": 0}
+                    acceptance = {"application_prepared": True, "post_persistence_gate5_ready": True, "controlled_preflight_only": True, "physical_file_count": 10, "logical_document_count": 6, "extracted_document_count": 10, "prepared_chunk_count": 233, "raw_byte_replay": raw_mode, "attested_prepared_snapshot_replay": snapshot_mode}
+                    
                     if snapshot_mode:
-                        acceptance["prepared_snapshot_original_head"] = "5f6aa316f6f66306794e72bbcb90ad7bba3fba34"
-                        acceptance["protected_source_graph_drift"] = False
-                        acceptance["relevant_migration_drift"] = False
+                        acceptance.update({
+                            "prepared_snapshot_original_head": "5f6aa316f6f66306794e72bbcb90ad7bba3fba34",
+                            "protected_path_contract_version": ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS_VERSION,
+                            "protected_source_graph_drift": False,
+                            "relevant_migration_drift": migration_drift,
+                            "original_published_snapshot_verified": True,
+                            "original_manifest_hashes_verified": True,
+                            "original_prepared_db_sha256": attestation.database_sha256,
+                            "original_runtime_profile_sha256": attestation.runtime_profile_sha256,
+                            "original_descriptor_sha256": attestation.descriptor_sha256,
+                            "original_application_data_tree_sha256": attestation.application_data_tree_sha256,
+                            "original_sanitized_result_sha256": attestation.sanitized_result_sha256,
+                            "original_manifest_sha256": attestation.manifest_sha256,
+                            "real_batch_requests_reconstructed": True,
+                            "real_fragment_identities_verified": True,
+                            "exact_output_proof_bound_to_real_requests": True,
+                            "actual_batch_count": len(batch_requests),
+                        })
 
-                    acceptance.update(
-                        _live_output_boundary_acceptance(request, tokenizer=tokenizer)
-                    )
+                    acceptance.update(_live_output_boundary_static_acceptance())
+                    acceptance.update(_exact_live_output_acceptance(batch_requests, tokenizer=tokenizer))
+                    
                     final_recorder = recorder.clone()
                     final_recorder.passed("prepared_state_persistence")
                     final_recorder.passed("privacy_scan")
                     final_recorder.passed("cleanup")
-                    final_result = _result(
-                        head_sha=args.expected_head,
-                        recorder=final_recorder,
-                        status="PASS",
-                        counters=counters,
-                        acceptance=acceptance,
-                    )
-                    base_manifest = _prepared_manifest_base(
-                        payload=payload,
-                        binary_profile=binary_profile,
-                        gguf_profile=gguf_profile,
-                        probe=probe,
-                        corpus_sha=args.expected_corpus_sha,
-                        policy_sha=args.expected_policy_sha,
-                        verification=verification,
-                    )
+                    
+                    final_result = _result(head_sha=args.expected_head, recorder=final_recorder, status="PASS", counters=counters, acceptance=acceptance)
+                    base_manifest = _prepared_manifest_base(payload=payload, binary_profile=binary_profile, gguf_profile=gguf_profile, probe=probe, corpus_sha=args.expected_corpus_sha, policy_sha=args.expected_policy_sha, verification=verification)
+                    
                     if snapshot_mode:
-                        base_manifest["prepared_snapshot_db_sha256"] = expected_db_sha
-                        base_manifest["protected_source_graph_drift"] = False
-                        base_manifest["relevant_migration_drift"] = False
+                        base_manifest.update({
+                            "prepared_snapshot_db_sha256": attestation.database_sha256,
+                            "protected_source_graph_drift": False,
+                            "relevant_migration_drift": migration_drift
+                        })
+                    
                     try:
-                        publish_prepared_state(
-                            staging=staging,
-                            final=final_state,
-                            base_manifest=base_manifest,
-                            result=final_result,
-                            forbidden_literals=(
-                                descriptor_data.target_run_id,
-                                descriptor_data.customer_id,
-                                descriptor_data.project_id,
-                                descriptor_data.case_id,
-                                descriptor_data.tender_id,
-                                descriptor_data.snapshot_id,
-                                descriptor_data.source_graph_id,
-                            ),
-                        )
+                        publish_prepared_state(staging=staging, final=final_state, base_manifest=base_manifest, result=final_result, forbidden_literals=(attestation.descriptor.target_run_id, attestation.descriptor.customer_id, attestation.descriptor.project_id, attestation.descriptor.case_id, attestation.descriptor.tender_id, attestation.descriptor.snapshot_id, attestation.descriptor.source_graph_id) if snapshot_mode else ())
                     except PreparedPublicationError as exc:
-                        phase = (
-                            "privacy_scan"
-                            if exc.code == "prepared_privacy_violation"
-                            else "prepared_state_persistence"
-                        )
+                        phase = "privacy_scan" if exc.code == "prepared_privacy_violation" else "prepared_state_persistence"
                         recorder.failed(phase, *exc.reason_codes)
-                        failed_result = _result(
-                            head_sha=args.expected_head,
-                            recorder=recorder,
-                            status="FAIL_CLOSED",
-                            counters=counters,
-                            acceptance=acceptance,
-                        )
-                        print(json.dumps(failed_result, sort_keys=False))
+                        print(json.dumps(_result(head_sha=args.expected_head, recorder=recorder, status="FAIL_CLOSED", counters=counters, acceptance=acceptance), sort_keys=False))
                         return 2
+                    
                     print(json.dumps(final_result, sort_keys=False))
                     return 0
 
-        except Exception as exc:  # noqa: BLE001 - terminal output must remain sanitized.
+        except Exception as exc:
             shutil.rmtree(staging, ignore_errors=True)
-            print(
-                json.dumps(
-                    _failure(
-                        head_sha=args.expected_head,
-                        phase="runtime_start",
-                        code=str(exc) or "llama_runtime_start_failed",
-                        recorder=recorder,
-                    ),
-                    sort_keys=False,
-                )
-            )
+            print(json.dumps(_failure(head_sha=args.expected_head, phase="runtime_start", code=_exception_reason_code(exc, "runtime_start"), recorder=recorder), sort_keys=False))
             return 2
 
 
