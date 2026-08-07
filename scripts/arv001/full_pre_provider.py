@@ -674,10 +674,10 @@ def main() -> int:
                         conn = sqlite3.connect(staging / "prepared.sqlite3")
                         conn.row_factory = sqlite3.Row
                         # Use first 10 chunks as proxy for fragments (Gemma proof doesn't need text content).
-                        chunk_rows = conn.execute("SELECT id FROM procurement_document_chunks LIMIT 10").fetchall()
+                        chunk_rows = conn.execute("SELECT text_hash FROM procurement_document_chunks LIMIT 10").fetchall()
                         fragments = [
                             EvidenceFragment(
-                                fragment_id=row["id"],
+                                fragment_id=row["text_hash"],
                                 document_id="dummy",
                                 document_name="dummy",
                                 chunk_id="dummy",
