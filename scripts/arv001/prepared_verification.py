@@ -479,7 +479,8 @@ def _verify_documents(
 ) -> tuple[list[sqlite3.Row], int, int]:
     documents = connection.execute(
         """
-        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status
+        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status,
+               document_identity_hash
         FROM procurement_tender_documents
         WHERE tender_id = ? ORDER BY file_name ASC
         """,
