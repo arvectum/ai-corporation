@@ -459,7 +459,7 @@ def _exception_reason_code(exc: Exception, phase: str) -> str:
     if isinstance(exc, FileNotFoundError):
         return f"{phase}_file_missing"
     message = str(exc).lower()
-    if "no item with that key" in str(exc) or "operationalerror" in message:
+    if "no item with that key" in message or "operationalerror" in message:
         return "prepared_database_query_failed"
     if "git_head_mismatch" in message: return "git_head_mismatch"
     if "git_invocation_failure" in message: return "git_invocation_failure"
@@ -502,7 +502,14 @@ def _reconstruct_actual_batch_requests(
     conn.row_factory = sqlite3.Row
     try:
         run = conn.execute("SELECT * FROM tender_analysis_runs LIMIT 1").fetchone()
-        tender = conn.execute("SELECT * FROM procurement_tenders WHERE id = ?", (run["tender_id"],)).fetchone()
+        metadata = json.loads(run["metadata_json"])
+        
+        # Handle historical DBs where tender_id is in metadata_json only.
+        tender_id = metadata.get("arv001_tender_id")
+        if not tender_id and "tender_id" in run.keys():
+            tender_id = run["tender_id"]
+
+        tender = conn.execute("SELECT * FROM procurement_tenders WHERE id = ?", (tender_id,)).fetchone()
         
         chunk_rows = conn.execute(
             """
@@ -512,7 +519,7 @@ def _reconstruct_actual_batch_requests(
             WHERE c.tender_id = ? 
             ORDER BY d.file_name ASC, c.chunk_index ASC
             """,
-            (run["tender_id"],)
+            (tender_id,)
         ).fetchall()
         
         fragments = [
@@ -868,8 +875,6 @@ def main() -> int:
                     return 0
 
         except Exception as exc:
-            import traceback
-            traceback.print_exc()
             shutil.rmtree(staging, ignore_errors=True)
             print(json.dumps(_failure(head_sha=args.expected_head, phase="runtime_start", code=_exception_reason_code(exc, "runtime_start"), recorder=recorder), sort_keys=False))
             return 2
