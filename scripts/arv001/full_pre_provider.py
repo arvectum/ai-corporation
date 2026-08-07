@@ -494,7 +494,13 @@ def _reconstruct_actual_batch_requests(
     conn.row_factory = sqlite3.Row
     try:
         run = conn.execute("SELECT * FROM tender_analysis_runs LIMIT 1").fetchone()
-        tender = conn.execute("SELECT * FROM procurement_tenders WHERE id = ?", (run["tender_id"],)).fetchone()
+        metadata = json.loads(run["metadata_json"])
+        # Handle historical DBs where tender_id is in metadata_json only.
+        tender_id = metadata.get("arv001_tender_id")
+        if not tender_id and "tender_id" in run.keys():
+            tender_id = run["tender_id"]
+        
+        tender = conn.execute("SELECT * FROM procurement_tenders WHERE id = ?", (tender_id,)).fetchone()
         
         chunk_rows = conn.execute(
             """
@@ -504,7 +510,7 @@ def _reconstruct_actual_batch_requests(
             WHERE c.tender_id = ? 
             ORDER BY d.file_name ASC, c.chunk_index ASC
             """,
-            (run["tender_id"],)
+            (tender_id,)
         ).fetchall()
         
         fragments = [
