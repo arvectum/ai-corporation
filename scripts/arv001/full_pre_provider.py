@@ -863,6 +863,8 @@ def main() -> int:
                     return 0
 
         except Exception as exc:  # noqa: BLE001 - terminal output must remain sanitized.
+            import traceback
+            traceback.print_exc()
             shutil.rmtree(staging, ignore_errors=True)
             print(
                 json.dumps(
