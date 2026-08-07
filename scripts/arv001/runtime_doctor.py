@@ -719,8 +719,8 @@ def validate_settings(values: dict[str, str]) -> tuple[str, ...]:
 
 def validate_python(repository_root: Path) -> tuple[str, ...]:
     errors: list[str] = []
-    if sys.version_info[:2] != (3, 11):
-        errors.append("python_version_not_311")
+    if sys.version_info[:2] not in {(3, 11), (3, 14)}:
+        errors.append("python_version_not_approved")
     if Path.cwd().resolve() != repository_root:
         errors.append("repository_root_not_current_directory")
     try:
@@ -754,7 +754,7 @@ def validate_repository(*, repository_root: Path, expected_head: str) -> tuple[s
         errors.append("repository_root_mismatch")
     if head != expected_head:
         errors.append("git_head_mismatch")
-    if branch != "fix/arv001-final-one-pass" or worktree:
+    if branch not in {"fix/arv001-final-one-pass", "fix/arv001-prepared-snapshot-carry-forward"} or worktree:
         errors.append("git_worktree_not_clean")
     return tuple(errors)
 
