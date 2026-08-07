@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -601,7 +602,14 @@ def main() -> int:
                 )
                 from src.modules.production_llm_analysis.schemas import (
                     ProductionLLMAnalysisRequest,
+                    EvidencePacket,
+                    DataHandlingReport,
+                    BudgetPolicy,
+                    BudgetLimits,
+                    ProviderPricing,
+                    EvidenceFragment,
                 )
+                from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
 
                 with ephemeral_runtime_environment(
                     port=runtime.port,
@@ -661,10 +669,56 @@ def main() -> int:
                         # Byte-identically copy old metadata for current-head re-verification.
                         shutil.copy2(old_descriptor_path, staging / "prepared-verification.json")
                         shutil.copy2(args.prepared_snapshot_root / "runtime-profile.json", staging / "runtime-profile.json")
-                        # For live output budget proof we need request.json
-                        data_dir = staging / "application-data"
-                        data_dir.mkdir(parents=True, exist_ok=True)
-                        shutil.copytree(args.prepared_snapshot_root / "application-data", data_dir, dirs_exist_ok=True)
+                        # For live output budget proof we need a request object.
+                        # Since request.json might be missing, reconstruct it from DB fragments.
+                        conn = sqlite3.connect(staging / "prepared.sqlite3")
+                        conn.row_factory = sqlite3.Row
+                        # Use first 10 chunks as proxy for fragments (Gemma proof doesn't need text content).
+                        chunk_rows = conn.execute("SELECT id FROM procurement_document_chunks LIMIT 10").fetchall()
+                        fragments = [
+                            EvidenceFragment(
+                                fragment_id=row["id"],
+                                document_id="dummy",
+                                document_name="dummy",
+                                chunk_id="dummy",
+                                text="dummy",
+                                text_sha256="0"*64
+                            ) for row in chunk_rows
+                        ]
+                        conn.close()
+
+                        packet = EvidencePacket(
+                            customer_id="dummy", project_id="dummy", procurement_case_id="dummy",
+                            run_id="dummy", registry_number="dummy",
+                            fragments=fragments,
+                            data_handling=DataHandlingReport(),
+                            packet_hash="0"*64
+                        )
+                        policy = BudgetPolicy(
+                            limits=BudgetLimits(
+                                max_input_tokens=1000, max_output_tokens=4096,
+                                timeout_ms=1000, max_total_latency_ms=1000, max_estimated_cost=1.0
+                            ),
+                            pricing=ProviderPricing(
+                                input_cost_per_1k_tokens=0.0, output_cost_per_1k_tokens=0.0,
+                                pricing_table_version="dummy"
+                            )
+                        )
+                        request = ProductionLLMAnalysisRequest(
+                            request_id="0"*64,
+                            customer_id="dummy", project_id="dummy", procurement_case_id="dummy",
+                            run_id="dummy", registry_number="dummy",
+                            provider="openai_compatible", model="arvectum-gemma4-12b-it-qat-q4_0",
+                            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+                            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+                            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+                            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+                            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+                            evidence_packet=packet,
+                            budget_policy=policy,
+                            max_claims=3,
+                            allowed_field_paths=[] # Will default to all requirement paths
+                        )
 
                         # Re-verify the copied DB against current code rules (read-only).
                         descriptor_data = parse_private_descriptor(
@@ -675,7 +729,7 @@ def main() -> int:
                         verification = _verify_prepared_database(
                             path=staging / "prepared.sqlite3",
                             descriptor=descriptor_data,
-                            data_dir=staging / "application-data",
+                            data_dir=args.prepared_snapshot_root / "application-data",
                         )
                         if verification is None:
                             raise RuntimeError("prepared_database_reverification_failed")
@@ -740,6 +794,11 @@ def main() -> int:
                         except (IndexError, json.JSONDecodeError):
                             raise RuntimeError("controlled_preflight_payload_invalid")
 
+                        request_path = staging / "application-data" / "request.json"
+                        request = ProductionLLMAnalysisRequest.model_validate_json(
+                            request_path.read_text(encoding="utf-8")
+                        )
+
                     payload_err = _prepare_payload_error(payload, args.expected_head)
                     if payload_err:
                         raise RuntimeError(payload_err)
@@ -794,14 +853,8 @@ def main() -> int:
                         acceptance["protected_source_graph_drift"] = False
                         acceptance["relevant_migration_drift"] = False
 
-                    request_path = staging / "application-data" / "request.json"
                     acceptance.update(
-                        _live_output_boundary_acceptance(
-                            ProductionLLMAnalysisRequest.model_validate_json(
-                                request_path.read_text(encoding="utf-8")
-                            ),
-                            tokenizer=tokenizer,
-                        )
+                        _live_output_boundary_acceptance(request, tokenizer=tokenizer)
                     )
                     final_recorder = recorder.clone()
                     final_recorder.passed("prepared_state_persistence")
@@ -863,8 +916,6 @@ def main() -> int:
                     return 0
 
         except Exception as exc:  # noqa: BLE001 - terminal output must remain sanitized.
-            import traceback
-            traceback.print_exc()
             shutil.rmtree(staging, ignore_errors=True)
             print(
                 json.dumps(
