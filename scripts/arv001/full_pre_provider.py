@@ -539,7 +539,7 @@ def _reconstruct_actual_batch_requests(
     
     with policy_path.open("rb") as f:
         policy_data = json.load(f)
-    budget_policy = BudgetPolicy.model_validate(policy_data)
+    budget_policy = BudgetPolicy.model_validate(policy_data["budget"])
     
     batch_policy = BatchPolicy.approved_32k(tokenizer_identity=tokenizer.identity)
     
