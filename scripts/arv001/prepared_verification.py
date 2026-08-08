@@ -171,15 +171,13 @@ def _verify_documents(
     descriptor: PrivatePreparedVerificationDescriptor,
     metadata: dict[str, Any],
 ) -> tuple[list[sqlite3.Row], int, int]:
-    # We strictly use only historical columns.
-    documents = connection.execute(
-        """
-        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status
-        FROM procurement_tender_documents
-        WHERE tender_id = ? ORDER BY file_name ASC
-        """,
+    # Detect available columns to remain compatible with immutable historical DBs.
+    cursor = connection.execute(
+        "SELECT * FROM procurement_tender_documents WHERE tender_id = ? ORDER BY file_name ASC",
         (descriptor.tender_id,),
-    ).fetchall()
+    )
+    documents = cursor.fetchall()
+    columns = {d[0] for d in cursor.description}
 
     rows: list[dict[str, Any]] = []
     extracted = 0
