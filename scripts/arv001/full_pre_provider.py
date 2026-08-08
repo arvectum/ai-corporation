@@ -493,7 +493,7 @@ def _reconstruct_actual_batch_requests(
     )
     from src.modules.production_llm_analysis.service import build_production_llm_request
     from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
-    from sqlalchemy import create_session, create_engine
+    from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     provider = OpenAICompatibleProductionLLMProvider(
