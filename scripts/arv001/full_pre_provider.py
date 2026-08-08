@@ -540,7 +540,8 @@ def _reconstruct_actual_batch_requests(
             procurement_case_id=descriptor.case_id,
             run_id=descriptor.target_run_id,
             registry_number=tender.registry_number,
-            documents=inputs.documents
+            documents=inputs.documents,
+            evidence_fragments=all_fragments
         )
         
         # Compare with the reconstructed projection
@@ -557,11 +558,10 @@ def _reconstruct_actual_batch_requests(
     batch_policy = BatchPolicy.approved_32k(tokenizer_identity=tokenizer.identity)
     
     # Step 4: Build Batch Plan using the sole canonical production planner
-    print(f"DEBUG: starting batch plan reconstruction with {len(packet.fragments)} fragments", file=sys.stderr)
     try:
         plan = build_r10_1_batch_plan(
             packet=packet,
-            customer_id=descriptor.target_run_id, # Use run_id as proxy if needed, but descriptor has separate
+            customer_id=descriptor.customer_id,
             project_id=descriptor.project_id,
             procurement_case_id=descriptor.case_id,
             registry_number=tender.registry_number,
@@ -580,7 +580,6 @@ def _reconstruct_actual_batch_requests(
             controlled=True
         )
     except Exception as e:
-        print(f"DEBUG: batch plan failed: {type(e).__name__}: {e}", file=sys.stderr)
         if hasattr(e, "planning_diagnostics"):
             print(f"DEBUG: diagnostics: {json.dumps(e.planning_diagnostics, indent=2)}", file=sys.stderr)
         raise
@@ -924,8 +923,6 @@ def main() -> int:
                     return 0
 
         except Exception as exc:
-            import traceback
-            traceback.print_exc()
             shutil.rmtree(staging, ignore_errors=True)
             print(json.dumps(_failure(head_sha=args.expected_head, phase="runtime_start", code=_exception_reason_code(exc, "runtime_start"), recorder=recorder), sort_keys=False))
             return 2
