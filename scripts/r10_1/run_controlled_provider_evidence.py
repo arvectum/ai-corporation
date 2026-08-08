@@ -40,7 +40,9 @@ from src.modules.production_llm_analysis.controlled_evidence import (
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
     OpenAICompatibleTransportConfig,
+    enable_live_boundary_verification,
 )
+
 from src.shared.config.settings import get_settings
 from src.shared.db.session import SessionLocal
 from src.tender_research.config import load_config
@@ -263,10 +265,10 @@ def main() -> int:
         # Install ARV-001 live runtime adapters (sentinels, non-reasoning, and verification)
         from src.modules.production_llm_analysis.llama_schema_constraint import (
             install_llama_schema_constraint,
-            enable_live_boundary_verification,
         )
         install_llama_schema_constraint()
         enable_live_boundary_verification()
+
 
         policy = load_approved_provider_policy(args.approved_policy)
 
