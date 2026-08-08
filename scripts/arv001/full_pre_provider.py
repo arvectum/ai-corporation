@@ -582,7 +582,7 @@ def _reconstruct_actual_batch_requests(
 
     # Step 4: Build Batch Plan using production planner
     plan = build_evidence_batch_plan(
-        fragments=packet.fragments,
+        fragments=all_fragments,
         tokenizer=tokenizer,
         policy=batch_policy,
         request_measure=request_measure,
@@ -591,7 +591,7 @@ def _reconstruct_actual_batch_requests(
     
     # Step 5: Verify determinism (re-plan once)
     plan_verify = build_evidence_batch_plan(
-        fragments=packet.fragments,
+        fragments=all_fragments,
         tokenizer=tokenizer,
         policy=batch_policy,
         request_measure=request_measure,
