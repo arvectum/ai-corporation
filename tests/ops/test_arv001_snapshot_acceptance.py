@@ -319,21 +319,104 @@ def _base_setup(
     return repository_root, isolated, policy, root
 
 
-def _controlled_response() -> dict[str, str]:
-    return {
-        "status": "controlled_evidence_complete",
-        "manifest_path": "/tmp/r10-1-controlled-evidence/manifest.json",
-        "manifest_hash": "m" * 64,
-        "request_id": "req-" + "1" * 48,
-        "evidence_packet_hash": "e" * 64,
-        "provider": "openai_compatible",
-        "model": "qwen2.5-14b",
-    }
+_REQUEST_ID = "req-" + "1" * 48
+_EVIDENCE_PACKET_HASH = "e" * 64
+_PROVIDER = "openai_compatible"
+_MODEL = "qwen2.5-14b"
 
 
 def _runner_command(call: dict[str, object]) -> bool:
     command = call["command"]
     return bool(command and command[1:3] == ["-m", "scripts.r10_1.run_controlled_provider_evidence"])
+
+
+def _build_manifest(
+    *,
+    request_id: str = _REQUEST_ID,
+    evidence_packet_hash: str = _EVIDENCE_PACKET_HASH,
+    provider: str = _PROVIDER,
+    model: str = _MODEL,
+    batch_count: int = 12,
+    provider_call_count_per_execution: int = 12,
+    retry_count: int = 0,
+    repeat_count: int = 2,
+) -> dict[str, object]:
+    body = {
+        "manifest_version": "r10.1-controlled-provider-evidence-v3",
+        "stable_identity": {
+            "request_id": request_id,
+            "evidence_packet_hash": evidence_packet_hash,
+            "provider": provider,
+            "model": model,
+            "batch_count": batch_count,
+        },
+        "wire_contract": {"provider_wire_contract_version": "arv003-v1"},
+        "repeat_count": repeat_count,
+        "repeat_identity_verified": True,
+        "executions": [
+            {
+                "status": "ok",
+                "provider_call_count": provider_call_count_per_execution,
+                "retry_count": retry_count,
+                "batch_count": batch_count,
+            },
+            {
+                "status": "ok",
+                "provider_call_count": provider_call_count_per_execution,
+                "retry_count": retry_count,
+                "batch_count": batch_count,
+            },
+        ],
+        "safety": {
+            "credential_source": "existing_settings_secret_boundary",
+            "credential_value_recorded": False,
+            "raw_provider_body_recorded": False,
+            "local_paths_recorded": False,
+        },
+    }
+    return {**body, "manifest_hash": acceptance.canonical_sha256(body)}
+
+
+def _write_durable_marker(output_root: Path, *, transport_started: bool = True) -> None:
+    boundary = acceptance.boundary_root(output_root)
+    if transport_started:
+        marker = {
+            "schema_version": "arv001.transport-boundary.v1",
+            "transport_started": True,
+            "execution_ordinal": 1,
+            "batch_ordinal": None,
+            "attempt_ordinal": None,
+            "monotonic_ns": 1,
+            "request_identity_hash": "r" * 64,
+        }
+        boundary.mkdir(parents=True, exist_ok=True, mode=0o700)
+        (boundary / "transport-started.marker.json").write_text(
+            json.dumps(marker, sort_keys=True), encoding="utf-8"
+        )
+
+
+def _write_failure_descriptor(
+    output_root: Path, *, code: str, transport_started: bool
+) -> None:
+    boundary = acceptance.boundary_root(output_root)
+    boundary.mkdir(parents=True, exist_ok=True, mode=0o700)
+    descriptor = {
+        "schema_version": "arv001.transport-boundary.v1",
+        "status": "controlled_provider_failure",
+        "transport_started": transport_started,
+        "authorization_consumed": transport_started,
+        "sanitized_failure_code": code,
+        "execution_ordinal": 1,
+        "batch_ordinal": None,
+        "attempt_count": 0,
+        "retry_count": 0,
+        "raw_response_stored": False,
+        "credential_value_recorded": False,
+        "local_paths_recorded": False,
+    }
+    (boundary / "controlled-failure.descriptor.json").write_text(
+        json.dumps(descriptor, sort_keys=True), encoding="utf-8"
+    )
 
 
 def _install_recording_subprocess(
@@ -356,6 +439,74 @@ def _install_recording_subprocess(
                 returncode=runner_rc,
                 stdout=runner_stdout,
                 stderr=runner_stderr,
+            )
+        raise AssertionError(f"unexpected subprocess command: {command!r}")
+
+    monkeypatch.setattr(acceptance, "subprocess", SimpleNamespace(run=fake_run))
+    return calls
+
+
+def _install_success_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+    manifest: dict[str, object],
+    *,
+    create_marker: bool,
+    escape: bool = False,
+    symlink: bool = False,
+    tamper_manifest_file: bool = False,
+    override_response: dict[str, object] | None = None,
+) -> list[dict[str, object]]:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(
+            {"command": command, "cwd": kwargs.get("cwd"), "env": kwargs.get("env")}
+        )
+        if command and command[0] == "git":
+            return SimpleNamespace(returncode=0)
+        if _runner_command({"command": command}):
+            output_root = Path(command[command.index("--output-root") + 1])
+            if not escape:
+                output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+            manifest_path = (
+                (output_root / ".." / "escape.json")
+                if escape
+                else output_root / "controlled-evidence.manifest.json"
+            )
+            if symlink:
+                output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+                target = output_root / "real-target.json"
+                target.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
+                manifest_path = output_root / "controlled-evidence.manifest.json"
+                manifest_path.symlink_to(target)
+            else:
+                manifest_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                manifest_path.write_text(
+                    json.dumps(manifest, sort_keys=True), encoding="utf-8"
+                )
+            if tamper_manifest_file:
+                manifest_path.write_text(
+                    json.dumps(manifest, sort_keys=True)[:-1] + "\n", encoding="utf-8"
+                )
+            if create_marker:
+                _write_durable_marker(output_root)
+            response = {
+                "status": "controlled_evidence_complete",
+                "manifest_path": str(manifest_path),
+                "manifest_hash": str(manifest["manifest_hash"]),
+                "request_id": str(manifest["stable_identity"]["request_id"]),
+                "evidence_packet_hash": str(
+                    manifest["stable_identity"]["evidence_packet_hash"]
+                ),
+                "provider": str(manifest["stable_identity"]["provider"]),
+                "model": str(manifest["stable_identity"]["model"]),
+            }
+            if override_response:
+                response.update(override_response)
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps(response) + "\n",
+                stderr="",
             )
         raise AssertionError(f"unexpected subprocess command: {command!r}")
 
@@ -451,10 +602,8 @@ def test_accepts_execute_provider_with_grant_runs_controlled_runner_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
-    response = _controlled_response()
-    calls = _install_recording_subprocess(
-        monkeypatch, runner_stdout=json.dumps(response) + "\n"
-    )
+    manifest = _build_manifest()
+    calls = _install_success_subprocess(monkeypatch, manifest, create_marker=True)
     report = acceptance.run_snapshot_acceptance(
         prepared_snapshot_root=root,
         repository_root=repository_root,
@@ -485,21 +634,24 @@ def test_accepts_execute_provider_with_grant_runs_controlled_runner_once(
     assert str(isolated) in database_url
     assert str(root / "application-data") not in env["AI_CORP_ARVECTUM_DATA_DIR"]
     assert "application-data" in env["AI_CORP_ARVECTUM_DATA_DIR"]
+    stable = manifest["stable_identity"]
     assert report["authorized_execution_path_implemented"] is True
     assert report["controlled_runner_used"] is True
     assert report["exact_target_run_reused"] is True
     assert report["isolated_db_used_by_provider_path"] is True
-    assert report["status"] == response["status"]
-    assert report["controlled_output_identity"] == response["request_id"]
-    assert report["controlled_output_manifest_path"] == response["manifest_path"]
-    assert report["controlled_output_manifest_hash"] == response["manifest_hash"]
-    assert report["controlled_evidence_packet_hash"] == response["evidence_packet_hash"]
-    assert report["controlled_provider"] == response["provider"]
-    assert report["controlled_model"] == response["model"]
+    assert report["status"] == "controlled_evidence_complete"
+    assert report["controlled_output_identity"] == stable["request_id"]
+    assert report["controlled_evidence_packet_hash"] == stable["evidence_packet_hash"]
+    assert report["controlled_provider"] == stable["provider"]
+    assert report["controlled_model"] == stable["model"]
+    assert report["controlled_provider_invocations"] == 1
+    assert report["execution_count"] == 2
+    assert report["batch_count_per_execution"] == 12
+    assert report["provider_generation_calls"] == 24
+    assert report["retry_count"] == 0
+    assert report["durable_transport_marker_present"] is True
     assert report["authorization_consumed"] is True
     assert report["transport_started"] is True
-    assert report["controlled_provider_invocations"] == 2
-    assert report["provider_generation_calls"] == 0
     assert report["ready_for_transport"] is False
     assert report["new_run_created"] is False
     assert report["prepare_documents_called"] is False
@@ -555,6 +707,9 @@ def test_accepts_execute_provider_failure_fails_closed_sanitized(
         error.value.code
         == "snapshot_controlled_execution_failed:registry_number_not_approved"
     )
+    assert error.value.durable_transport_marker_present is False
+    assert error.value.authorization_consumed is False
+    assert error.value.transport_started is False
 
 
 def test_accepts_execute_provider_failure_sanitizes_dirty_stderr(
@@ -584,6 +739,75 @@ def test_accepts_execute_provider_failure_sanitizes_dirty_stderr(
             authorization_granted=True,
         )
     assert error.value.code == "snapshot_controlled_execution_failed:controlled_runner_failed"
+    assert error.value.durable_transport_marker_present is False
+    assert error.value.authorization_consumed is False
+    assert error.value.transport_started is False
+
+
+def test_accepts_execute_provider_failure_before_marker_keeps_authorization_unconsumed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    _install_recording_subprocess(
+        monkeypatch, runner_rc=2, runner_stderr="analysis_run_not_found\n"
+    )
+    with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
+        acceptance.run_snapshot_acceptance(
+            prepared_snapshot_root=root,
+            repository_root=repository_root,
+            current_head=CURRENT_HEAD,
+            prepared_snapshot_original_head=ORIGINAL_HEAD,
+            expected_corpus_sha=CORPUS,
+            approved_policy=policy,
+            isolated_runtime_root=isolated,
+            tokenizer=_Fan(),
+            execute_provider=True,
+            authorization_granted=True,
+        )
+    assert error.value.code == "snapshot_controlled_execution_failed:analysis_run_not_found"
+    assert error.value.durable_transport_marker_present is False
+    assert error.value.authorization_consumed is False
+    assert error.value.transport_started is False
+
+
+def test_accepts_execute_provider_failure_after_marker_reports_authorization_consumed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+
+    def fake_run(command, **kwargs):
+        if command and command[0] == "git":
+            return SimpleNamespace(returncode=0)
+        if _runner_command({"command": command}):
+            output_root = Path(command[command.index("--output-root") + 1])
+            _write_durable_marker(output_root, transport_started=True)
+            _write_failure_descriptor(
+                output_root, code="controlled_evidence_repeat_identity_mismatch",
+                transport_started=True,
+            )
+            return SimpleNamespace(returncode=2, stdout="", stderr="controlled_evidence_repeat_identity_mismatch\n")
+        raise AssertionError(f"unexpected: {command!r}")
+
+    monkeypatch.setattr(acceptance, "subprocess", SimpleNamespace(run=fake_run))
+    with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
+        acceptance.run_snapshot_acceptance(
+            prepared_snapshot_root=root,
+            repository_root=repository_root,
+            current_head=CURRENT_HEAD,
+            prepared_snapshot_original_head=ORIGINAL_HEAD,
+            expected_corpus_sha=CORPUS,
+            approved_policy=policy,
+            isolated_runtime_root=isolated,
+            tokenizer=_Fan(),
+            execute_provider=True,
+            authorization_granted=True,
+        )
+    assert error.value.code == (
+        "snapshot_controlled_execution_failed:controlled_evidence_repeat_identity_mismatch"
+    )
+    assert error.value.durable_transport_marker_present is True
+    assert error.value.authorization_consumed is True
+    assert error.value.transport_started is True
 
 
 def test_accepts_execute_provider_output_invalid_fails_closed(
@@ -611,7 +835,15 @@ def test_accepts_execute_provider_schema_invalid_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
-    response = _controlled_response()
+    response = {
+        "status": "controlled_evidence_complete",
+        "manifest_path": "/tmp/x/controlled-evidence.manifest.json",
+        "manifest_hash": "m" * 64,
+        "request_id": "req-" + "1" * 48,
+        "evidence_packet_hash": "e" * 64,
+        "provider": "openai_compatible",
+        "model": "qwen2.5-14b",
+    }
     response.pop("request_id")
     _install_recording_subprocess(
         monkeypatch, runner_stdout=json.dumps(response) + "\n"
@@ -636,7 +868,15 @@ def test_accepts_execute_provider_wrong_status_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
-    response = _controlled_response()
+    response = {
+        "status": "controlled_evidence_complete",
+        "manifest_path": "/tmp/x/controlled-evidence.manifest.json",
+        "manifest_hash": "m" * 64,
+        "request_id": "req-" + "1" * 48,
+        "evidence_packet_hash": "e" * 64,
+        "provider": "openai_compatible",
+        "model": "qwen2.5-14b",
+    }
     response["status"] = "controlled_evidence_pending"
     _install_recording_subprocess(
         monkeypatch, runner_stdout=json.dumps(response) + "\n"

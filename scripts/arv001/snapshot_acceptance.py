@@ -53,8 +53,13 @@ from scripts.arv001.prepared_verification import (
     verify_prepared_database_strict,
 )
 from src.modules.production_llm_analysis.batching import tokenizer_from_environment
+from src.modules.production_llm_analysis.evidence import canonical_sha256
 from src.modules.production_llm_analysis.live_output_boundary import (
     verify_exact_live_output_budget,
+)
+from src.modules.production_llm_analysis.transport_boundary import (
+    boundary_root,
+    load_authorization_state,
 )
 
 SNAPSHOT_ACCEPTANCE_SCHEMA_VERSION = "arv001-snapshot-acceptance-v1"
@@ -84,7 +89,13 @@ _CONTROLLED_EXECUTION_EXPECTED_KEYS = {
     "model",
 }
 
-_CONTROLLED_RUNNER_INVOCATION_COUNT = 2
+_CONTROLLED_MANIFEST_FILENAME = "controlled-evidence.manifest.json"
+
+# ONE snapshot-acceptance execute-provider request maps to exactly ONE child
+# process invocation of scripts.r10_1.run_controlled_provider_evidence. The
+# child runner itself performs TWO internal executions (repeat_count == 2).
+_CONTROLLED_RUNNER_INVOCATION_COUNT = 1
+_CONTROLLED_EXPECTED_EXECUTION_COUNT = 2
 
 
 class SnapshotAcceptanceError(RuntimeError):
@@ -239,6 +250,101 @@ def _run_repository_preflight(
     return dict(response)
 
 
+def _durable_transport_facts(output_root: Path) -> dict[str, Any]:
+    """Read repository-owned durable transport evidence for the controlled run.
+
+    The durable boundary (a sibling of the controlled output root, never inside
+    the disposable partial stage) is the only allowed source for transport and
+    authorization facts. These are never inferred from a success status alone.
+    """
+    durable = load_authorization_state(boundary_root(output_root))
+    descriptor = durable.get("failure_descriptor") or {}
+    facts: dict[str, Any] = {
+        "durable_transport_marker_present": bool(
+            durable.get("transport_started") is True
+        ),
+        "transport_started": bool(durable.get("transport_started") is True),
+        "authorization_consumed": bool(
+            durable.get("authorization_consumed") is True
+        ),
+    }
+    retry = descriptor.get("retry_count")
+    if isinstance(retry, int):
+        facts["retry_count"] = retry
+    code = descriptor.get("sanitized_failure_code")
+    if isinstance(code, str) and _SAFE_CODE.fullmatch(code):
+        facts["sanitized_failure_code"] = code
+    return facts
+
+
+def _read_controlled_manifest(response: dict[str, Any], resolved_root: Path) -> dict[str, Any]:
+    """Read, locate-safely and verify the repository-produced controlled manifest.
+
+    The manifest path is taken only from the child runner response and must live
+    inside the resolved isolated output root. Symlinks and traversal are
+    rejected. The manifest hash is independently recomputed with the canonical
+    JSON contract and must match both the response manifest_hash and the
+    manifest's own manifest_hash.
+    """
+    raw_path = response.get("manifest_path")
+    if not isinstance(raw_path, str) or not raw_path:
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_invalid")
+    manifest_path = Path(raw_path)
+    if not manifest_path.is_absolute() or manifest_path.is_symlink():
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_symlink")
+    try:
+        resolved_manifest = manifest_path.resolve()
+    except OSError as exc:
+        raise SnapshotAcceptanceError(
+            "snapshot_controlled_manifest_unreadable"
+        ) from exc
+    if not resolved_manifest.is_relative_to(resolved_root):
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_path_escape")
+    for ancestor in manifest_path.parents:
+        if ancestor == resolved_root or ancestor == resolved_root.parent:
+            continue
+        if ancestor.exists() and ancestor.is_symlink():
+            raise SnapshotAcceptanceError("snapshot_controlled_manifest_symlink")
+    if resolved_manifest.name != _CONTROLLED_MANIFEST_FILENAME:
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_name_invalid")
+    try:
+        payload = json.loads(resolved_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SnapshotAcceptanceError(
+            "snapshot_controlled_manifest_unreadable"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_invalid")
+    manifest_hash = payload.get("manifest_hash")
+    recomputed = canonical_sha256(
+        {key: value for key, value in payload.items() if key != "manifest_hash"}
+    )
+    response_hash = response.get("manifest_hash")
+    if not isinstance(manifest_hash, str) or manifest_hash != response_hash:
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_hash_mismatch")
+    if recomputed != manifest_hash:
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_hash_mismatch")
+    return payload
+
+
+def _verify_controlled_stable_identity(manifest: dict[str, Any], response: dict[str, Any]) -> None:
+    """Verify stable identity consistency between the durable manifest and stdout."""
+    stable = manifest.get("stable_identity")
+    if not isinstance(stable, dict):
+        raise SnapshotAcceptanceError("snapshot_controlled_manifest_invalid")
+    pairs = {
+        "request_id": ("request_id", "request_id"),
+        "evidence_packet_hash": ("evidence_packet_hash", "evidence_packet_hash"),
+        "provider": ("provider", "provider"),
+        "model": ("model", "model"),
+    }
+    for label, (manifest_key, response_key) in pairs.items():
+        if stable.get(manifest_key) != response.get(response_key):
+            raise SnapshotAcceptanceError(
+                f"snapshot_controlled_identity_{label}_mismatch"
+            )
+
+
 def _run_repository_controlled_execution(
     *,
     repository_root: Path,
@@ -254,11 +360,11 @@ def _run_repository_controlled_execution(
     This is the only place the acceptance contour may reach the provider. The
     repository-owned ``run_controlled_provider_evidence`` is invoked exactly
     once against the isolated byte-identical copy with transport permanently
-    retry-free. No provider call is ever started from this process; the durable
-    manifest produced by the runner is the sole source of the transport and
-    authorization facts surfaced in the report.
+    retry-free. No provider call is ever started from this process; execution
+    metrics are derived from the verified durable manifest and transport facts
+    from the durable transport boundary. Nothing is inferred from success status
+    alone and nothing is retried.
     """
-    output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     env = os.environ.copy()
     env["AI_CORP_DATABASE_URL"] = f"sqlite:///{isolated_database.as_posix()}"
     env["AI_CORP_ARVECTUM_DATA_DIR"] = str(application_data)
@@ -286,9 +392,21 @@ def _run_repository_controlled_execution(
         check=False,
     )
     if result.returncode != 0:
-        raise SnapshotAcceptanceError(
-            "snapshot_controlled_execution_failed:" + _safe_failure(result.stderr)
+        facts = _durable_transport_facts(output_root)
+        failure_code = (
+            facts.get("sanitized_failure_code")
+            or _safe_failure(result.stderr)
         )
+        error = SnapshotAcceptanceError(
+            "snapshot_controlled_execution_failed:" + failure_code
+        )
+        error.transport_started = facts["transport_started"]
+        error.authorization_consumed = facts["authorization_consumed"]
+        error.durable_transport_marker_present = facts[
+            "durable_transport_marker_present"
+        ]
+        error.retry_count = facts.get("retry_count", 0)
+        raise error
     try:
         response = json.loads(result.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError) as exc:
@@ -304,22 +422,67 @@ def _run_repository_controlled_execution(
         response.get("status") == "controlled_evidence_complete",
         "snapshot_controlled_execution_invalid",
     )
+
+    resolved_root = output_root.resolve()
+    manifest = _read_controlled_manifest(response, resolved_root)
+    _verify_controlled_stable_identity(manifest, response)
+
+    repeat_count = manifest.get("repeat_count")
+    _require(
+        isinstance(repeat_count, int) and repeat_count == _CONTROLLED_EXPECTED_EXECUTION_COUNT,
+        "snapshot_controlled_execution_repeat_count_invalid",
+    )
+    executions = manifest.get("executions")
+    _require(
+        isinstance(executions, list) and len(executions) == _CONTROLLED_EXPECTED_EXECUTION_COUNT,
+        "snapshot_controlled_execution_invalid",
+    )
+
+    stable = manifest.get("stable_identity") or {}
+    batch_count = stable.get("batch_count")
+    if not isinstance(batch_count, int):
+        counts = [
+            entry.get("batch_count")
+            for entry in executions
+            if isinstance(entry, dict)
+        ]
+        batch_count = max(counts) if counts else None
+    provider_calls = sum(
+        int(entry["provider_call_count"])
+        for entry in executions
+        if isinstance(entry, dict)
+        and isinstance(entry.get("provider_call_count"), int)
+    )
+    retry_count = sum(
+        int(entry["retry_count"])
+        for entry in executions
+        if isinstance(entry, dict)
+        and isinstance(entry.get("retry_count"), int)
+    )
+
+    facts = _durable_transport_facts(output_root)
     return {
         "authorized_execution_path_implemented": True,
         "controlled_runner_used": True,
         "exact_target_run_reused": True,
         "isolated_db_used_by_provider_path": True,
         "status": response["status"],
-        "controlled_provider_invocations": _CONTROLLED_RUNNER_INVOCATION_COUNT,
-        "provider_generation_calls": 0,
         "controlled_output_identity": response["request_id"],
         "controlled_output_manifest_path": response["manifest_path"],
         "controlled_output_manifest_hash": response["manifest_hash"],
         "controlled_evidence_packet_hash": response["evidence_packet_hash"],
         "controlled_provider": response["provider"],
         "controlled_model": response["model"],
-        "authorization_consumed": True,
-        "transport_started": True,
+        "controlled_provider_invocations": _CONTROLLED_RUNNER_INVOCATION_COUNT,
+        "execution_count": repeat_count,
+        "batch_count_per_execution": batch_count,
+        "provider_generation_calls": provider_calls,
+        "retry_count": retry_count,
+        "durable_transport_marker_present": facts[
+            "durable_transport_marker_present"
+        ],
+        "transport_started": facts["transport_started"],
+        "authorization_consumed": facts["authorization_consumed"],
         "ready_for_transport": False,
     }
 
