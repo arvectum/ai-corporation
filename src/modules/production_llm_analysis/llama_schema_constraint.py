@@ -201,6 +201,9 @@ def build_live_compact_llama_schema(request: ProductionLLMAnalysisRequest) -> di
 
     references_schema["minItems"] = 1
     references_schema["maxItems"] = 1
+    # Remove provider_confidence from the generatable live schema
+    claim_properties.pop("provider_confidence", None)
+    schema["additionalProperties"] = False
     return schema
 
 
