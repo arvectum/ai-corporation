@@ -56,6 +56,7 @@ from src.modules.production_llm_analysis.live_output_boundary import (
     GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
     verify_exact_live_output_budget,
 )
+from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
 
 ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS_VERSION = "arv001-prepared-carry-forward-v1"
 ARV001_PREPARED_CARRY_FORWARD_PROTECTED_PATHS = (
@@ -490,6 +491,7 @@ def _reconstruct_actual_batch_requests(
     )
     from src.modules.production_llm_analysis.schemas import (
         BudgetPolicy,
+        EvidenceFragmentInput,
     )
     from src.modules.production_llm_analysis.service import build_production_llm_request
     from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
@@ -528,10 +530,11 @@ def _reconstruct_actual_batch_requests(
         
         from src.modules.production_llm_analysis.evidence import build_evidence_packet
         
-        # Flat list of all evidence fragments
+        # Flat list of all evidence fragments as EvidenceFragmentInput objects
         all_fragments = []
         for doc in inputs.documents:
-            all_fragments.extend(doc.evidence_chunks)
+            for chunk in doc.evidence_chunks:
+                all_fragments.append(EvidenceFragmentInput.model_validate(chunk))
 
         # Step 2: Build EvidencePacket
         packet = build_evidence_packet(
@@ -542,12 +545,6 @@ def _reconstruct_actual_batch_requests(
             registry_number=tender.registry_number,
             fragments=all_fragments
         )
-        
-        # Step 3: Verify identities
-        from src.modules.production_llm_analysis.evidence import canonical_sha256
-        if packet.packet_hash != canonical_sha256(packet.model_dump(mode="json", exclude={"packet_hash"})):
-             # Sanity check: the packet hash is reconstructed correctly
-             pass
 
     with policy_path.open("rb") as f:
         policy_data = json.load(f)
