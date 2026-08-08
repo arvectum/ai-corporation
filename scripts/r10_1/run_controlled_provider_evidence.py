@@ -263,11 +263,9 @@ def main() -> int:
     args = _arguments()
     try:
         # Install ARV-001 live runtime adapters (sentinels, non-reasoning, and verification)
-        from src.modules.production_llm_analysis.llama_schema_constraint import (
-            install_llama_schema_constraint,
-        )
         install_llama_schema_constraint()
         enable_live_boundary_verification()
+
 
 
         policy = load_approved_provider_policy(args.approved_policy)

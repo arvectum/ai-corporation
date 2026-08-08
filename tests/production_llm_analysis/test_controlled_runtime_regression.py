@@ -60,8 +60,8 @@ def mock_sentinel_response():
     }
 
 def test_sentinel_rewrite_success():
-    """Verify that llama adapter rewrites sentinels into grounded values."""
-    install_llama_schema_constraint()
+    """Verify that llama adapter rewrites sentinels into grounded values.
+"""    install_llama_schema_constraint()
 
     request = create_mock_request()
     provider = OpenAICompatibleProductionLLMProvider(config=OpenAICompatibleTransportConfig(base_url='http://localhost', api_key='key'))
@@ -80,8 +80,8 @@ def test_sentinel_rewrite_success():
     assert result.claims[0].evidence_references[0].quote == "This is a test claim value."
 
 def test_invalid_response_diagnostic_preserved():
-    """Verify that safe invalid-response diagnostics are preserved after installation."""
-    install_llama_schema_constraint()
+    """Verify that safe invalid-response diagnostics are preserved after installation.
+"""    install_llama_schema_constraint()
 
     request = create_mock_request()
     provider = OpenAICompatibleProductionLLMProvider(config=OpenAICompatibleTransportConfig(base_url='http://localhost', api_key='key'))
@@ -116,8 +116,8 @@ def test_invalid_response_diagnostic_preserved():
     assert "provider_wire_quote_not_found" in str(excinfo.value)
 
 def test_final_body_verification_config():
-    """Verify final request body constraints."""
-    enable_live_boundary_verification()
+    """Verify final request body constraints.
+"""    enable_live_boundary_verification()
 
     request = create_mock_request()
     provider = OpenAICompatibleProductionLLMProvider(config=OpenAICompatibleTransportConfig(base_url='http://localhost', api_key='key'))
