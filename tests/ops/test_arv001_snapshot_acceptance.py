@@ -319,6 +319,50 @@ def _base_setup(
     return repository_root, isolated, policy, root
 
 
+def _controlled_response() -> dict[str, str]:
+    return {
+        "status": "controlled_evidence_complete",
+        "manifest_path": "/tmp/r10-1-controlled-evidence/manifest.json",
+        "manifest_hash": "m" * 64,
+        "request_id": "req-" + "1" * 48,
+        "evidence_packet_hash": "e" * 64,
+        "provider": "openai_compatible",
+        "model": "qwen2.5-14b",
+    }
+
+
+def _runner_command(call: dict[str, object]) -> bool:
+    command = call["command"]
+    return bool(command and command[1:3] == ["-m", "scripts.r10_1.run_controlled_provider_evidence"])
+
+
+def _install_recording_subprocess(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    runner_rc: int = 0,
+    runner_stdout: str | None = None,
+    runner_stderr: str = "",
+) -> list[dict[str, object]]:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(command: list[str], **kwargs: object) -> SimpleNamespace:
+        calls.append(
+            {"command": command, "cwd": kwargs.get("cwd"), "env": kwargs.get("env")}
+        )
+        if command and command[0] == "git":
+            return SimpleNamespace(returncode=0)
+        if _runner_command({"command": command}):
+            return SimpleNamespace(
+                returncode=runner_rc,
+                stdout=runner_stdout,
+                stderr=runner_stderr,
+            )
+        raise AssertionError(f"unexpected subprocess command: {command!r}")
+
+    monkeypatch.setattr(acceptance, "subprocess", SimpleNamespace(run=fake_run))
+    return calls
+
+
 def test_acceptance_zero_transport_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -385,6 +429,7 @@ def test_accepts_blocks_execute_provider_without_grant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    calls = _install_recording_subprocess(monkeypatch)
     with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
         acceptance.run_snapshot_acceptance(
             prepared_snapshot_root=root,
@@ -399,12 +444,100 @@ def test_accepts_blocks_execute_provider_without_grant(
             authorization_granted=False,
         )
     assert error.value.code == "snapshot_authorization_not_granted"
+    assert [call for call in calls if _runner_command(call)] == []
 
 
-def test_accepts_blocks_execute_provider_even_with_grant(
+def test_accepts_execute_provider_with_grant_runs_controlled_runner_once(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    response = _controlled_response()
+    calls = _install_recording_subprocess(
+        monkeypatch, runner_stdout=json.dumps(response) + "\n"
+    )
+    report = acceptance.run_snapshot_acceptance(
+        prepared_snapshot_root=root,
+        repository_root=repository_root,
+        current_head=CURRENT_HEAD,
+        prepared_snapshot_original_head=ORIGINAL_HEAD,
+        expected_corpus_sha=CORPUS,
+        approved_policy=policy,
+        isolated_runtime_root=isolated,
+        tokenizer=_Fan(),
+        execute_provider=True,
+        authorization_granted=True,
+    )
+    runner_calls = [call for call in calls if _runner_command(call)]
+    assert len(runner_calls) == 1
+    command = runner_calls[0]["command"]
+    assert "--preflight-only" not in command
+    assert command[command.index("--run-id") + 1] == "run"
+    assert (
+        command[command.index("--expected-registry-number") + 1] == "registry"
+    )
+    assert command[command.index("--approved-policy") + 1] == str(policy)
+    assert command[command.index("--output-root") + 1]
+    env = runner_calls[0]["env"]
+    assert env["AI_CORP_LLM_MAX_RETRIES"] == "0"
+    database_url = env["AI_CORP_DATABASE_URL"]
+    assert database_url.endswith("/prepared.sqlite3")
+    assert database_url != f"sqlite:///{root / 'prepared.sqlite3'}"
+    assert str(isolated) in database_url
+    assert str(root / "application-data") not in env["AI_CORP_ARVECTUM_DATA_DIR"]
+    assert "application-data" in env["AI_CORP_ARVECTUM_DATA_DIR"]
+    assert report["authorized_execution_path_implemented"] is True
+    assert report["controlled_runner_used"] is True
+    assert report["exact_target_run_reused"] is True
+    assert report["isolated_db_used_by_provider_path"] is True
+    assert report["status"] == response["status"]
+    assert report["controlled_output_identity"] == response["request_id"]
+    assert report["controlled_output_manifest_path"] == response["manifest_path"]
+    assert report["controlled_output_manifest_hash"] == response["manifest_hash"]
+    assert report["controlled_evidence_packet_hash"] == response["evidence_packet_hash"]
+    assert report["controlled_provider"] == response["provider"]
+    assert report["controlled_model"] == response["model"]
+    assert report["authorization_consumed"] is True
+    assert report["transport_started"] is True
+    assert report["controlled_provider_invocations"] == 2
+    assert report["provider_generation_calls"] == 0
+    assert report["ready_for_transport"] is False
+    assert report["new_run_created"] is False
+    assert report["prepare_documents_called"] is False
+    assert report["create_application_data_called"] is False
+
+
+def test_accepts_execute_provider_success_never_fabricates_without_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    calls = _install_recording_subprocess(monkeypatch)
+    report = acceptance.run_snapshot_acceptance(
+        prepared_snapshot_root=root,
+        repository_root=repository_root,
+        current_head=CURRENT_HEAD,
+        prepared_snapshot_original_head=ORIGINAL_HEAD,
+        expected_corpus_sha=CORPUS,
+        approved_policy=policy,
+        isolated_runtime_root=isolated,
+        tokenizer=_Fan(),
+    )
+    assert [call for call in calls if _runner_command(call)] == []
+    assert report["ready_for_transport"] is True
+    assert report["authorization_consumed"] is False
+    assert report["transport_started"] is False
+    assert report["controlled_provider_invocations"] == 0
+    assert report["provider_generation_calls"] == 0
+
+
+def test_accepts_execute_provider_failure_fails_closed_sanitized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    _install_recording_subprocess(
+        monkeypatch,
+        runner_rc=2,
+        runner_stderr="registry_number_not_approved\n",
+    )
     with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
         acceptance.run_snapshot_acceptance(
             prepared_snapshot_root=root,
@@ -418,7 +551,110 @@ def test_accepts_blocks_execute_provider_even_with_grant(
             execute_provider=True,
             authorization_granted=True,
         )
-    assert error.value.code == "snapshot_execute_provider_not_runnable_in_this_mode"
+    assert (
+        error.value.code
+        == "snapshot_controlled_execution_failed:registry_number_not_approved"
+    )
+
+
+def test_accepts_execute_provider_failure_sanitizes_dirty_stderr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    _install_recording_subprocess(
+        monkeypatch,
+        runner_rc=3,
+        runner_stderr=(
+            "Traceback (most recent call last):\n"
+            "  File \"/x/y.py\", line 12\n"
+            "RuntimeError: boom\n"
+        ),
+    )
+    with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
+        acceptance.run_snapshot_acceptance(
+            prepared_snapshot_root=root,
+            repository_root=repository_root,
+            current_head=CURRENT_HEAD,
+            prepared_snapshot_original_head=ORIGINAL_HEAD,
+            expected_corpus_sha=CORPUS,
+            approved_policy=policy,
+            isolated_runtime_root=isolated,
+            tokenizer=_Fan(),
+            execute_provider=True,
+            authorization_granted=True,
+        )
+    assert error.value.code == "snapshot_controlled_execution_failed:controlled_runner_failed"
+
+
+def test_accepts_execute_provider_output_invalid_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    _install_recording_subprocess(monkeypatch, runner_stdout="not-json\n")
+    with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
+        acceptance.run_snapshot_acceptance(
+            prepared_snapshot_root=root,
+            repository_root=repository_root,
+            current_head=CURRENT_HEAD,
+            prepared_snapshot_original_head=ORIGINAL_HEAD,
+            expected_corpus_sha=CORPUS,
+            approved_policy=policy,
+            isolated_runtime_root=isolated,
+            tokenizer=_Fan(),
+            execute_provider=True,
+            authorization_granted=True,
+        )
+    assert error.value.code == "snapshot_controlled_execution_output_invalid"
+
+
+def test_accepts_execute_provider_schema_invalid_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    response = _controlled_response()
+    response.pop("request_id")
+    _install_recording_subprocess(
+        monkeypatch, runner_stdout=json.dumps(response) + "\n"
+    )
+    with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
+        acceptance.run_snapshot_acceptance(
+            prepared_snapshot_root=root,
+            repository_root=repository_root,
+            current_head=CURRENT_HEAD,
+            prepared_snapshot_original_head=ORIGINAL_HEAD,
+            expected_corpus_sha=CORPUS,
+            approved_policy=policy,
+            isolated_runtime_root=isolated,
+            tokenizer=_Fan(),
+            execute_provider=True,
+            authorization_granted=True,
+        )
+    assert error.value.code == "snapshot_controlled_execution_schema_invalid"
+
+
+def test_accepts_execute_provider_wrong_status_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository_root, isolated, policy, root = _base_setup(tmp_path, monkeypatch)
+    response = _controlled_response()
+    response["status"] = "controlled_evidence_pending"
+    _install_recording_subprocess(
+        monkeypatch, runner_stdout=json.dumps(response) + "\n"
+    )
+    with pytest.raises(acceptance.SnapshotAcceptanceError) as error:
+        acceptance.run_snapshot_acceptance(
+            prepared_snapshot_root=root,
+            repository_root=repository_root,
+            current_head=CURRENT_HEAD,
+            prepared_snapshot_original_head=ORIGINAL_HEAD,
+            expected_corpus_sha=CORPUS,
+            approved_policy=policy,
+            isolated_runtime_root=isolated,
+            tokenizer=_Fan(),
+            execute_provider=True,
+            authorization_granted=True,
+        )
+    assert error.value.code == "snapshot_controlled_execution_invalid"
 
 
 def test_accepts_rejects_request_body_plan_mismatch(

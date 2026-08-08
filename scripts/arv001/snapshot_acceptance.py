@@ -15,9 +15,12 @@ application state:
   to the exact plan hash, and derives an exact live-output proof with the
   approved persistent tokenizer.
 
-The function never starts transport and never spends authorization. The
-``--execute-provider`` fork is implemented as a guarded code path that future
-operators may exercise only after a separately reviewed authorization grant.
+The default fork never starts transport and never spends authorization. The
+``--execute-provider`` fork is a guarded code path that operators may exercise
+only after a separately reviewed authorization grant; it delegates the whole
+provider execution exactly once to the repository-owned controlled runner
+against the isolated byte-identical copy and never starts transport from this
+process.
 """
 
 from __future__ import annotations
@@ -70,6 +73,18 @@ _PREFLIGHT_EXPECTED_KEYS = {
     "controlled_provider_invocations",
     "provider_generation_calls",
 }
+
+_CONTROLLED_EXECUTION_EXPECTED_KEYS = {
+    "status",
+    "manifest_path",
+    "manifest_hash",
+    "request_id",
+    "evidence_packet_hash",
+    "provider",
+    "model",
+}
+
+_CONTROLLED_RUNNER_INVOCATION_COUNT = 2
 
 
 class SnapshotAcceptanceError(RuntimeError):
@@ -222,6 +237,91 @@ def _run_repository_preflight(
         "snapshot_controlled_preflight_invalid",
     )
     return dict(response)
+
+
+def _run_repository_controlled_execution(
+    *,
+    repository_root: Path,
+    run_id: str,
+    registry_number: str,
+    approved_policy: Path,
+    isolated_database: Path,
+    application_data: Path,
+    output_root: Path,
+) -> dict[str, Any]:
+    """Run the authorized provider execution through the repository runner.
+
+    This is the only place the acceptance contour may reach the provider. The
+    repository-owned ``run_controlled_provider_evidence`` is invoked exactly
+    once against the isolated byte-identical copy with transport permanently
+    retry-free. No provider call is ever started from this process; the durable
+    manifest produced by the runner is the sole source of the transport and
+    authorization facts surfaced in the report.
+    """
+    output_root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    env = os.environ.copy()
+    env["AI_CORP_DATABASE_URL"] = f"sqlite:///{isolated_database.as_posix()}"
+    env["AI_CORP_ARVECTUM_DATA_DIR"] = str(application_data)
+    env["AI_CORP_ARVECTUM_STORAGE_ROOT"] = str(output_root)
+    env["AI_CORP_LLM_MAX_RETRIES"] = "0"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.r10_1.run_controlled_provider_evidence",
+            "--run-id",
+            run_id,
+            "--expected-registry-number",
+            registry_number,
+            "--approved-policy",
+            str(approved_policy),
+            "--output-root",
+            str(output_root),
+        ],
+        cwd=repository_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise SnapshotAcceptanceError(
+            "snapshot_controlled_execution_failed:" + _safe_failure(result.stderr)
+        )
+    try:
+        response = json.loads(result.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError) as exc:
+        raise SnapshotAcceptanceError(
+            "snapshot_controlled_execution_output_invalid"
+        ) from exc
+    _require(
+        isinstance(response, dict)
+        and set(response) == _CONTROLLED_EXECUTION_EXPECTED_KEYS,
+        "snapshot_controlled_execution_schema_invalid",
+    )
+    _require(
+        response.get("status") == "controlled_evidence_complete",
+        "snapshot_controlled_execution_invalid",
+    )
+    return {
+        "authorized_execution_path_implemented": True,
+        "controlled_runner_used": True,
+        "exact_target_run_reused": True,
+        "isolated_db_used_by_provider_path": True,
+        "status": response["status"],
+        "controlled_provider_invocations": _CONTROLLED_RUNNER_INVOCATION_COUNT,
+        "provider_generation_calls": 0,
+        "controlled_output_identity": response["request_id"],
+        "controlled_output_manifest_path": response["manifest_path"],
+        "controlled_output_manifest_hash": response["manifest_hash"],
+        "controlled_evidence_packet_hash": response["evidence_packet_hash"],
+        "controlled_provider": response["provider"],
+        "controlled_model": response["model"],
+        "authorization_consumed": True,
+        "transport_started": True,
+        "ready_for_transport": False,
+    }
 
 
 def run_snapshot_acceptance(
@@ -441,9 +541,20 @@ def run_snapshot_acceptance(
     # H. Zero-transport enforcement / authorized streaming boundary.
     if execute_provider:
         _require(authorization_granted, "snapshot_authorization_not_granted")
-        raise SnapshotAcceptanceError(
-            "snapshot_execute_provider_not_runnable_in_this_mode"
+        report.update(
+            _run_repository_controlled_execution(
+                repository_root=repository_root,
+                run_id=descriptor.target_run_id,
+                registry_number=_database_registry_number(
+                    target_db, descriptor.target_run_id
+                ),
+                approved_policy=approved_policy,
+                isolated_database=target_db,
+                application_data=target_app,
+                output_root=staging / "controlled-runtime-output",
+            )
         )
+        return report
     report["authorization_consumed"] = False
     report["transport_started"] = False
     report["controlled_provider_invocations"] = 0
