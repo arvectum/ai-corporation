@@ -118,5 +118,3 @@ def test_reconstruct_requests_selects_correct_run(tmp_path: Path) -> None:
     assert len(requests) > 0
     assert requests[0].registry_number == "reg"
     assert requests[0].customer_id == "cust"
-    
-    conn.close()
