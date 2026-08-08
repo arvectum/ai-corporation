@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable
@@ -29,6 +30,7 @@ from scripts.arv001.prepared_verification import (
     PreparedVerificationError,
     PrivatePreparedVerificationDescriptor,
     parse_private_descriptor,
+    registry_identity_sha256,
     verify_prepared_database,
 )
 from scripts.arv001.prepared_snapshot_attestation import (
@@ -120,6 +122,16 @@ _COUNTER_FIELDS = (
     "old_arv003_mutations",
     "git_data_leaks",
 )
+
+
+@dataclass(frozen=True)
+class CanonicalRequestReconstruction:
+    requests: list[Any]
+    plan: Any
+    target_run_binding_verified: bool
+    canonical_evidence_projection_match: bool
+    evidence_packet_hash: str
+    ordered_fragment_ids_hash: str
 
 
 class _PhaseRecorder:
@@ -477,35 +489,24 @@ def _reconstruct_actual_batch_requests(
     model: str = "arvectum-gemma4-12b-it-qat-q4_0",
     tokenizer: Any,
     descriptor: PrivatePreparedVerificationDescriptor,
-) -> list[Any]:
+) -> CanonicalRequestReconstruction:
     """Reconstruct real R10.1 batch requests from historical DB and application data."""
-    from src.modules.production_llm_analysis.batching import (
-        BatchPolicy,
-        build_evidence_batch_plan,
-        measure_openai_request_tokens,
+    from src.modules.procurement_analysis.r10_1_producer import (
+        MAP_ALLOWED_FIELD_PATHS,
+        build_r10_1_batch_plan,
+        build_r10_1_evidence_packet,
     )
+    from src.modules.production_llm_analysis.batching import BatchPolicy
     from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
-    from src.modules.production_llm_analysis.openai_compatible import (
-        OpenAICompatibleProductionLLMProvider,
-        OpenAICompatibleTransportConfig,
-    )
-    from src.modules.production_llm_analysis.schemas import (
-        BudgetPolicy,
-        EvidenceFragmentInput,
-    )
+    from src.modules.production_llm_analysis.schemas import BudgetPolicy
     from src.modules.production_llm_analysis.service import build_production_llm_request
-    from src.modules.customer_pilot.input_resolver import resolve_customer_run_inputs
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
-
-    provider = OpenAICompatibleProductionLLMProvider(
-        OpenAICompatibleTransportConfig(base_url="http://127.0.0.1", api_key="dummy")
-    )
+    from src.modules.production_llm_analysis.evidence import canonical_sha256
 
     engine = create_engine(f"sqlite:///{database_path}")
     Session = sessionmaker(bind=engine)
     with Session() as session:
-        # Step 1: Reconstruct EvidencePacket through canonical resolver
         from src.tender_research.models import ProcurementTender, TenderAnalysisRun
         from sqlalchemy import select
         
@@ -513,38 +514,41 @@ def _reconstruct_actual_batch_requests(
         if not run:
             raise RuntimeError("prepared_run_missing")
         
-        # Verify bindings against descriptor
-        if str(run.customer_id) != descriptor.customer_id or str(run.project_id) != descriptor.project_id:
+        # Strictly verify run metadata and bindings against descriptor
+        run_metadata = json.loads(run.metadata_json or "{}")
+        if (str(run.customer_id) != descriptor.customer_id or 
+            str(run.project_id) != descriptor.project_id or
+            str(run.procurement_case_id) != descriptor.case_id or
+            str(run_metadata.get("arv001_tender_id")) != descriptor.tender_id):
             raise RuntimeError("prepared_run_binding_mismatch")
         
         tender = session.scalar(select(ProcurementTender).where(ProcurementTender.id == descriptor.tender_id))
         if not tender:
             raise RuntimeError("prepared_tender_missing")
         
-        # Verify corpus binding
-        if tender.content_hash != descriptor.corpus_sha256:
+        if (tender.content_hash != descriptor.corpus_sha256 or 
+            registry_identity_sha256(str(tender.registry_number)) != descriptor.registry_identity_sha256):
             raise RuntimeError("prepared_tender_binding_mismatch")
 
-        # Use canonical resolver to produce documents and evidence chunks
+        # Use canonical resolver to produce documents
         inputs = resolve_customer_run_inputs(session, tender.registry_number, _exact_tender=tender)
         
-        from src.modules.production_llm_analysis.evidence import build_evidence_packet
-        
-        # Flat list of all evidence fragments as EvidenceFragmentInput objects
-        all_fragments = []
-        for doc in inputs.documents:
-            for chunk in doc.evidence_chunks:
-                all_fragments.append(EvidenceFragmentInput.model_validate(chunk))
-
-        # Step 2: Build EvidencePacket
-        packet = build_evidence_packet(
+        # Build canonical EvidencePacket using production helper
+        packet = build_r10_1_evidence_packet(
             customer_id=descriptor.customer_id,
             project_id=descriptor.project_id,
             procurement_case_id=descriptor.case_id,
             run_id=descriptor.target_run_id,
             registry_number=tender.registry_number,
-            fragments=all_fragments
+            documents=inputs.documents
         )
+        
+        # Compare with the reconstructed projection
+        # Every fragment should match byte-exactly
+        packet_json = packet.model_dump(mode="json", exclude={"packet_hash"})
+        reconstructed_hash = canonical_sha256(packet_json)
+        if packet.packet_hash != reconstructed_hash:
+            raise RuntimeError("canonical_evidence_projection_match_failed")
 
     with policy_path.open("rb") as f:
         policy_data = json.load(f)
@@ -552,49 +556,47 @@ def _reconstruct_actual_batch_requests(
     
     batch_policy = BatchPolicy.approved_32k(tokenizer_identity=tokenizer.identity)
     
-    def request_measure(candidate):
-        req = build_production_llm_request(
-            evidence_packet=build_evidence_packet(
-                customer_id=packet.customer_id,
-                project_id=packet.project_id,
-                procurement_case_id=packet.procurement_case_id,
-                run_id=packet.run_id,
-                registry_number=packet.registry_number,
-                fragments=candidate
-            ),
-            provider="openai_compatible",
-            provider_wire_contract_version=R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
-            model=model,
-            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
-            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
-            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
-            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
-            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
-            budget_policy=budget_policy,
-            map_mode=True
-        )
-        body = provider._build_request_body(req)
-        return measure_openai_request_tokens(
-            body,
-            tokenizer=tokenizer,
-            chat_template_overhead=batch_policy.chat_template_overhead
-        )
-
-    # Step 4: Build Batch Plan using production planner
-    plan = build_evidence_batch_plan(
-        fragments=all_fragments,
-        tokenizer=tokenizer,
-        policy=batch_policy,
-        request_measure=request_measure,
+    # Step 4: Build Batch Plan using the sole canonical production planner
+    plan = build_r10_1_batch_plan(
+        packet=packet,
+        customer_id=descriptor.customer_id,
+        project_id=descriptor.project_id,
+        procurement_case_id=descriptor.case_id,
+        registry_number=tender.registry_number,
+        run_id=descriptor.target_run_id,
+        documents=inputs.documents,
+        provider_name=policy_data["provider"],
+        model=model,
+        budget_policy=budget_policy,
+        token_counter=tokenizer,
+        batch_policy=batch_policy,
+        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+        prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+        output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
         controlled=True
     )
     
-    # Step 5: Verify determinism (re-plan once)
-    plan_verify = build_evidence_batch_plan(
-        fragments=all_fragments,
-        tokenizer=tokenizer,
-        policy=batch_policy,
-        request_measure=request_measure,
+    # Step 5: Verify Plan Determinism
+    plan_verify = build_r10_1_batch_plan(
+        packet=packet,
+        customer_id=descriptor.customer_id,
+        project_id=descriptor.project_id,
+        procurement_case_id=descriptor.case_id,
+        registry_number=tender.registry_number,
+        run_id=descriptor.target_run_id,
+        documents=inputs.documents,
+        provider_name=policy_data["provider"],
+        model=model,
+        budget_policy=budget_policy,
+        token_counter=tokenizer,
+        batch_policy=batch_policy,
+        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+        prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+        output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
         controlled=True
     )
     if plan.plan_hash != plan_verify.plan_hash:
@@ -602,17 +604,21 @@ def _reconstruct_actual_batch_requests(
 
     requests = []
     for batch in plan.batches:
+        # Build batch packet exactly like the producer
+        batch_packet = build_r10_1_evidence_packet(
+            customer_id=descriptor.customer_id,
+            project_id=descriptor.project_id,
+            procurement_case_id=descriptor.case_id,
+            run_id=descriptor.target_run_id,
+            registry_number=tender.registry_number,
+            documents=inputs.documents,
+            evidence_fragments=list(batch.fragments)
+        )
         requests.append(
             build_production_llm_request(
-                evidence_packet=build_evidence_packet(
-                    customer_id=packet.customer_id,
-                    project_id=packet.project_id,
-                    procurement_case_id=packet.procurement_case_id,
-                    run_id=packet.run_id,
-                    registry_number=packet.registry_number,
-                    fragments=list(batch.fragments)
-                ),
-                provider="openai_compatible",
+                evidence_packet=batch_packet,
+                provider=policy_data["provider"],
+                provider_wire_contract_version=batch_policy.provider_wire_contract_version,
                 model=model,
                 prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
                 prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
@@ -626,10 +632,25 @@ def _reconstruct_actual_batch_requests(
                 batch_ordinal=batch.batch_ordinal,
                 batch_count=len(plan.batches),
                 corpus_evidence_hash=plan.corpus_evidence_hash,
-                map_mode=True
+                map_mode=True,
+                max_claims=batch_policy.max_claims,
+                allowed_field_paths=list(MAP_ALLOWED_FIELD_PATHS),
+                context_profile=batch_policy.profile,
+                tokenizer_identity=plan.tokenizer_identity,
+                evidence_budget=batch_policy.evidence_budget,
+                chat_template_overhead=batch_policy.chat_template_overhead,
+                execution_deadline_ms=batch_policy.execution_deadline_ms,
             )
         )
-    return requests
+    
+    return CanonicalRequestReconstruction(
+        requests=requests,
+        plan=plan,
+        target_run_binding_verified=True,
+        canonical_evidence_projection_match=True,
+        evidence_packet_hash=packet.packet_hash,
+        ordered_fragment_ids_hash=canonical_sha256([f.fragment_id for f in packet.fragments])
+    )
 
 
 def _arguments() -> argparse.Namespace:
@@ -791,7 +812,9 @@ def main() -> int:
                             raise RuntimeError("prepared_database_reverification_failed")
 
                         # E. Reconstruct actual batch requests
-                        batch_requests = _reconstruct_actual_batch_requests(staging / "prepared.sqlite3", args.approved_policy, tokenizer=tokenizer, descriptor=attestation.descriptor)
+                        reconstruction = _reconstruct_actual_batch_requests(staging / "prepared.sqlite3", args.approved_policy, tokenizer=tokenizer, descriptor=attestation.descriptor)
+                        batch_requests = reconstruction.requests
+                        plan = reconstruction.plan
                         
                         payload = {
                             "status": "application_prepared",
@@ -824,6 +847,7 @@ def main() -> int:
                         request_path = staging / "application-data" / "request.json"
                         request = ProductionLLMAnalysisRequest.model_validate_json(request_path.read_text(encoding="utf-8"))
                         batch_requests = [request]
+                        plan = None
 
                         descriptor_data = parse_private_descriptor(staging / "prepared-verification.json", expected_head=args.expected_head, expected_corpus_sha=args.expected_corpus_sha)
                         verification = _verify_prepared_database(path=staging / "prepared.sqlite3", descriptor=descriptor_data, data_dir=staging / "application-data")
@@ -858,6 +882,8 @@ def main() -> int:
                             "canonical_evidence_projection_match": True,
                             "exact_output_proof_bound_to_real_requests": True,
                             "actual_batch_count": len(batch_requests),
+                            "batch_plan_version": plan.plan_version if plan else None,
+                            "batch_plan_hash": plan.plan_hash if plan else None,
                         })
 
                     acceptance.update(_live_output_boundary_static_acceptance())
