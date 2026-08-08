@@ -498,7 +498,7 @@ def _reconstruct_actual_batch_requests(
     )
     from src.modules.production_llm_analysis.batching import BatchPolicy
     from src.modules.production_llm_analysis.contracts import R10_1_CONTROLLED_MAP_CONTRACT
-    from src.modules.production_llm_analysis.schemas import BudgetPolicy
+    from src.modules.production_llm_analysis.schemas import BudgetPolicy, EvidenceFragmentInput
     from src.modules.production_llm_analysis.service import build_production_llm_request
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -533,6 +533,12 @@ def _reconstruct_actual_batch_requests(
         # Use canonical resolver to produce documents
         inputs = resolve_customer_run_inputs(session, tender.registry_number, _exact_tender=tender)
         
+        # Flat list of all evidence fragments as EvidenceFragmentInput objects
+        all_fragments = []
+        for doc in inputs.documents:
+            for chunk in doc.evidence_chunks:
+                all_fragments.append(EvidenceFragmentInput.model_validate(chunk))
+
         # Build canonical EvidencePacket using production helper
         packet = build_r10_1_evidence_packet(
             customer_id=descriptor.customer_id,
@@ -545,7 +551,6 @@ def _reconstruct_actual_batch_requests(
         )
         
         # Compare with the reconstructed projection
-        # Every fragment should match byte-exactly
         packet_json = packet.model_dump(mode="json", exclude={"packet_hash"})
         reconstructed_hash = canonical_sha256(packet_json)
         if packet.packet_hash != reconstructed_hash:
@@ -558,31 +563,26 @@ def _reconstruct_actual_batch_requests(
     batch_policy = BatchPolicy.approved_32k(tokenizer_identity=tokenizer.identity)
     
     # Step 4: Build Batch Plan using the sole canonical production planner
-    try:
-        plan = build_r10_1_batch_plan(
-            packet=packet,
-            customer_id=descriptor.customer_id,
-            project_id=descriptor.project_id,
-            procurement_case_id=descriptor.case_id,
-            registry_number=tender.registry_number,
-            run_id=descriptor.target_run_id,
-            documents=inputs.documents,
-            provider_name=policy_data["provider"],
-            model=model,
-            budget_policy=budget_policy,
-            token_counter=tokenizer,
-            batch_policy=batch_policy,
-            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
-            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
-            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
-            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
-            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
-            controlled=True
-        )
-    except Exception as e:
-        if hasattr(e, "planning_diagnostics"):
-            print(f"DEBUG: diagnostics: {json.dumps(e.planning_diagnostics, indent=2)}", file=sys.stderr)
-        raise
+    plan = build_r10_1_batch_plan(
+        packet=packet,
+        customer_id=descriptor.customer_id,
+        project_id=descriptor.project_id,
+        procurement_case_id=descriptor.case_id,
+        registry_number=tender.registry_number,
+        run_id=descriptor.target_run_id,
+        documents=inputs.documents,
+        provider_name=policy_data["provider"],
+        model=model,
+        budget_policy=budget_policy,
+        token_counter=tokenizer,
+        batch_policy=batch_policy,
+        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+        prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+        output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+        controlled=True
+    )
     
     # Step 5: Verify Plan Determinism
     plan_verify = build_r10_1_batch_plan(
