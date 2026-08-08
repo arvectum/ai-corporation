@@ -171,23 +171,19 @@ def _verify_documents(
     descriptor: PrivatePreparedVerificationDescriptor,
     metadata: dict[str, Any],
 ) -> tuple[list[sqlite3.Row], int, int]:
-    # Detect available columns to remain compatible with immutable historical DBs.
-    cursor = connection.execute("SELECT * FROM procurement_tender_documents LIMIT 0")
-    columns = {d[0] for d in cursor.description}
-    
-    needed = ["file_name", "sha256", "size_bytes", "raw_meta", "text_extraction_status"]
-    # Internal identity columns are optional in historical schemas.
-    optional = ["document_identity_hash"]
-    
-    cols = needed + [c for c in optional if c in columns]
-    query = f"SELECT {', '.join(cols)} FROM procurement_tender_documents WHERE tender_id = ? ORDER BY file_name ASC"
-    
-    documents = connection.execute(query, (descriptor.tender_id,)).fetchall()
+    # We strictly use only historical columns.
+    documents = connection.execute(
+        """
+        SELECT file_name, sha256, size_bytes, raw_meta, text_extraction_status
+        FROM procurement_tender_documents
+        WHERE tender_id = ? ORDER BY file_name ASC
+        """,
+        (descriptor.tender_id,),
+    ).fetchall()
 
     rows: list[dict[str, Any]] = []
     extracted = 0
     sha_values: list[str] = []
-    identity_hashes: list[str] = []
 
     for document in documents:
         raw_meta = _json_object(document["raw_meta"])
@@ -201,8 +197,6 @@ def _verify_documents(
             }
         )
         sha_values.append(str(document["sha256"]))
-        if "document_identity_hash" in columns and document["document_identity_hash"]:
-            identity_hashes.append(str(document["document_identity_hash"]))
         if document["text_extraction_status"] == "extracted":
             extracted += 1
 
@@ -218,11 +212,12 @@ def _verify_documents(
         if isinstance(metadata_hashes, list)
         else []
     )
-    # The historical DB may use either the full identity hashes (CUS-2026-v1),
-    # the raw file SHAs, or the internal document_identity_hash.
-    # We accept any of these valid historical representations.
+    
+    # Supported historical representations: full identity hashes or raw file SHAs.
+    # Note: internal document_identity_hash is NOT selected and NOT supported here
+    # to maintain strict historical DB compatibility without migration knowledge.
     _require(
-        normalized_metadata in (sorted(identities), sorted(sha_values), sorted(identity_hashes)),
+        normalized_metadata in (sorted(identities), sorted(sha_values)),
         "prepared_document_metadata_identity_mismatch",
     )
 
@@ -245,17 +240,15 @@ def _load_run(
     connection: sqlite3.Connection,
     descriptor: PrivatePreparedVerificationDescriptor,
 ) -> sqlite3.Row:
-    # Detect available columns
-    cursor = connection.execute("SELECT * FROM tender_analysis_runs LIMIT 0")
-    columns = {d[0] for d in cursor.description}
-    
-    needed = ["registry_number", "status", "used_llm", "llm_model", "report_path",
-               "customer_id", "project_id", "procurement_case_id", "metadata_json"]
-    optional = ["tender_id"]
-    
-    cols = needed + [c for c in optional if c in columns]
-    query = f"SELECT {', '.join(cols)} FROM tender_analysis_runs WHERE id = ?"
-    run = connection.execute(query, (descriptor.target_run_id,)).fetchone()
+    # Use only established historical columns for run loading.
+    run = connection.execute(
+        """
+        SELECT registry_number, status, used_llm, llm_model, report_path,
+               customer_id, project_id, procurement_case_id, metadata_json
+        FROM tender_analysis_runs WHERE id = ?
+        """,
+        (descriptor.target_run_id,),
+    ).fetchone()
     
     _require(run is not None, "prepared_run_missing")
     assert run is not None
@@ -268,11 +261,8 @@ def _load_run(
     )
     
     metadata = _json_object(run["metadata_json"])
-    # Verify tender_id from column if present, otherwise fallback to metadata_json.
-    if "tender_id" in columns:
-        _require(str(run["tender_id"]) == descriptor.tender_id, "prepared_run_binding_mismatch")
-    else:
-        _require(str(metadata.get("arv001_tender_id")) == descriptor.tender_id, "prepared_run_binding_mismatch")
+    # Historically tender_id might only be present in metadata_json.
+    _require(str(metadata.get("arv001_tender_id")) == descriptor.tender_id, "prepared_run_binding_mismatch")
 
     return run
 
@@ -439,7 +429,6 @@ def _verify_zero_generation_state(
         ).fetchone()[0]
     )
     provider_absent = bool(
-        # used_llm might be 0/1 in SQLite or False/True in memory
         not bool(run["used_llm"])
         and run["llm_model"] is None
         and run["report_path"] is None
