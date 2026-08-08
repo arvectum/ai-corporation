@@ -184,6 +184,7 @@ def _verify_documents(
     rows: list[dict[str, Any]] = []
     extracted = 0
     sha_values: list[str] = []
+    identity_hashes: list[str] = []
 
     for document in documents:
         raw_meta = _json_object(document["raw_meta"])
@@ -197,6 +198,8 @@ def _verify_documents(
             }
         )
         sha_values.append(str(document["sha256"]))
+        if "document_identity_hash" in columns and document["document_identity_hash"]:
+            identity_hashes.append(str(document["document_identity_hash"]))
         if document["text_extraction_status"] == "extracted":
             extracted += 1
 
@@ -212,12 +215,10 @@ def _verify_documents(
         if isinstance(metadata_hashes, list)
         else []
     )
-    
-    # Supported historical representations: full identity hashes or raw file SHAs.
-    # Note: internal document_identity_hash is NOT selected and NOT supported here
-    # to maintain strict historical DB compatibility without migration knowledge.
+    # The historical DB may use either the full identity hashes (CUS-2026-v1),
+    # the raw file SHAs, or the internal document_identity_hash.
     _require(
-        normalized_metadata in (sorted(identities), sorted(sha_values)),
+        normalized_metadata in (sorted(identities), sorted(sha_values), sorted(identity_hashes)),
         "prepared_document_metadata_identity_mismatch",
     )
 
