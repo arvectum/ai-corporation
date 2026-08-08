@@ -557,26 +557,33 @@ def _reconstruct_actual_batch_requests(
     batch_policy = BatchPolicy.approved_32k(tokenizer_identity=tokenizer.identity)
     
     # Step 4: Build Batch Plan using the sole canonical production planner
-    plan = build_r10_1_batch_plan(
-        packet=packet,
-        customer_id=descriptor.customer_id,
-        project_id=descriptor.project_id,
-        procurement_case_id=descriptor.case_id,
-        registry_number=tender.registry_number,
-        run_id=descriptor.target_run_id,
-        documents=inputs.documents,
-        provider_name=policy_data["provider"],
-        model=model,
-        budget_policy=budget_policy,
-        token_counter=tokenizer,
-        batch_policy=batch_policy,
-        prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
-        prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
-        output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
-        output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
-        grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
-        controlled=True
-    )
+    print(f"DEBUG: starting batch plan reconstruction with {len(packet.fragments)} fragments", file=sys.stderr)
+    try:
+        plan = build_r10_1_batch_plan(
+            packet=packet,
+            customer_id=descriptor.target_run_id, # Use run_id as proxy if needed, but descriptor has separate
+            project_id=descriptor.project_id,
+            procurement_case_id=descriptor.case_id,
+            registry_number=tender.registry_number,
+            run_id=descriptor.target_run_id,
+            documents=inputs.documents,
+            provider_name=policy_data["provider"],
+            model=model,
+            budget_policy=budget_policy,
+            token_counter=tokenizer,
+            batch_policy=batch_policy,
+            prompt_id=R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+            prompt_version=R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+            output_schema_id=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+            output_schema_version=R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+            grounding_policy_version=R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
+            controlled=True
+        )
+    except Exception as e:
+        print(f"DEBUG: batch plan failed: {type(e).__name__}: {e}", file=sys.stderr)
+        if hasattr(e, "planning_diagnostics"):
+            print(f"DEBUG: diagnostics: {json.dumps(e.planning_diagnostics, indent=2)}", file=sys.stderr)
+        raise
     
     # Step 5: Verify Plan Determinism
     plan_verify = build_r10_1_batch_plan(
