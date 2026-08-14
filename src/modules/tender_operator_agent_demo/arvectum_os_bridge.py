@@ -15,15 +15,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from arvectum_os_ref.identity import Identity
     from arvectum_os_ref.integration_adapters import IntegrationAdapters
-    from arvectum_os_ref.product_capability_consumption import (
-        CapabilityConsumptionRequest,
-    )
-    from arvectum_os_ref.product_contract_resolution import (
-        GovernedDependencyVersionEvidence,
-    )
-    from arvectum_os_ref.security import ActorContext
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,9 +28,9 @@ class ArvectumOSBridge:
     def compose(
         cls,
         *,
-        actor: ActorContext,
+        actor: Any,
         created_at: datetime,
-        governed_versions: tuple[GovernedDependencyVersionEvidence, ...],
+        governed_versions: tuple[Any, ...],
     ) -> ArvectumOSBridge:
         """Compose the bridge using the platform IntegrationAdapters factory.
         
@@ -62,10 +54,10 @@ class ArvectumOSBridge:
     def resolve_document(
         self,
         *,
-        request: CapabilityConsumptionRequest,
-        governed_versions: tuple[GovernedDependencyVersionEvidence, ...] | None,
+        request: Any,
+        governed_versions: tuple[Any, ...] | None,
         admitted: Any,
-        artifact_id: Identity,
+        artifact_id: Any,
     ) -> Any:
         """Delegate document resolution to the platform capability adapter."""
         return self.adapters.capabilities.resolve_document(
@@ -78,10 +70,10 @@ class ArvectumOSBridge:
     def reconstruct_execution(
         self,
         *,
-        request: CapabilityConsumptionRequest,
-        governed_versions: tuple[GovernedDependencyVersionEvidence, ...] | None,
+        request: Any,
+        governed_versions: tuple[Any, ...] | None,
         manifest: Any,
-        evidence_constraints: tuple[tuple[Identity, str, tuple[str, ...], str], ...],
+        evidence_constraints: tuple[tuple[Any, str, tuple[str, ...], str], ...],
     ) -> Any:
         """Delegate execution reconstruction to the platform capability adapter."""
         return self.adapters.capabilities.reconstruct_execution(

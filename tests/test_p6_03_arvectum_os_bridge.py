@@ -15,6 +15,7 @@ from pathlib import Path
 
 # These imports require reference/python from arvectum-os on PYTHONPATH
 try:
+    from arvectum_os_ref.audit_reconstruction_support import EvidenceAvailability
     from arvectum_os_ref.cross_capability_enforcement import (
         AccessRequest,
         CrossCapabilityEnforcementError,
@@ -22,10 +23,19 @@ try:
     from arvectum_os_ref.integration_composition import (
         IntegrationCompositionEvidenceRequiredError,
     )
+    from arvectum_os_ref.product_capability_consumption import (
+        CAP_001_DOCUMENT_ARTIFACT,
+        CAP_002_MEMORY_KNOWLEDGE,
+        CAP_003_SEARCH_PROJECTION,
+        CAP_004_AUDIT_RECONSTRUCTION,
+    )
     from arvectum_os_ref.product_contract import (
         ProductContractScopeError,
     )
     from arvectum_os_ref.product_contract_resolution import (
+        DependencySupportDisposition,
+        DeprecatedDependencyResolutionError,
+        IncompatibleDependencyVersionError,
         UnsupportedDependencyResolutionError,
     )
     from arvectum_os_ref.security import OrganizationScope
@@ -45,13 +55,29 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
         self.scenario = build_stage1_synthetic_scenario()
         self.bridge = ArvectumOSBridge(self.scenario.adapters)
 
-    def test_bridge_composition_passes_with_canonical_scenario(self) -> None:
-        # The setUp already proved composition via ArvectumOSBridge(adapters)
-        self.assertIs(self.bridge.adapters, self.scenario.adapters)
+    def test_exact_p6_02_identity_and_dependencies(self) -> None:
+        contract_pin = self.bridge.adapters.facade.context.product_contract
         self.assertEqual(
-            self.bridge.adapters.facade.context.product_contract.version_id.value,
+            contract_pin.version_id.value,
             "p6-02-arvectum-tender-operator-v0.1.0",
         )
+        
+        # Verify exact dependency set from the actual contract record
+        # Note: IntegrationCompositionFacade._contract is not public, 
+        # but the facade's creation_actor.organization and other context 
+        # should match the contract's declaration.
+        
+        # We check the evaluations from compatibility report
+        actual_deps = {
+            e.dependency_id for e in self.bridge.adapters.facade.compatibility_evidence.evaluations
+        }
+        self.assertEqual(
+            actual_deps, 
+            {CAP_001_DOCUMENT_ARTIFACT, CAP_004_AUDIT_RECONSTRUCTION}
+        )
+        
+        self.assertNotIn(CAP_002_MEMORY_KNOWLEDGE, actual_deps)
+        self.assertNotIn(CAP_003_SEARCH_PROJECTION, actual_deps)
 
     def test_happy_path_document_resolution(self) -> None:
         reliance = self.bridge.resolve_document(
@@ -69,13 +95,12 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
     def test_wrong_organization_fails_closed(self) -> None:
         other_org_id = replace(self.scenario.organization.organization_id, value="other-org")
         other_org = OrganizationScope(other_org_id)
-        other_product_id = replace(self.scenario.contract.product_id, scope="other-org")
         
         # Request for different organization
         bad_request = replace(
             self.scenario.document_request, 
             organization=other_org,
-            product_id=other_product_id,
+            product_id=replace(self.scenario.contract.product_id, scope="other-org"),
             access=replace(
                 self.scenario.document_request.access, 
                 actor=replace(self.scenario.actor, organization=other_org)
@@ -90,21 +115,54 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
                 artifact_id=self.scenario.artifact_id,
             )
 
-    def test_purpose_right_denial_fails_closed(self) -> None:
-        denied_access = AccessRequest(
-            self.scenario.actor,
-            "wrong-purpose",
-            "read",
-            ("restricted-pilot",),
-        )
-        bad_request = replace(self.scenario.document_request, access=denied_access)
+    def test_access_denials_fail_closed(self) -> None:
+        test_cases = [
+            ("wrong_purpose", AccessRequest(self.scenario.actor, "wrong", "read", ("restricted-pilot",))),
+            ("wrong_right", AccessRequest(self.scenario.actor, "prebid-review", "write", ("restricted-pilot",))),
+            ("wrong_classification", AccessRequest(self.scenario.actor, "prebid-review", "read", ("unrestricted",))),
+        ]
         
-        with self.assertRaises(CrossCapabilityEnforcementError):
-            self.bridge.resolve_document(
-                request=bad_request,
-                governed_versions=self.scenario.governed_versions,
-                admitted=self.scenario.admitted_document,
-                artifact_id=self.scenario.artifact_id,
+        for name, denied_access in test_cases:
+            with self.subTest(case=name):
+                bad_request = replace(self.scenario.document_request, access=denied_access)
+                with self.assertRaises(CrossCapabilityEnforcementError):
+                    self.bridge.resolve_document(
+                        request=bad_request,
+                        governed_versions=self.scenario.governed_versions,
+                        admitted=self.scenario.admitted_document,
+                        artifact_id=self.scenario.artifact_id,
+                    )
+
+    def test_incompatible_provider_version_fails_closed(self) -> None:
+        base_versions = list(self.scenario.governed_versions)
+        
+        for i, ev in enumerate(base_versions):
+            if ev.dependency_id == CAP_004_AUDIT_RECONSTRUCTION:
+                base_versions[i] = replace(ev, contract_version="2.0.0")
+                
+        with self.assertRaises(IncompatibleDependencyVersionError):
+            ArvectumOSBridge.compose(
+                actor=self.scenario.actor,
+                created_at=datetime.now(UTC),
+                governed_versions=tuple(base_versions),
+            )
+
+    def test_deprecated_provider_evidence_fails_closed(self) -> None:
+        base_versions = list(self.scenario.governed_versions)
+        
+        for i, ev in enumerate(base_versions):
+            if ev.dependency_id == CAP_004_AUDIT_RECONSTRUCTION:
+                base_versions[i] = replace(
+                    ev, 
+                    disposition=DependencySupportDisposition.DEPRECATED,
+                    migration_obligation="upgrade required"
+                )
+                
+        with self.assertRaises(DeprecatedDependencyResolutionError):
+            ArvectumOSBridge.compose(
+                actor=self.scenario.actor,
+                created_at=datetime.now(UTC),
+                governed_versions=tuple(base_versions),
             )
 
     def test_missing_provider_evidence_fails_closed(self) -> None:
@@ -126,7 +184,6 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
             )
 
     def test_truthful_incomplete_reconstruction(self) -> None:
-        # Create a more restricted constraint set that will trigger redaction
         restricted_version = self.scenario.reconstruction_manifest.material_inputs[0].version_id
         constrained = tuple(
             (version_id, purpose, rights, "denied-classification")
@@ -142,9 +199,7 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
             evidence_constraints=constrained,
         )
         self.assertFalse(view.complete)
-        # Check that the restricted version is reported as redacted
-        restricted_item = next(i for item in view.evidence if (i := item).version_id == restricted_version)
-        from arvectum_os_ref.audit_reconstruction_support import EvidenceAvailability
+        restricted_item = next(i for i in view.evidence if i.version_id == restricted_version)
         self.assertIs(restricted_item.availability, EvidenceAvailability.REDACTED)
 
     def test_structural_private_import_guard(self) -> None:
@@ -152,27 +207,15 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
         with open(bridge_path, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read())
             
-        allowed_prefixes = (
-            "arvectum_os_ref.integration_adapters",
-            "arvectum_os_ref.product_capability_consumption",
-            "arvectum_os_ref.product_contract_resolution",
-            "arvectum_os_ref.security",
-            "p6_03_tender_operator_ref.contract",
-        )
-        
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    self._check_module(alias.name, allowed_prefixes)
+                    self._check_module(alias.name)
             elif isinstance(node, ast.ImportFrom) and node.module:
-                self._check_module(node.module, allowed_prefixes)
+                self._check_module(node.module)
 
-    def _check_module(self, name: str, allowed_prefixes: tuple[str, ...]) -> None:
-        if (
-            name.startswith("arvectum_os_ref")
-            and not any(name.startswith(p) for p in allowed_prefixes)
-            and name != "arvectum_os_ref.identity"
-        ):
+    def _check_module(self, name: str) -> None:
+        if name.startswith("arvectum_os_ref") and name != "arvectum_os_ref.integration_adapters":
             self.fail(f"Forbidden private platform import in bridge: {name}")
 
     def test_no_direct_network_or_process_dependencies_in_bridge(self) -> None:
@@ -180,7 +223,10 @@ class P603ArvectumOSBridgeTests(unittest.TestCase):
         with open(bridge_path, "r", encoding="utf-8") as f:
             content = f.read()
             
-        forbidden = ("requests", "httpx", "urllib", "subprocess", "socket", "webbrowser")
+        forbidden = (
+            "requests", "httpx", "urllib", "socket", "subprocess", 
+            "webbrowser", "playwright", "selenium"
+        )
         for pkg in forbidden:
             self.assertNotIn(f"import {pkg}", content)
             self.assertNotIn(f"from {pkg}", content)
