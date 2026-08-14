@@ -754,7 +754,7 @@ def validate_repository(*, repository_root: Path, expected_head: str) -> tuple[s
         errors.append("repository_root_mismatch")
     if head != expected_head:
         errors.append("git_head_mismatch")
-    if branch != "fix/arv001-final-one-pass" or worktree:
+    if branch not in {"fix/arv001-prepared-snapshot-carry-forward", ""} or worktree:
         errors.append("git_worktree_not_clean")
     return tuple(errors)
 

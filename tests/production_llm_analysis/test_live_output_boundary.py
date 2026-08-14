@@ -26,14 +26,13 @@ from src.modules.production_llm_analysis.llama_reasoning_control import (
     install_llama_non_reasoning_mode,
 )
 from src.modules.production_llm_analysis.live_output_boundary import (
-    build_maximal_live_completion_payload,
-    verify_exact_live_output_budget,
+    GRAMMAR_WHITESPACE_CONTRACT_VERSION,
+    GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
     ExactLiveOutputTokenizerUnavailable,
     ExactLiveOutputTokensExceeded,
     OutputSafetyMarginBelowThreshold,
-    GRAMMAR_WHITESPACE_CONTRACT_VERSION,
-    GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT,
-    GRAMMAR_WHITESPACE_SLOT,
+    build_maximal_live_completion_payload,
+    verify_exact_live_output_budget,
 )
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
@@ -126,21 +125,21 @@ class FakeNonPersistentTokenizer(FakePersistentTokenizer):
 def test_grammar_whitespace_contract_is_b10240_spacerule():
     assert GRAMMAR_WHITESPACE_CONTRACT_VERSION == "llama-cpp-b10240-spacerule-v1"
     assert GRAMMAR_WHITESPACE_MAX_BYTES_PER_SLOT == 22
-    assert GRAMMAR_WHITESPACE_SLOT == ("\n" * 2) + (" " * 20)
-    assert len(GRAMMAR_WHITESPACE_SLOT.encode("utf-8")) == 22
 
 
 # 2. maximal payload is derived from the single live schema with server sentinels
 def test_maximal_payload_is_live_schema_derived():
     request = _request()
-    maximal = build_maximal_live_completion_payload(request)
+    tokenizer = FakePersistentTokenizer(10)
+    maximal = build_maximal_live_completion_payload(request, tokenizer)
     payload = json.loads(maximal.content)
     assert len(payload["claims"]) == 3
     claim = payload["claims"][0]
     assert claim["claim_id"] == "__ARVECTUM_SERVER_CLAIM_ID__"
     assert claim["value"] == "__ARVECTUM_SERVER_FRAGMENT_VALUE__"
     assert claim["evidence_references"][0]["quote"] == "__ARVECTUM_SERVER_FRAGMENT_QUOTE__"
-    assert claim["provider_confidence"] == 1.0
+    # provider_confidence is removed from live generatable schema
+    assert "provider_confidence" not in claim
     schema = build_live_compact_llama_schema(request)
     refs = schema["properties"]["claims"]["items"]["properties"]["evidence_references"]
     assert refs["maxItems"] == 1
@@ -149,9 +148,12 @@ def test_maximal_payload_is_live_schema_derived():
 # 3. whitespace slot count is deterministic
 def test_whitespace_slot_count_is_deterministic():
     request = _request()
-    a = build_maximal_live_completion_payload(request)
-    b = build_maximal_live_completion_payload(request)
-    assert a.grammar_whitespace_slots == a.content.count(GRAMMAR_WHITESPACE_SLOT)
+    tokenizer = FakePersistentTokenizer(10)
+    a = build_maximal_live_completion_payload(request, tokenizer)
+    b = build_maximal_live_completion_payload(request, tokenizer)
+    from src.modules.production_llm_analysis.live_output_boundary import _maximal_whitespace_slot
+    ws = _maximal_whitespace_slot(tokenizer)
+    assert a.grammar_whitespace_slots == a.content.count(ws)
     assert a.grammar_whitespace_slots == b.grammar_whitespace_slots
     assert a.content_sha256 == b.content_sha256
 
