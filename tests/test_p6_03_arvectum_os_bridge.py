@@ -14,27 +14,32 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 # These imports require reference/python from arvectum-os on PYTHONPATH
-from arvectum_os_ref.cross_capability_enforcement import (
-    AccessRequest,
-    CrossCapabilityEnforcementError,
-)
-from arvectum_os_ref.integration_composition import (
-    IntegrationCompositionEvidenceRequiredError,
-)
-from arvectum_os_ref.product_contract import (
-    ProductContractScopeError,
-)
-from arvectum_os_ref.product_contract_resolution import (
-    UnsupportedDependencyResolutionError,
-)
-from arvectum_os_ref.security import OrganizationScope
-from p6_03_tender_operator_ref.scenario import (
-    build_stage1_synthetic_scenario,
-)
+try:
+    from arvectum_os_ref.cross_capability_enforcement import (
+        AccessRequest,
+        CrossCapabilityEnforcementError,
+    )
+    from arvectum_os_ref.integration_composition import (
+        IntegrationCompositionEvidenceRequiredError,
+    )
+    from arvectum_os_ref.product_contract import (
+        ProductContractScopeError,
+    )
+    from arvectum_os_ref.product_contract_resolution import (
+        UnsupportedDependencyResolutionError,
+    )
+    from arvectum_os_ref.security import OrganizationScope
+    from p6_03_tender_operator_ref.scenario import (
+        build_stage1_synthetic_scenario,
+    )
+    PLATFORM_PRESENT = True
+except ImportError:
+    PLATFORM_PRESENT = False
 
 from src.modules.tender_operator_agent_demo.arvectum_os_bridge import ArvectumOSBridge
 
 
+@unittest.skipUnless(PLATFORM_PRESENT, "Arvectum OS reference platform not present on PYTHONPATH")
 class P603ArvectumOSBridgeTests(unittest.TestCase):
     def setUp(self) -> None:
         self.scenario = build_stage1_synthetic_scenario()
