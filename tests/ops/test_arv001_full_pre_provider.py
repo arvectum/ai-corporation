@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 from scripts.arv001.full_pre_provider import (
+    _check_protected_drift,
+    _copy_snapshot,
     _failure,
     _PhaseRecorder,
     _prepare_payload_error,
@@ -94,4 +99,54 @@ def test_private_staging_is_outside_repository_and_no_overwrite(tmp_path) -> Non
 def test_verify_prepared_database_requires_real_sqlite_shape(tmp_path) -> None:
     database = tmp_path / "prepared.sqlite3"
     database.write_bytes(b"not sqlite")
-    assert not _verify_prepared_database(database)
+    # Passing dummy descriptor and data_dir
+    assert not _verify_prepared_database(database, MagicMock(), tmp_path)
+
+
+def test_check_protected_drift_detects_changes() -> None:
+    with patch("subprocess.run") as mock_run:
+        # Mock successful (no drift) result for most paths
+        mock_run.return_value = MagicMock(returncode=0)
+
+        drift, migration_drift = _check_protected_drift(Path("/repo"), "old", "new")
+        assert not drift
+        assert not migration_drift
+
+        # Mock drift in document_ingestion
+        def side_effect(cmd, **kwargs):
+            if "src/modules/document_ingestion/" in cmd:
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = side_effect
+        drift, migration_drift = _check_protected_drift(Path("/repo"), "old", "new")
+        assert drift
+        assert not migration_drift
+
+        # Mock migration drift
+        def migration_side_effect(cmd, **kwargs):
+            if "migrations/" in cmd:
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0)
+
+        mock_run.side_effect = migration_side_effect
+        drift, migration_drift = _check_protected_drift(Path("/repo"), "old", "new")
+        assert drift
+        assert migration_drift
+
+
+def test_copy_snapshot_verifies_sha(tmp_path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "prepared.sqlite3").write_bytes(b"database content")
+
+    staging = tmp_path / "staging"
+    staging.mkdir()
+
+    import hashlib
+    expected_sha = hashlib.sha256(b"database content").hexdigest()
+
+    assert _copy_snapshot(source, staging, expected_sha)
+    assert (staging / "prepared.sqlite3").read_bytes() == b"database content"
+
+    assert not _copy_snapshot(source, staging, "wrong sha")

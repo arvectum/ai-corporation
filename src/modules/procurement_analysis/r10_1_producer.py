@@ -226,7 +226,7 @@ _POSITIVE_RECOMMENDATIONS = {
     "READY",
     "APPROVED",
 }
-_MAP_ALLOWED_FIELD_PATHS = tuple(
+MAP_ALLOWED_FIELD_PATHS = tuple(
     sorted((*_REQUIREMENT_PATHS.keys(), "contract_risks", "supplier_questions"))
 )
 
@@ -828,7 +828,7 @@ def build_r10_1_batch_plan(
             corpus_evidence_hash=packet.packet_hash,
             map_mode=True,
             max_claims=batch_policy.max_claims,
-            allowed_field_paths=list(_MAP_ALLOWED_FIELD_PATHS) if controlled else [],
+            allowed_field_paths=list(MAP_ALLOWED_FIELD_PATHS) if controlled else [],
             context_profile=batch_policy.profile,
             tokenizer_identity=batch_policy.tokenizer_identity,
             evidence_budget=batch_policy.evidence_budget,
@@ -997,7 +997,7 @@ def produce_r10_1_canonical_analysis(
             corpus_evidence_hash=plan.corpus_evidence_hash,
             map_mode=True,
             max_claims=batch_policy.max_claims,
-            allowed_field_paths=list(_MAP_ALLOWED_FIELD_PATHS) if controlled else [],
+            allowed_field_paths=list(MAP_ALLOWED_FIELD_PATHS) if controlled else [],
             context_profile=batch_policy.profile,
             tokenizer_identity=plan.tokenizer_identity,
             evidence_budget=batch_policy.evidence_budget,

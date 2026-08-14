@@ -201,6 +201,9 @@ def build_live_compact_llama_schema(request: ProductionLLMAnalysisRequest) -> di
 
     references_schema["minItems"] = 1
     references_schema["maxItems"] = 1
+    # Remove provider_confidence from the generatable live schema
+    claim_properties.pop("provider_confidence", None)
+    schema["additionalProperties"] = False
     return schema
 
 
@@ -221,6 +224,8 @@ def build_llama_schema_constrained_request_body(
             "type": "json_object",
             "schema": schema,
         }
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+        body["reasoning_format"] = "none"
         system_message = body["messages"][0]
         system_message["content"] = (
             f"{system_message['content']} "

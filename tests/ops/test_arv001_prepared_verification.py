@@ -62,6 +62,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
             id TEXT PRIMARY KEY, tender_id TEXT, file_name TEXT, sha256 TEXT,
             size_bytes INTEGER, raw_meta TEXT, text_extraction_status TEXT
         );
+
         CREATE TABLE procurement_document_chunks (
             id TEXT PRIMARY KEY, tender_id TEXT
         );
@@ -102,6 +103,7 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
                 "extracted",
             ),
         )
+
     document_hashes = list(canonical_document_identity_hashes(document_rows))
     metadata = {
         "arv001_tender_id": "tender-a",

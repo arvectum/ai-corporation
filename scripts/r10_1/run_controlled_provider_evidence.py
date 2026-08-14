@@ -40,7 +40,12 @@ from src.modules.production_llm_analysis.controlled_evidence import (
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
     OpenAICompatibleTransportConfig,
+    enable_live_boundary_verification,
 )
+from src.modules.production_llm_analysis.llama_schema_constraint import (
+    install_llama_schema_constraint,
+)
+
 from src.shared.config.settings import get_settings
 from src.shared.db.session import SessionLocal
 from src.tender_research.config import load_config
@@ -260,7 +265,14 @@ def _metadata(
 def main() -> int:
     args = _arguments()
     try:
+        # Install ARV-001 live runtime adapters (sentinels, non-reasoning, and verification)
+        install_llama_schema_constraint()
+        enable_live_boundary_verification()
+
+
+
         policy = load_approved_provider_policy(args.approved_policy)
+
         settings = get_settings()
         if not settings.llm_model or settings.llm_model != policy.model:
             raise ControlledRunnerConfigurationError("configured_model_not_approved")
