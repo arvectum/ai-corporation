@@ -10,6 +10,7 @@ import pytest
 from src.tender_research.config import TenderResearchConfig
 from src.tender_research.eis_loader import EisTenderLoader
 from src.tender_research.providers.public_44fz_search import (
+    Public44FzSearchProvider,
     PublicSearchStatus,
     PublicTenderSearchItem,
     PublicTenderSearchPage,
@@ -211,7 +212,21 @@ class TestRealVsDemoDiscrimination:
         assert len(result.numbers) > 0
         assert result.is_demo is True
 
-    def test_auto_fallback_without_seed_file(self):
+    def test_auto_fallback_without_seed_file(self, monkeypatch):
+        calls = []
+
+        def empty_search_pages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return [
+                PublicTenderSearchPage(
+                    page=1,
+                    page_size=kwargs["page_size"],
+                    has_next=False,
+                    status=PublicSearchStatus.EMPTY,
+                )
+            ]
+
+        monkeypatch.setattr(Public44FzSearchProvider, "search_pages", empty_search_pages)
         config = TenderResearchConfig(
             eis_mode="real",
             allow_demo_discovery=False,
@@ -219,10 +234,25 @@ class TestRealVsDemoDiscrimination:
         )
         discovery = RegistryNumberDiscovery(config=config)
         result = discovery.discover(source="auto", days_back=365, limit=10)
+        assert len(calls) == 1
         assert result.selected_source == "auto"
         assert len(result.warnings) > 0
 
-    def test_auto_uses_demo_when_allowed(self):
+    def test_auto_uses_demo_when_allowed(self, monkeypatch):
+        calls = []
+
+        def empty_search_pages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return [
+                PublicTenderSearchPage(
+                    page=1,
+                    page_size=kwargs["page_size"],
+                    has_next=False,
+                    status=PublicSearchStatus.EMPTY,
+                )
+            ]
+
+        monkeypatch.setattr(Public44FzSearchProvider, "search_pages", empty_search_pages)
         config = TenderResearchConfig(
             eis_mode="demo",
             allow_demo_discovery=True,
@@ -230,7 +260,8 @@ class TestRealVsDemoDiscrimination:
         )
         discovery = RegistryNumberDiscovery(config=config)
         result = discovery.discover(source="auto", days_back=365, limit=10)
-        assert result.selected_source in ("auto", "demo")
+        assert len(calls) == 1
+        assert result.selected_source == "demo"
 
     def test_seed_file_custom_path_via_parameter(self):
         with NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as f:

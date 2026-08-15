@@ -10,6 +10,7 @@ import pytest
 
 from src.tender_research.config import TenderResearchConfig
 from src.tender_research.providers.public_44fz_search import (
+    Public44FzSearchProvider,
     PublicSearchStatus,
     PublicTenderSearchItem,
     PublicTenderSearchPage,
@@ -108,7 +109,21 @@ class TestAutoFallback:
         finally:
             Path(seed_path).unlink(missing_ok=True)
 
-    def test_auto_rejects_demo_in_real_mode(self):
+    def test_auto_rejects_demo_in_real_mode(self, monkeypatch):
+        calls = []
+
+        def empty_search_pages(*args, **kwargs):
+            calls.append((args, kwargs))
+            return [
+                PublicTenderSearchPage(
+                    page=1,
+                    page_size=kwargs["page_size"],
+                    has_next=False,
+                    status=PublicSearchStatus.EMPTY,
+                )
+            ]
+
+        monkeypatch.setattr(Public44FzSearchProvider, "search_pages", empty_search_pages)
         config = TenderResearchConfig(
             eis_mode="real",
             allow_demo_discovery=False,
@@ -116,6 +131,7 @@ class TestAutoFallback:
         )
         discovery = RegistryNumberDiscovery(config=config)
         result = discovery.discover(source="auto", days_back=365, limit=10)
+        assert len(calls) == 1
         assert result.selected_source_type == SourceType.NONE
 
     def test_auto_not_treats_local_db_as_external(self):
