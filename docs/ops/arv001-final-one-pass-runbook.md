@@ -73,6 +73,24 @@ A pre-existing `llama-server` process is not authorization to reuse it. The
 managed acceptance runtime starts from the exact supplied bundle, binds only to
 loopback, and must be cleaned up by the runner.
 
+## Acceptance baseline
+
+The canonical acceptance baseline is `arv001-v2-6557c0fa0dcc` for registry
+`0388100001826000047`. Its corpus SHA-256 is
+`6557c0fa0dcc85bbab1a1e72a556505734c65eea6a29e649082eafbe80dc1d0a` and it
+contains 10 physical files grouped into 6 logical documents.
+
+It was reproduced through two independent, read-only EIS
+`getDocsByReestrNumber` acquisitions whose source identity sets were
+byte-identical. Baseline v2 is a provenance generation: the corpus identity is
+unchanged from the previously approved ARV-001 identity. The sanitized
+repository descriptor is
+`config/arv001/acceptance_baseline.json`; actual source bytes remain private
+and outside Git.
+
+Operators must supply `ARV001_CANDIDATE_ROOT` and `ARV001_INTAKE_ROOT` from
+the privately preserved baseline. A PASS does not authorize `--execute-provider`.
+
 ## Canonical invocation
 
 Run from the repository root with static corpus/policy inputs only. The

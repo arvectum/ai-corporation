@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "baseline_id": "arv001-v2-6557c0fa0dcc",
+  "baseline_generation": 2,
+  "baseline_kind": "reproducible_real_eis_acceptance",
+  "registry_number": "0388100001826000047",
+  "corpus": {
+    "sha256": "6557c0fa0dcc85bbab1a1e72a556505734c65eea6a29e649082eafbe80dc1d0a",
+    "physical_file_count": 10,
+    "logical_document_count": 6,
+    "hash_profile": {
+      "fields": [
+        "original_name",
+        "sha256",
+        "size_bytes"
+      ],
+      "ordering": "original_name_unicode_codepoint_ascending",
+      "serialization": "canonical_compact_newline"
+    }
+  },
+  "policy": {
+    "sha256": "2fcb1db44eee3df5762410f892ad1f806221e811e356df4863108a3213db41d0"
+  },
+  "source": {
+    "type": "EIS",
+    "method": "getDocsByReestrNumber",
+    "law": "44fz",
+    "subsystem_type": "PRIZ",
+    "fresh_acquisitions": 2,
+    "source_identity_reproduced": true
+  },
+  "document_set": {
+    "status": "complete",
+    "analysis_allowed": true,
+    "required_logical_groups": [
+      "notice",
+      "technical_specification",
+      "price_justification",
+      "application_requirements",
+      "contract_draft",
+      "contract_performance_security"
+    ]
+  },
+  "provenance": {
+    "previous_historical_source_recovery_exhausted": true,
+    "fresh_reacquisition_performed": true,
+    "fresh_reacquisition_matches_historical_corpus_identity": true,
+    "corpus_identity_changed": false
+  }
+}

@@ -1,98 +1,73 @@
-# ARV-001 Issue 116 Execution State
+# ARV-001 Execution State
 
-## Status
+## Current status
 
-IN_PROGRESS — the repository-owned zero-generation pre-provider contour is implemented. The previously accepted executable head passed local acceptance and the full repository suite, but the documentation closeout head exposed one repository-owned macOS compatibility defect in canonical private-root creation. The defect is fixed and covered by regression tests; exact-head CI and one fresh Mac zero-generation acceptance are required before merge.
+ARV-001 is recovered and its acceptance baseline is reproducible, but the
+fresh exact-head zero-generation acceptance has not yet been run on the new
+durable baseline. Provider execution remains unauthorized.
 
-Provider execution remains outside this task and is not authorized.
+### Code recovery
 
-## Branch and pull request
+- `ENG-002.2-A2`: **DONE 100%**.
+- Canonical reconciliation PR: #3.
+- Recovery merge: `1d4df81552c5d82e2f9f3637f48c643c3a30aaa8`.
+- The canonical 20-file ARV-001 recovery is complete; meaningful residual code
+  is none.
 
-- Branch: `fix/arv001-final-one-pass`
-- Pull request: #117
-- Base commit: `89741e0d93af92239320c9c84806db985452804c`
-- Previously accepted executable head: `949865acaec90534af882522e4ef32ac46148e1f`
-- Documentation closeout head that exposed the defect: `e5cffaceae412325628e0b8a92e2ef36714b64bf`
-- Compatibility fix commit: `9025adb56792417f96af19e3ddedbf99e1e0fceb`
-- Regression test commit: `13c7c5350f98d956e38fccbf0a90797cc7c6b5cc`
+### Historical input recovery
 
-The exact acceptance head is always the current PR head returned by Git. Do not copy an older SHA into the acceptance command.
+- Historical descriptor identity: verified.
+- Historical corpus SHA: `6557c0fa0dcc85bbab1a1e72a556505734c65eea6a29e649082eafbe80dc1d0a`.
+- Historical local exact source-byte recovery: 5/10.
+- Local archaeology: exhausted.
 
-## Completed repository scope
+### Baseline re-acquisition
 
-- Repository-owned runtime doctor and canonical full-pre-provider entrypoint.
-- Exact approved GGUF and arm64 `llama-server` identity binding.
-- Managed loopback runtime startup and zero-generation `/v1/models` and tokenizer probes.
-- Split-root corpus validation with exact `10 physical -> 6 logical` inventory.
-- Isolated application persistence through supported services and ORM boundaries.
-- Exact-run ownership, tender, ordered-document, immutable snapshot, source-graph, and corpus verification.
-- Post-persistence Gate 5 verification.
-- Controlled runner preflight-only handoff that stops before provider construction and transport.
-- Transactional retained-state publication with exact file set, 0700/0600 modes, fsync, atomic rename, post-rename verification, no-overwrite, and cleanup/quarantine on failure.
-- Closed sanitized phase reporting and stable repository-owned prepared-state reason codes.
-- Privacy scanning for local paths, credentials, database URLs, UUIDs, registry identity, and private descriptor identities.
-- Runtime lifecycle, failure-injection, same-registry binding, zero-transport, publication, and strict prepared-state regression coverage.
+- `ENG-002.2-A3R.1`: **DONE 100%**.
+- Baseline: `arv001-v2-6557c0fa0dcc`.
+- Two independent fresh read-only EIS acquisitions: PASS.
+- Physical documents: 10; logical documents: 6.
+- Source identity reproducible: YES.
+- Newly acquired corpus SHA: `6557c0fa0dcc85bbab1a1e72a556505734c65eea6a29e649082eafbe80dc1d0a`.
+- The newly acquired corpus matches the historical approved corpus identity:
+  YES.
 
-## macOS private-root compatibility defect
+The previously approved corpus identity is therefore fully reproducible again
+from fresh repository-owned EIS intake.
 
-The canonical closeout run used a fresh directory created through the normal macOS temporary path. macOS exposes `/tmp` as a symlink to `/private/tmp`. The legacy private-root guard rejected every symlinked ancestor before resolving the path, so it rejected a valid `mktemp` directory before runtime startup.
+### TLS and authentication
 
-The canonical entrypoint now:
+- macOS system-trust repository contour: PASS.
+- Direct EIS route: PASS.
+- A valid individual getDocsIP token is configured locally.
+- Unauthenticated XSD GET: HTTP 403; it is not an authentication gate.
+- Authenticated getDocsIP: PASS.
 
-- rejects a symlink at the supplied private-root leaf;
-- resolves existing system symlink ancestors to one canonical destination;
-- performs all creation and publication only on that canonical destination;
-- rejects a canonical destination inside the repository;
-- preserves the existing no-overwrite and mode boundaries.
+No token alias or token value is recorded here.
 
-Regression coverage proves that a symlinked ancestor outside the repository is accepted, a symlinked private-root leaf is rejected, and an alias resolving inside the repository remains rejected.
+### Current ARV-001 status
 
-## Previously accepted Mac zero-generation result
+| Boundary | Status |
+| --- | --- |
+| Code recovery | DONE |
+| Acceptance baseline | REPRODUCIBLE / BOUND |
+| Exact-head zero-generation A3.1 | PENDING on durable baseline v2 |
+| Provider execution | NOT AUTHORIZED |
+| Golden report | PENDING |
+| Freeze | NOT PERFORMED |
 
-Accepted executable head: `949865acaec90534af882522e4ef32ac46148e1f`
+## Next action
 
-- Exit code: `0`
-- Status: `PASS`
-- All 20 phases: PASS
-- Physical documents: `10`
-- Logical documents: `6`
-- Extracted documents: `10`
-- Prepared chunks: `233`
-- Application prepared: `true`
-- Post-persistence Gate 5 ready: `true`
-- Controlled preflight-only: `true`
+`ENG-002.2-A3.1-R` — run fresh exact-head zero-generation acceptance using the
+durable reproducible baseline v2.
 
-## Previously completed repository verification
+Do not claim ARV-001 complete until that action passes. This state does not
+authorize `--execute-provider`.
 
-- Focused ARV-001 tests: `55 passed`, `1 warning`
-- `make check`: PASS
-- `make test`: PASS
-- Full suite: `2300 passed`, `230 skipped`, `0 failed`, `194 warnings`
-- Full-suite duration: `172.30s`
-- Exact-head CI #1738 on `949865acaec90534af882522e4ef32ac46148e1f`: SUCCESS
-- Documentation-only CI #1739 on `e5cffaceae412325628e0b8a92e2ef36714b64bf`: SUCCESS
+## Historical implementation record
 
-The R9 backup/restore fixture uses PostgreSQL 16 server (`pgvector/pgvector:pg16`), so local full-suite restore checks must place PostgreSQL 16 client tools first in `PATH`.
-
-## Safety boundary
-
-Required for every closeout run:
-
-- `controlled_preflight_invocations=1` only on a complete PASS run;
-- `controlled_provider_invocations=0`;
-- `provider_generation_calls=0`;
-- `production_db_mutations=0`;
-- `old_arv003_mutations=0`;
-- `git_data_leaks=0`;
-- provider construction, transport, and generation remain unused.
-
-## Remaining closeout actions
-
-1. Verify exact-head CI for the current PR head containing the compatibility fix and regression tests.
-2. Run one fresh canonical zero-generation acceptance bound to that exact PR head.
-3. Complete review and merge PR #117.
-4. Close #116 as completed and post the exact merged-head result to #87.
-
-## Boundary after merge
-
-The only next engineering action is a separately authorized one-shot controlled provider run on the exact merged head. This task does not authorize `--execute-provider`, provider construction, transport, generation, product-owner review, human-review freeze, or closure of #87.
+Issue #116 / PR #117 records an earlier implementation and compatibility-fix
+phase. They are retained as forensic history only and do not describe the
+current execution state. The earlier closeout required a fresh acceptance
+before merge; that prerequisite has since been superseded by the completed
+code recovery and fresh dual baseline re-acquisition recorded above.
