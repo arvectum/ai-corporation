@@ -31,6 +31,24 @@ jobs:
             output/r9-db-filesystem-mismatch-*/
             output/r9-orphan-lifecycle-*/
             output/r9-backup-restore-*/
+  p6-03-arvectum-os-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout arvectum-os
+        uses: actions/checkout@v4
+        with:
+          repository: arvectum/arvectum-os
+          ref: 0e0fcac9a2fbf43920799ba96110a0db149cb85b
+          path: arvectum-os-ref
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Run P6.03 bridge tests
+        run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)/arvectum-os-ref/reference/python
+          python -m pytest -v tests/test_p6_03_arvectum_os_bridge.py
   migrations:
     runs-on: ubuntu-latest
     steps:
