@@ -849,16 +849,30 @@ def main() -> int:
                         except (IndexError, json.JSONDecodeError):
                             raise RuntimeError("controlled_preflight_payload_invalid")
 
-                        from src.modules.production_llm_analysis.schemas import ProductionLLMAnalysisRequest
-                        request_path = staging / "application-data" / "request.json"
-                        request = ProductionLLMAnalysisRequest.model_validate_json(request_path.read_text(encoding="utf-8"))
-                        batch_requests = [request]
-                        plan = None
-
-                        descriptor_data = parse_private_descriptor(staging / "prepared-verification.json", expected_head=args.expected_head, expected_corpus_sha=args.expected_corpus_sha)
-                        verification = _verify_prepared_database(path=staging / "prepared.sqlite3", descriptor=descriptor_data, data_dir=staging / "application-data")
+                        descriptor_data = parse_private_descriptor(
+                            staging / "prepared-verification.json",
+                            expected_head=args.expected_head,
+                            expected_corpus_sha=args.expected_corpus_sha,
+                        )
+                        verification = _verify_prepared_database(
+                            path=staging / "prepared.sqlite3",
+                            descriptor=descriptor_data,
+                            data_dir=staging / "application-data",
+                        )
                         if verification is None:
                             raise RuntimeError("snapshot_binding_failed")
+
+                        reconstruction = _reconstruct_actual_batch_requests(
+                            staging / "prepared.sqlite3",
+                            args.approved_policy,
+                            tokenizer=tokenizer,
+                            descriptor=descriptor_data,
+                        )
+                        batch_requests = reconstruction.requests
+                        plan = reconstruction.plan
+
+                        if not batch_requests:
+                            raise RuntimeError("no_requests_for_proof")
 
                     for phase in ("corpus_contract", "database", "application_persistence", "snapshot_binding", "source_graph_binding", "post_persistence_gate5", "controlled_preflight"):
                         recorder.passed(phase)
