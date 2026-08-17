@@ -328,12 +328,12 @@ def run_production_llm_analysis(
             error_code="provider_unavailable",
             limitation="Provider was unavailable; no stub or positive fallback was used.",
         )
-    except Exception:  # noqa: BLE001 - transport boundary must sanitize unknown failures.
+    except Exception as exc:  # noqa: BLE001 - transport boundary must sanitize unknown failures.
         return _failure_result(
             request,
             status=AnalysisStatus.PROVIDER_UNAVAILABLE,
             budget=preflight,
-            error_code=_get_sanitized_pretransport_code(sys.exc_info()[1]),
+            error_code=_get_sanitized_pretransport_code(exc),
             limitation="Provider call failed with a sanitized error; no generated claim was accepted.",
         )
 
