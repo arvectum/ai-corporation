@@ -38,6 +38,9 @@ from src.modules.production_llm_analysis.evidence import (
     build_evidence_packet,
     canonical_sha256,
 )
+from src.modules.production_llm_analysis.openai_compatible import (
+    OpenAICompatibleProductionLLMProvider,
+)
 from src.modules.production_llm_analysis.schemas import (
     AnalysisStatus,
     BudgetPolicy,
@@ -1039,12 +1042,8 @@ def produce_r10_1_canonical_analysis(
         provider_adapter = OpenAICompatibleProductionLLMProvider.__new__(
             OpenAICompatibleProductionLLMProvider
         )
-        # Mocking the adapter body manually if it fails to build correctly in some envs
-        try:
-            final_body = provider_adapter._build_request_body(request)
-        except Exception:
-            final_body = {}
-        
+        final_body = provider_adapter._build_request_body(request)
+
         final_measurement = measure_openai_request_tokens(
             final_body,
             tokenizer=counter,
