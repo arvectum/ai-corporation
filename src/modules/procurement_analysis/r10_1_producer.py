@@ -1032,7 +1032,20 @@ def produce_r10_1_canonical_analysis(
                 raise R10_1AnalysisRejectedError("evidence_batch_output_truncated")
             error_code = (result.sanitized_error_code if not controlled else None) or {
                 AnalysisStatus.TIMEOUT: "evidence_batch_execution_timeout",
-                AnalysisStatus.PROVIDER_UNAVAILABLE: "evidence_batch_provider_failed",
+                AnalysisStatus.PROVIDER_UNAVAILABLE: (
+                    result.sanitized_error_code 
+                    if controlled and result.sanitized_error_code in {
+                        "provider_request_rejected",
+                        "provider_transient_failure",
+                        "provider_unavailable",
+                        "provider_call_failed",
+                        "provider_timeout",
+                        "provider_response_invalid",
+                        "provider_response_truncated",
+                        "provider_runtime_budget_exceeded",
+                    } 
+                    else "evidence_batch_provider_failed"
+                ),
                 AnalysisStatus.INVALID_RESPONSE: "evidence_batch_invalid_response",
                 AnalysisStatus.BUDGET_EXCEEDED: "evidence_aggregation_budget_exceeded",
                 AnalysisStatus.VALIDATION_FAILED: "evidence_batch_grounding_failed",

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import sys
 from typing import Any, Protocol
+
+_ZERO_HASH = "0" * 64
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -28,7 +31,34 @@ from src.shared.llm.transport import (
     ProviderTransientError,
 )
 
-_ZERO_HASH = "0" * 64
+_SAFE_PRETRANSPORT_FAILURE_CODES = frozenset({
+    "final_body_schema_missing",
+    "final_body_task_invalid",
+    "final_body_output_contract_missing",
+    "final_body_schema_identity_mismatch",
+    "final_body_schema_not_inline",
+    "final_body_live_schema_mismatch",
+    "final_body_max_tokens_mismatch",
+    "final_body_max_claims_mismatch",
+    "final_body_reference_limit_mismatch",
+    "final_body_enable_thinking_not_false",
+    "final_body_reasoning_format_not_none",
+    "llama_schema_reference_not_local",
+    "llama_schema_reference_unresolved",
+    "llama_schema_reference_invalid",
+    "llama_schema_reference_siblings_unsupported",
+    "llama_schema_reference_cycle",
+    "llama_schema_extractive_field_paths_missing",
+    "llama_schema_contract_invalid",
+    "llama_schema_fragment_ids_missing",
+})
+
+
+def _get_sanitized_pretransport_code(exc: BaseException) -> str:
+    value = str(exc).strip().lower()
+    if value in _SAFE_PRETRANSPORT_FAILURE_CODES:
+        return value
+    return "provider_call_failed"
 
 
 class ProductionLLMProvider(Protocol):
@@ -303,7 +333,7 @@ def run_production_llm_analysis(
             request,
             status=AnalysisStatus.PROVIDER_UNAVAILABLE,
             budget=preflight,
-            error_code="provider_call_failed",
+            error_code=_get_sanitized_pretransport_code(sys.exc_info()[1]),
             limitation="Provider call failed with a sanitized error; no generated claim was accepted.",
         )
 
