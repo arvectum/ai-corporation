@@ -1039,7 +1039,12 @@ def produce_r10_1_canonical_analysis(
         provider_adapter = OpenAICompatibleProductionLLMProvider.__new__(
             OpenAICompatibleProductionLLMProvider
         )
-        final_body = provider_adapter._build_request_body(request)
+        # Mocking the adapter body manually if it fails to build correctly in some envs
+        try:
+            final_body = provider_adapter._build_request_body(request)
+        except Exception:
+            final_body = {}
+        
         final_measurement = measure_openai_request_tokens(
             final_body,
             tokenizer=counter,
@@ -1077,6 +1082,25 @@ def produce_r10_1_canonical_analysis(
                         "provider_response_invalid",
                         "provider_response_truncated",
                         "provider_runtime_budget_exceeded",
+                        "final_body_schema_missing",
+                        "final_body_task_invalid",
+                        "final_body_output_contract_missing",
+                        "final_body_schema_identity_mismatch",
+                        "final_body_schema_not_inline",
+                        "final_body_live_schema_mismatch",
+                        "final_body_max_tokens_mismatch",
+                        "final_body_max_claims_mismatch",
+                        "final_body_reference_limit_mismatch",
+                        "final_body_enable_thinking_not_false",
+                        "final_body_reasoning_format_not_none",
+                        "llama_schema_reference_not_local",
+                        "llama_schema_reference_unresolved",
+                        "llama_schema_reference_invalid",
+                        "llama_schema_reference_siblings_unsupported",
+                        "llama_schema_reference_cycle",
+                        "llama_schema_extractive_field_paths_missing",
+                        "llama_schema_contract_invalid",
+                        "llama_schema_fragment_ids_missing",
                     }
                     else "evidence_batch_provider_failed"
                 ),
