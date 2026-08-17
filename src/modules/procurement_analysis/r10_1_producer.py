@@ -38,6 +38,9 @@ from src.modules.production_llm_analysis.evidence import (
     build_evidence_packet,
     canonical_sha256,
 )
+from src.modules.production_llm_analysis.openai_compatible import (
+    OpenAICompatibleProductionLLMProvider,
+)
 from src.modules.production_llm_analysis.schemas import (
     AnalysisStatus,
     BudgetPolicy,
@@ -466,7 +469,11 @@ def _map_supported_claims(
             locators = [
                 normalized
                 for reference in claim.evidence_references
-                if (normalized := _risk_evidence_locator(reference.document_name, reference.locator))
+                if (
+                    normalized := _risk_evidence_locator(
+                        reference.document_name, reference.locator
+                    )
+                )
             ]
             for row in _risk_rows(claim.value):
                 row["evidence_locators"] = locators
@@ -494,8 +501,14 @@ def _risk_evidence_locator(document: Any, locator: Any) -> dict[str, str] | None
     if not isinstance(locator, dict):
         return None
     labels = {
-        "path": "путь", "xpath": "путь", "section": "раздел", "page": "страница",
-        "paragraph": "абзац", "line": "строка", "row": "строка", "chunk_index": "фрагмент",
+        "path": "путь",
+        "xpath": "путь",
+        "section": "раздел",
+        "page": "страница",
+        "paragraph": "абзац",
+        "line": "строка",
+        "row": "строка",
+        "chunk_index": "фрагмент",
     }
     parts: list[str] = []
     for key, label in labels.items():
@@ -516,12 +529,18 @@ def _is_technical_identifier(value: str) -> bool:
     normalized = value.strip()
     return bool(
         re.fullmatch(r"[0-9a-f]{64}", normalized, flags=re.IGNORECASE)
-        or re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", normalized, flags=re.IGNORECASE)
+        or re.fullmatch(
+            r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}",
+            normalized,
+            flags=re.IGNORECASE,
+        )
     )
 
 
 def _contains_private_path(value: str) -> bool:
-    return value.startswith(("/", "file:")) or "/Volumes/" in value or "/Users/" in value
+    return (
+        value.startswith(("/", "file:")) or "/Volumes/" in value or "/Users/" in value
+    )
 
 
 def _runtime_provenance(result: ProductionLLMAnalysisResult) -> dict[str, Any]:
@@ -767,15 +786,31 @@ def build_r10_1_batch_plan(
 ) -> EvidenceBatchPlan:
     """Build the sole product plan used by both producer and offline verifier."""
     if controlled and (
-        (prompt_id, prompt_version, output_schema_id, output_schema_version, grounding_policy_version,
-         batch_policy.provider_wire_contract_version, batch_policy.plan_version)
-        != (R10_1_CONTROLLED_MAP_CONTRACT.prompt_id, R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
-            R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id, R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
+        (
+            prompt_id,
+            prompt_version,
+            output_schema_id,
+            output_schema_version,
+            grounding_policy_version,
+            batch_policy.provider_wire_contract_version,
+            batch_policy.plan_version,
+        )
+        != (
+            R10_1_CONTROLLED_MAP_CONTRACT.prompt_id,
+            R10_1_CONTROLLED_MAP_CONTRACT.prompt_version,
+            R10_1_CONTROLLED_MAP_CONTRACT.output_schema_id,
+            R10_1_CONTROLLED_MAP_CONTRACT.output_schema_version,
             R10_1_CONTROLLED_MAP_CONTRACT.grounding_policy_version,
             R10_1_CONTROLLED_MAP_CONTRACT.provider_wire_contract_version,
-            R10_1_CONTROLLED_MAP_CONTRACT.plan_version)
+            R10_1_CONTROLLED_MAP_CONTRACT.plan_version,
+        )
     ):
-        raise R10_1BatchPlanningRejectedError(sanitized_error_code="r10_1_controlled_map_contract_mismatch", profile=batch_policy.profile, plan_version=batch_policy.plan_version, planning_diagnostics={})
+        raise R10_1BatchPlanningRejectedError(
+            sanitized_error_code="r10_1_controlled_map_contract_mismatch",
+            profile=batch_policy.profile,
+            plan_version=batch_policy.plan_version,
+            planning_diagnostics={},
+        )
     plan_fragments = [
         EvidenceFragmentInput(
             document_id=fragment.document_id,
@@ -1008,6 +1043,7 @@ def produce_r10_1_canonical_analysis(
             OpenAICompatibleProductionLLMProvider
         )
         final_body = provider_adapter._build_request_body(request)
+
         final_measurement = measure_openai_request_tokens(
             final_body,
             tokenizer=counter,
@@ -1032,7 +1068,41 @@ def produce_r10_1_canonical_analysis(
                 raise R10_1AnalysisRejectedError("evidence_batch_output_truncated")
             error_code = (result.sanitized_error_code if not controlled else None) or {
                 AnalysisStatus.TIMEOUT: "evidence_batch_execution_timeout",
-                AnalysisStatus.PROVIDER_UNAVAILABLE: "evidence_batch_provider_failed",
+                AnalysisStatus.PROVIDER_UNAVAILABLE: (
+                    result.sanitized_error_code
+                    if controlled
+                    and result.sanitized_error_code
+                    in {
+                        "provider_request_rejected",
+                        "provider_transient_failure",
+                        "provider_unavailable",
+                        "provider_call_failed",
+                        "provider_timeout",
+                        "provider_response_invalid",
+                        "provider_response_truncated",
+                        "provider_runtime_budget_exceeded",
+                        "final_body_schema_missing",
+                        "final_body_task_invalid",
+                        "final_body_output_contract_missing",
+                        "final_body_schema_identity_mismatch",
+                        "final_body_schema_not_inline",
+                        "final_body_live_schema_mismatch",
+                        "final_body_max_tokens_mismatch",
+                        "final_body_max_claims_mismatch",
+                        "final_body_reference_limit_mismatch",
+                        "final_body_enable_thinking_not_false",
+                        "final_body_reasoning_format_not_none",
+                        "llama_schema_reference_not_local",
+                        "llama_schema_reference_unresolved",
+                        "llama_schema_reference_invalid",
+                        "llama_schema_reference_siblings_unsupported",
+                        "llama_schema_reference_cycle",
+                        "llama_schema_extractive_field_paths_missing",
+                        "llama_schema_contract_invalid",
+                        "llama_schema_fragment_ids_missing",
+                    }
+                    else "evidence_batch_provider_failed"
+                ),
                 AnalysisStatus.INVALID_RESPONSE: "evidence_batch_invalid_response",
                 AnalysisStatus.BUDGET_EXCEEDED: "evidence_aggregation_budget_exceeded",
                 AnalysisStatus.VALIDATION_FAILED: "evidence_batch_grounding_failed",
@@ -1123,8 +1193,16 @@ def produce_r10_1_canonical_analysis(
         documents=documents,
         combined_text=combined_text,
         notice_text=notice_text,
-        technical_spec_text="\n".join(document.text or "" for document in documents if document.role == "technical_spec"),
-        contract_draft_text="\n".join(document.text or "" for document in documents if document.role == "contract_draft"),
+        technical_spec_text="\n".join(
+            document.text or ""
+            for document in documents
+            if document.role == "technical_spec"
+        ),
+        contract_draft_text="\n".join(
+            document.text or ""
+            for document in documents
+            if document.role == "contract_draft"
+        ),
     )
     outputs = _build_output_payloads(
         metadata=owned,
