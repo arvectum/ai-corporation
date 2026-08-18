@@ -56,7 +56,16 @@ _APPROVED_RUNTIME_BUNDLE_TREE_SHA256 = (
     _APPROVED_RUNTIME.runtime_bundle_tree_sha256
 )
 _ORIGINAL_FAILURE = implementation._failure
+_ORIGINAL_MANAGED_LOOPBACK_RUNTIME = implementation.ManagedLoopbackRuntime
+_CANONICAL_RUNTIME_STARTUP_TIMEOUT_SECONDS = 120.0
 _PREPARED_VERIFICATION_REASON: str | None = None
+
+
+def _canonical_managed_loopback_runtime(*args, **kwargs):
+    """Keep canonical cold starts bounded without rejecting valid model loads."""
+
+    kwargs.setdefault("timeout_seconds", _CANONICAL_RUNTIME_STARTUP_TIMEOUT_SECONDS)
+    return _ORIGINAL_MANAGED_LOOPBACK_RUNTIME(*args, **kwargs)
 
 
 def _sha256(path: Path) -> str:
@@ -361,6 +370,7 @@ def main() -> int:
     implementation.validate_gguf_path = _validate_approved_gguf
     implementation.validate_llama_server_path = _validate_approved_llama_server
     implementation.locate_runtime_assets = _locate_exact_runtime_assets
+    implementation.ManagedLoopbackRuntime = _canonical_managed_loopback_runtime
     implementation._private_staging_root = _canonical_private_staging_root
     implementation._verify_prepared_database = _verify_prepared_database_with_reason
     implementation._failure = _failure_with_prepared_reason
