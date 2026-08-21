@@ -43,7 +43,7 @@ def test_non_reasoning_mode_disables_reasoning_and_preserves_other_kwargs():
     }
     assert result["reasoning_format"] == "auto"
     assert result["reasoning_effort"] == "none"
-    assert _LLAMA_REASONING_PROFILE == "thinking-disabled-reasoning-separated-json-v3"
+    assert _LLAMA_REASONING_PROFILE == "thinking-disabled-reasoning-separated-json-v4"
 
 
 def test_non_reasoning_mode_accepts_schema_adapter_none_as_baseline():
@@ -118,6 +118,19 @@ def test_batch_shaped_probe_matches_real_map_shape_without_customer_data():
         item.document_id.startswith("synthetic-")
         for item in request.evidence_packet.fragments
     )
+
+
+def test_schema_adapter_natively_owns_separated_reasoning_boundary():
+    request = _build_batch_shaped_request(_policy())
+    adapter = OpenAICompatibleProductionLLMProvider.__new__(
+        OpenAICompatibleProductionLLMProvider
+    )
+
+    body = build_llama_schema_constrained_request_body(adapter, request)
+
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert body["reasoning_format"] == "auto"
+    assert body["reasoning_effort"] == "none"
 
 
 def test_batch_shaped_request_body_uses_schema_and_separates_reasoning():
