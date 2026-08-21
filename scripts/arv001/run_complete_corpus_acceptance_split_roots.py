@@ -161,10 +161,28 @@ def _expected_corpus_sha(argv: Sequence[str], view_root: Path) -> str:
     return expected
 
 
+def _load_physical_for_profile(view_root: Path) -> list[dict[str, object]]:
+    try:
+        physical = json.loads(
+            (view_root / "physical-files.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AcceptanceBlocked("physical_files_invalid") from exc
+    if not isinstance(physical, list) or any(not isinstance(item, dict) for item in physical):
+        raise AcceptanceBlocked("physical_files_contract_invalid")
+    return physical
+
+
 def _delegate_with_bound_hash(
-    delegated_argv: list[str], expected_sha: str
+    delegated_argv: list[str],
+    expected_sha: str,
+    *,
+    physical: list[dict[str, object]] | None = None,
 ) -> tuple[int, BoundCorpusHashResolver]:
     resolver = BoundCorpusHashResolver(expected_sha)
+    if physical is not None:
+        resolver(physical)
+
     previous_argv = sys.argv
     previous_runner_hash = runner._corpus_hash
     previous_workflow_hash = application_workflow.corpus_hash
@@ -211,11 +229,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             current_phase = "expected_corpus_sha"
             expected_sha = _expected_corpus_sha(original_argv, view_root)
+            physical = _load_physical_for_profile(view_root)
             delegated_argv = _replace_argument(
                 original_argv, "--candidate-root", view_root
             )
             current_phase = "delegation"
-            result, resolver = _delegate_with_bound_hash(delegated_argv, expected_sha)
+            result, resolver = _delegate_with_bound_hash(
+                delegated_argv,
+                expected_sha,
+                physical=physical,
+            )
             if result == 0 and resolver.profile is not None:
                 current_phase = "profile_output"
                 profile = resolver.profile.sanitized()
