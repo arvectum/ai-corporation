@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,7 @@ from src.modules.tender_operator_agent_demo.upload_service_legacy import (
 
 _SUCCESS_MARKER = "ARV-001_COMPLETE_CORPUS_REPORT_READY_FOR_PRODUCT_OWNER_REVIEW"
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
+_ACCEPTANCE_MODULE = "scripts.arv001.run_complete_corpus_acceptance"
 
 
 def _arguments() -> argparse.Namespace:
@@ -77,10 +80,48 @@ def _outside_repository(path: Path, code: str) -> Path:
     return resolved
 
 
-def _preflight(args: argparse.Namespace) -> tuple[Path, Path, Path, Path, Path, str]:
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _git_preflight(expected_head: str) -> None:
+    try:
+        actual_head = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=PROJECT_ROOT,
+            text=True,
+        ).strip()
+        branch = subprocess.check_output(
+            ["git", "branch", "--show-current"],
+            cwd=PROJECT_ROOT,
+            text=True,
+        ).strip()
+        status = subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=all"],
+            cwd=PROJECT_ROOT,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise P805AcceptanceBindingBlocked("BLOCKED_GIT_PREFLIGHT_UNAVAILABLE") from exc
+    if actual_head != expected_head:
+        raise P805AcceptanceBindingBlocked("BLOCKED_REPOSITORY_HEAD_MISMATCH")
+    if branch not in {"", "main"}:
+        raise P805AcceptanceBindingBlocked("BLOCKED_REPOSITORY_NOT_MAIN_OR_DETACHED")
+    if status:
+        raise P805AcceptanceBindingBlocked("BLOCKED_REPOSITORY_WORKTREE_NOT_CLEAN")
+
+
+def _preflight(
+    args: argparse.Namespace,
+) -> tuple[Path, Path, Path, Path, Path, Path, Path, str]:
     head = str(args.expected_head or "").strip().lower()
     if not _HEX40.fullmatch(head):
         raise P805AcceptanceBindingBlocked("BLOCKED_EXPECTED_HEAD_INVALID")
+    _git_preflight(head)
     if os.environ.get("ZAKUPKI_GOV_RU_SOAP_ENABLED") != "1":
         raise P805AcceptanceBindingBlocked("BLOCKED_EIS_NOT_ENABLED")
     if not os.environ.get("ZAKUPKI_GOV_RU_SOAP_TOKEN"):
@@ -90,10 +131,20 @@ def _preflight(args: argparse.Namespace) -> tuple[Path, Path, Path, Path, Path, 
     if not os.environ.get("ARVECTUM_ETP_TLS_POLICY_PATH"):
         raise P805AcceptanceBindingBlocked("BLOCKED_TLS_POLICY_MISSING")
 
-    candidate = args.baseline_candidate_root.expanduser().resolve(strict=True)
-    intake = (args.baseline_intake_root or candidate).expanduser().resolve(strict=True)
+    try:
+        candidate = args.baseline_candidate_root.expanduser().resolve(strict=True)
+        intake = (args.baseline_intake_root or candidate).expanduser().resolve(strict=True)
+        policy = args.approved_policy.expanduser().resolve(strict=True)
+        descriptor = args.baseline_descriptor.expanduser().resolve(strict=True)
+    except OSError as exc:
+        raise P805AcceptanceBindingBlocked("BLOCKED_REQUIRED_LOCAL_INPUT_MISSING") from exc
     if not candidate.is_dir() or not intake.is_dir():
         raise P805AcceptanceBindingBlocked("BLOCKED_FROZEN_BASELINE_ROOT_MISSING")
+    if not policy.is_file() or policy.is_symlink():
+        raise P805AcceptanceBindingBlocked("BLOCKED_APPROVED_POLICY_MISSING")
+    if not descriptor.is_file() or descriptor.is_symlink():
+        raise P805AcceptanceBindingBlocked("BLOCKED_FROZEN_BASELINE_MISSING")
+
     binding = _outside_repository(args.binding_root, "BLOCKED_BINDING_ROOT_INSIDE_REPOSITORY")
     acceptance = _outside_repository(
         args.acceptance_output_root,
@@ -105,7 +156,7 @@ def _preflight(args: argparse.Namespace) -> tuple[Path, Path, Path, Path, Path, 
         raise P805AcceptanceBindingBlocked("BLOCKED_BINDING_ROOT_ALREADY_EXISTS")
     if acceptance.exists():
         raise P805AcceptanceBindingBlocked("BLOCKED_ACCEPTANCE_OUTPUT_ALREADY_EXISTS")
-    return candidate, intake, binding, acceptance, database, head
+    return candidate, intake, binding, acceptance, database, data_dir, policy, head
 
 
 def _acceptance_command(
@@ -125,7 +176,7 @@ def _acceptance_command(
     command = [
         sys.executable,
         "-m",
-        "scripts.arv001.run_complete_corpus_acceptance",
+        _ACCEPTANCE_MODULE,
         "--candidate-root",
         str(candidate_root),
         "--intake-root",
@@ -153,6 +204,32 @@ def _acceptance_command(
     return command
 
 
+def _flag_value(command: list[str], flag: str) -> str | None:
+    if command.count(flag) != 1:
+        return None
+    index = command.index(flag)
+    if index + 1 >= len(command):
+        return None
+    return command[index + 1]
+
+
+def _validate_acceptance_command(command: list[str], authorization: dict[str, Any]) -> None:
+    if (
+        len(command) < 4
+        or command[1:3] != ["-m", _ACCEPTANCE_MODULE]
+        or command.count("--execute-provider") != 1
+        or any(
+            flag in command
+            for flag in ("--static-only", "--prepare-only", "--verify-pre-provider-stage-boundary")
+        )
+        or _flag_value(command, "--expected-head") != authorization.get("expected_head")
+        or _flag_value(command, "--registry-number") != authorization.get("registry_number")
+        or _flag_value(command, "--expected-corpus-sha") != authorization.get("corpus_sha256")
+        or _flag_value(command, "--expected-policy-sha") != authorization.get("policy_sha256")
+    ):
+        raise P805AcceptanceBindingBlocked("BLOCKED_ACCEPTANCE_COMMAND_NOT_BOUND")
+
+
 def _parse_success(stdout: str, *, expected_head: str, expected_corpus: str) -> dict[str, Any]:
     try:
         value = json.loads(stdout.strip().splitlines()[-1])
@@ -177,12 +254,44 @@ def _parse_success(stdout: str, *, expected_head: str, expected_corpus: str) -> 
     return value
 
 
+def _failure_result(
+    *,
+    code: str,
+    acceptance_invocations: int,
+    revalidation: dict[str, Any] | None,
+    authorization: dict[str, Any] | None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "schema_version": P8_05_RESULT_SCHEMA_VERSION,
+        "status": "FAIL_CLOSED",
+        "failure_code": code,
+        "authorization_status": (
+            authorization.get("status") if isinstance(authorization, dict) else None
+        ),
+        "authorization_consumed": acceptance_invocations == 1,
+        "acceptance_invocations": acceptance_invocations,
+        "revalidation_manifest_sha256": (
+            revalidation.get("manifest_sha256") if isinstance(revalidation, dict) else None
+        ),
+        "authorization_manifest_sha256": (
+            authorization.get("manifest_sha256") if isinstance(authorization, dict) else None
+        ),
+        "external_actions": False,
+    }
+    return {**body, "manifest_sha256": canonical_sha256(body)}
+
+
 def main() -> int:
     binding: Path | None = None
+    revalidation: dict[str, Any] | None = None
+    authorization: dict[str, Any] | None = None
+    acceptance_invocations = 0
     try:
         args = _arguments()
-        candidate, intake, binding, acceptance, database, head = _preflight(args)
+        candidate, intake, binding, acceptance, database, data_dir, policy, head = _preflight(args)
         baseline = load_and_verify_frozen_baseline(args.baseline_descriptor)
+        if _sha256_file(policy) != baseline["policy"]["sha256"]:
+            raise P805AcceptanceBindingBlocked("BLOCKED_APPROVED_POLICY_HASH_MISMATCH")
         baseline_snapshot = load_frozen_candidate_material(candidate, baseline)
 
         # The fresh EIS acquisition is a read-only temporal gate. The controlled
@@ -238,8 +347,8 @@ def main() -> int:
             candidate_root=candidate,
             intake_root=intake,
             database_path=database,
-            data_dir=args.data_dir.expanduser().resolve(strict=False),
-            approved_policy=args.approved_policy.expanduser().resolve(strict=True),
+            data_dir=data_dir,
+            approved_policy=policy,
             output_root=acceptance,
             expected_head=head,
             registry_number=baseline["registry_number"],
@@ -247,6 +356,8 @@ def main() -> int:
             policy_sha256=baseline["policy"]["sha256"],
             initialize_database=args.initialize_database,
         )
+        _validate_acceptance_command(command, authorization)
+        acceptance_invocations = 1
         completed = execute_authorized_once(
             authorization,
             command,
@@ -254,24 +365,14 @@ def main() -> int:
             env=os.environ.copy(),
         )
         if completed.returncode != 0:
-            failure = safe_child_failure(completed.stderr)
-            body = {
-                "schema_version": P8_05_RESULT_SCHEMA_VERSION,
-                "status": "FAIL_CLOSED",
-                "failure_code": failure,
-                "authorization_status": AUTHORIZED_STATUS,
-                "authorization_consumed": True,
-                "acceptance_invocations": 1,
-                "revalidation_manifest_sha256": revalidation["manifest_sha256"],
-                "authorization_manifest_sha256": authorization["manifest_sha256"],
-                "external_actions": False,
-            }
-            failure_manifest = {
-                **body,
-                "manifest_sha256": canonical_sha256(body),
-            }
-            write_manifest(binding / "p8-05-bound-acceptance-result.json", failure_manifest)
-            _print(failure_manifest)
+            failure = _failure_result(
+                code=safe_child_failure(completed.stderr),
+                acceptance_invocations=1,
+                revalidation=revalidation,
+                authorization=authorization,
+            )
+            write_manifest(binding / "p8-05-bound-acceptance-result.json", failure)
+            _print(failure)
             return 3
 
         success = _parse_success(
@@ -302,32 +403,31 @@ def main() -> int:
             "git_mutations": 0,
             "external_actions": False,
         }
-        final = {
-            **body,
-            "manifest_sha256": canonical_sha256(body),
-        }
+        final = {**body, "manifest_sha256": canonical_sha256(body)}
         write_manifest(binding / "p8-05-bound-acceptance-result.json", final)
         _print(final)
         return 0
     except P805AcceptanceBindingBlocked as exc:
-        _print(
-            {
-                "status": "FAIL_CLOSED",
-                "failure_code": exc.code,
-                "acceptance_invocations": 0,
-                "external_actions": False,
-            }
+        failure = _failure_result(
+            code=exc.code,
+            acceptance_invocations=acceptance_invocations,
+            revalidation=revalidation,
+            authorization=authorization,
         )
+        if binding is not None and binding.is_dir() and acceptance_invocations == 1:
+            write_manifest(binding / "p8-05-bound-acceptance-result.json", failure)
+        _print(failure)
         return 2
     except Exception as exc:  # noqa: BLE001 - sanitize the terminal boundary.
-        _print(
-            {
-                "status": "FAIL_CLOSED",
-                "failure_code": f"runtime_error:{type(exc).__name__}",
-                "acceptance_invocations": 0,
-                "external_actions": False,
-            }
+        failure = _failure_result(
+            code=f"runtime_error:{type(exc).__name__}",
+            acceptance_invocations=acceptance_invocations,
+            revalidation=revalidation,
+            authorization=authorization,
         )
+        if binding is not None and binding.is_dir() and acceptance_invocations == 1:
+            write_manifest(binding / "p8-05-bound-acceptance-result.json", failure)
+        _print(failure)
         return 2
 
 
