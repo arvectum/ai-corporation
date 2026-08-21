@@ -165,6 +165,15 @@ def _delegate_with_bound_hash(
     delegated_argv: list[str], expected_sha: str
 ) -> tuple[int, BoundCorpusHashResolver]:
     resolver = BoundCorpusHashResolver(expected_sha)
+    candidate_root = _argument_path(delegated_argv, "--candidate-root")
+    try:
+        physical = json.loads(
+            (candidate_root / "physical-files.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AcceptanceBlocked("physical_files_invalid") from exc
+    resolver(physical)
+
     previous_argv = sys.argv
     previous_runner_hash = runner._corpus_hash
     previous_workflow_hash = application_workflow.corpus_hash
