@@ -15,12 +15,19 @@ from scripts.arv001 import run_complete_corpus_acceptance_split_roots as adapter
 def _install_pre_stage_success(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, execute: bool, verify: bool
 ) -> Namespace:
-    physical = [{"original_name": f"file-{index}"} for index in range(10)]
+    physical = [
+        {
+            "original_name": f"file-{index}",
+            "sha256": hashlib.sha256(str(index).encode()).hexdigest(),
+            "size_bytes": index + 1,
+        }
+        for index in range(10)
+    ]
     args = Namespace(
         expected_head="head",
         execute_provider=execute,
         verify_pre_provider_stage_boundary=verify,
-        expected_corpus_sha=runner._corpus_hash(physical),
+        expected_corpus_sha=_bound_expected(physical),
         expected_policy_sha="policy",
         customer_name="customer",
         project_name="project",
@@ -133,7 +140,7 @@ def test_pre_provider_boundary_creates_then_cleans_static_stage(
         lambda: {
             "sha256": runner._arguments().expected_corpus_sha,
             "fields": ["original_name", "sha256", "size_bytes"],
-            "serialization": "canonical_compact",
+            "serialization": "canonical_compact_newline",
             "ordering": "original_name_unicode_codepoint_ascending",
         },
     )
@@ -166,11 +173,14 @@ def _bound_expected(physical: list[dict]) -> str:
         {key: item[key] for key in ("original_name", "sha256", "size_bytes")}
         for item in physical
     ]
-    payload = json.dumps(
-        sorted(projected, key=lambda item: item["original_name"]),
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
+    payload = (
+        json.dumps(
+            sorted(projected, key=lambda item: item["original_name"]),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
     ).encode()
     return hashlib.sha256(payload).hexdigest()
 
@@ -284,6 +294,7 @@ def test_split_root_diagnostic_uses_bound_profile_and_cleans_stage(
     assert payload["marker"] == "ARV-001_PRE_PROVIDER_STAGE_BOUNDARY_VERIFIED"
     assert profile["sha256"] == expected
     assert profile["fields"] == ["original_name", "sha256", "size_bytes"]
+    assert profile["serialization"] == "canonical_compact_newline"
     assert seen_static_stage == [True]
     assert not list(tmp_path.glob(".output.partial.*"))
     assert not output.exists()
