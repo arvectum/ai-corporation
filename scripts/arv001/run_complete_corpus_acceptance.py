@@ -32,6 +32,7 @@ from scripts.arv001.complete_corpus_contract import (
     load_candidate,
     validate_document_set,
 )
+from scripts.arv001.corpus_hash_resolver import resolve_corpus_hash_profile
 
 _static_contract_preflight = static_contract_preflight
 _corpus_hash = _contract.corpus_hash
@@ -42,6 +43,9 @@ _validate_customer_report = _contract.validate_customer_report
 _write_json = _contract.write_json
 _SAFE_CODE = re.compile(r"^[a-z0-9_.:-]{1,180}$")
 _SAFE_EXCEPTION_CLASS = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,80}$")
+_BOUND_CORPUS_HASH_FIELDS = ["original_name", "sha256", "size_bytes"]
+_BOUND_CORPUS_HASH_SERIALIZATION = "canonical_compact_newline"
+_BOUND_CORPUS_HASH_ORDERING = "original_name_unicode_codepoint_ascending"
 _PHASES = frozenset(
     {
         "arguments",
@@ -93,6 +97,21 @@ def _verified_diagnostic_bound_profile(
             "diagnostic_bound_corpus_hash_profile_missing_or_invalid"
         )
     return profile
+
+
+def _resolve_bound_corpus_hash(
+    physical: list[dict[str, Any]], expected_sha: str
+) -> str:
+    expected = str(expected_sha or "").strip().lower()
+    profile = resolve_corpus_hash_profile(physical, expected)
+    if profile.sanitized() != {
+        "fields": _BOUND_CORPUS_HASH_FIELDS,
+        "serialization": _BOUND_CORPUS_HASH_SERIALIZATION,
+        "sha256": expected,
+        "ordering": _BOUND_CORPUS_HASH_ORDERING,
+    }:
+        raise AcceptanceBlocked("canonical_corpus_hash_profile_mismatch")
+    return profile.sha256
 
 
 def _arguments() -> argparse.Namespace:
@@ -557,7 +576,9 @@ def main() -> int:
         ):
             raise AcceptanceBlocked("physical_files_contract_invalid")
         current_phase = "corpus_hash"
-        actual_corpus_sha = _corpus_hash(physical)
+        actual_corpus_sha = _resolve_bound_corpus_hash(
+            physical, args.expected_corpus_sha
+        )
         if actual_corpus_sha != args.expected_corpus_sha:
             raise AcceptanceBlocked("canonical_corpus_sha_mismatch")
         current_phase = "intake_summary"
