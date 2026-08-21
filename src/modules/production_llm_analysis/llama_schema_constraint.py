@@ -22,7 +22,7 @@ _ORIGINAL_PARSE_SUCCESS_RESPONSE = (
     OpenAICompatibleProductionLLMProvider._parse_success_response
 )
 _ORIGINAL_RUN_PRODUCTION_ANALYSIS = r10_1_producer.run_production_llm_analysis
-_SCHEMA_PATCH_MARKER = "_arv003_llama_schema_constraint_v4"
+_SCHEMA_PATCH_MARKER = "_arv003_llama_schema_constraint_v5"
 _PARSE_PATCH_MARKER = "_arv003_llama_invalid_response_capture_v3"
 _RUN_PATCH_MARKER = "_arv003_llama_invalid_response_surface_v1"
 _LLAMA_SCHEMA_PROFILE = "fragment-grounded-extractive-v2"
@@ -225,7 +225,13 @@ def build_llama_schema_constrained_request_body(
             "schema": schema,
         }
         body["chat_template_kwargs"] = {"enable_thinking": False}
-        body["reasoning_format"] = "none"
+        # Gemma4 may still emit an optional thought block despite thinking being
+        # disabled. `auto` keeps that block out of message.content, preserving a
+        # JSON-only content boundary, while reasoning_effort=none keeps generation
+        # itself disabled. Keep these controls in the schema adapter so reinstall
+        # order cannot strip the production boundary.
+        body["reasoning_format"] = "auto"
+        body["reasoning_effort"] = "none"
         system_message = body["messages"][0]
         system_message["content"] = (
             f"{system_message['content']} "
@@ -504,8 +510,10 @@ def verify_final_live_request_body(body: dict[str, Any], request: ProductionLLMA
     chat_kwargs = body.get("chat_template_kwargs") or {}
     if chat_kwargs.get("enable_thinking") is not False:
         raise ValueError("final_body_enable_thinking_not_false")
-    if body.get("reasoning_format") != "none":
-        raise ValueError("final_body_reasoning_format_not_none")
+    if body.get("reasoning_format") != "auto":
+        raise ValueError("final_body_reasoning_format_not_auto")
+    if body.get("reasoning_effort") != "none":
+        raise ValueError("final_body_reasoning_effort_not_none")
     return {
         "final_request_body_sha256": _sha(body),
         "response_schema_sha256": response_hash,
@@ -517,7 +525,8 @@ def verify_final_live_request_body(body: dict[str, Any], request: ProductionLLMA
         "reference_limit": ref_max,
         "sentinel_contract_enabled": True,
         "enable_thinking_false": True,
-        "reasoning_format": "none",
+        "reasoning_format": "auto",
+        "reasoning_effort": "none",
         "provider_wire_contract_version": request.provider_wire_contract_version,
         "prompt_version": request.prompt_version,
         "output_schema_version": request.output_schema_version,

@@ -151,6 +151,7 @@ def test_final_body_verification_config():
 
     assert verification["final_request_body_sha256"] is not None
     assert verification["enable_thinking_false"] is True
-    assert verification["reasoning_format"] == "none"
+    assert verification["reasoning_format"] == "auto"
+    assert verification["reasoning_effort"] == "none"
     assert "schema" in body["response_format"]
     assert body["max_tokens"] == 4096

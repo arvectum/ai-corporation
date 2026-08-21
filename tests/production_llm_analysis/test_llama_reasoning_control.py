@@ -41,9 +41,21 @@ def test_non_reasoning_mode_disables_reasoning_and_preserves_other_kwargs():
         "custom": "kept",
         "enable_thinking": False,
     }
-    assert result["reasoning_format"] == "none"
+    assert result["reasoning_format"] == "auto"
     assert result["reasoning_effort"] == "none"
-    assert _LLAMA_REASONING_PROFILE == "thinking-disabled-json-v2"
+    assert _LLAMA_REASONING_PROFILE == "thinking-disabled-reasoning-separated-json-v4"
+
+
+def test_non_reasoning_mode_accepts_schema_adapter_none_as_baseline():
+    request = _build_batch_shaped_request(_policy())
+
+    result = apply_llama_non_reasoning_mode(
+        {"reasoning_format": "none"},
+        request,
+    )
+
+    assert result["reasoning_format"] == "auto"
+    assert result["reasoning_effort"] == "none"
 
 
 def test_non_reasoning_mode_rejects_conflicting_thinking_enablement():
@@ -52,6 +64,16 @@ def test_non_reasoning_mode_rejects_conflicting_thinking_enablement():
     with pytest.raises(ValueError, match="llama_thinking_mode_conflict"):
         apply_llama_non_reasoning_mode(
             {"chat_template_kwargs": {"enable_thinking": True}},
+            request,
+        )
+
+
+def test_non_reasoning_mode_rejects_conflicting_reasoning_format():
+    request = _build_batch_shaped_request(_policy())
+
+    with pytest.raises(ValueError, match="llama_reasoning_format_conflict"):
+        apply_llama_non_reasoning_mode(
+            {"reasoning_format": "deepseek"},
             request,
         )
 
@@ -98,7 +120,20 @@ def test_batch_shaped_probe_matches_real_map_shape_without_customer_data():
     )
 
 
-def test_batch_shaped_request_body_uses_schema_and_disables_reasoning():
+def test_schema_adapter_natively_owns_separated_reasoning_boundary():
+    request = _build_batch_shaped_request(_policy())
+    adapter = OpenAICompatibleProductionLLMProvider.__new__(
+        OpenAICompatibleProductionLLMProvider
+    )
+
+    body = build_llama_schema_constrained_request_body(adapter, request)
+
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert body["reasoning_format"] == "auto"
+    assert body["reasoning_effort"] == "none"
+
+
+def test_batch_shaped_request_body_uses_schema_and_separates_reasoning():
     request = _build_batch_shaped_request(_policy())
     adapter = OpenAICompatibleProductionLLMProvider.__new__(
         OpenAICompatibleProductionLLMProvider
@@ -111,5 +146,5 @@ def test_batch_shaped_request_body_uses_schema_and_disables_reasoning():
     claims_schema = body["response_format"]["schema"]["properties"]["claims"]
     assert claims_schema["maxItems"] == 3
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
-    assert body["reasoning_format"] == "none"
+    assert body["reasoning_format"] == "auto"
     assert body["reasoning_effort"] == "none"

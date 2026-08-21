@@ -2,10 +2,10 @@
 """One-call synthetic probe for Gemma 4 reasoning/content separation.
 
 This diagnostic is customer-data-free and database-free. It reuses the approved
-batch-shaped synthetic request, keeps thinking disabled, changes only
-``reasoning_format`` from ``none`` to ``auto`` for the wire request, and emits
-sanitized structural diagnostics. Raw prompts, model output, reasoning text and
-credentials are never printed or persisted by this script.
+batch-shaped synthetic request, keeps thinking disabled, verifies the production
+``reasoning_format=auto`` response-separation boundary, and emits sanitized
+structural diagnostics. Raw prompts, model output, reasoning text and credentials
+are never printed or persisted by this script.
 """
 
 from __future__ import annotations
@@ -79,11 +79,10 @@ def _build_auto_reasoning_body(provider, request) -> dict[str, Any]:
         raise RuntimeError("probe_thinking_not_disabled")
     if body.get("reasoning_effort") != "none":
         raise RuntimeError("probe_reasoning_effort_not_none")
-    if body.get("reasoning_format") != "none":
-        raise RuntimeError("probe_baseline_reasoning_format_not_none")
+    if body.get("reasoning_format") != "auto":
+        raise RuntimeError("probe_reasoning_format_not_auto")
     if body.get("max_tokens") != 4096:
         raise RuntimeError("probe_max_tokens_mismatch")
-    body["reasoning_format"] = "auto"
     return body
 
 

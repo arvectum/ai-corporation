@@ -251,7 +251,8 @@ def test_generate_sends_verified_final_body_when_installed():
     ver = provider._last_boundary_verification
     assert ver["final_request_body_sha256"] == hashlib.sha256(record.sent).hexdigest()
     assert ver["schemas_identical"] is True
-    assert ver["reasoning_format"] == "none"
+    assert ver["reasoning_format"] == "auto"
+    assert ver["reasoning_effort"] == "none"
 
 
 # 7. truncation carries sanitized diagnostics, never raw content
