@@ -309,7 +309,8 @@ def test_final_body_schema_identity_and_reasoning_flags():
     assert desc["schemas_identical"] is True
     assert desc["schema_inline_no_refs"] is True
     assert desc["enable_thinking_false"] is True
-    assert desc["reasoning_format"] == "none"
+    assert desc["reasoning_format"] == "auto"
+    assert desc["reasoning_effort"] == "none"
     assert desc["max_tokens"] == 4096
     assert "messages" not in desc and "evidence" not in desc
 
