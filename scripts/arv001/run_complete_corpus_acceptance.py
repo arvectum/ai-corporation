@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from scripts.arv001 import application_workflow
 from scripts.arv001 import complete_corpus_contract as _contract
 from scripts.arv001.application_workflow import (
     create_application_data,
@@ -32,7 +33,10 @@ from scripts.arv001.complete_corpus_contract import (
     load_candidate,
     validate_document_set,
 )
-from scripts.arv001.corpus_hash_resolver import resolve_corpus_hash_profile
+from scripts.arv001.corpus_hash_resolver import (
+    BoundCorpusHashResolver,
+    resolve_corpus_hash_profile,
+)
 
 _static_contract_preflight = static_contract_preflight
 _corpus_hash = _contract.corpus_hash
@@ -553,6 +557,7 @@ def _finalize(
 def main() -> int:
     current_phase = "arguments"
     stage: Path | None = None
+    _previous_workflow_hash = application_workflow.corpus_hash
     try:
         args = _arguments()
         repo_root = _repository_root()
@@ -581,6 +586,9 @@ def main() -> int:
         )
         if actual_corpus_sha != args.expected_corpus_sha:
             raise AcceptanceBlocked("canonical_corpus_sha_mismatch")
+        corpus_resolver = BoundCorpusHashResolver(args.expected_corpus_sha)
+        corpus_resolver(physical)
+        application_workflow.corpus_hash = corpus_resolver
         current_phase = "intake_summary"
         intake_summary = values["intake-summary.json"]
         if (
@@ -832,6 +840,8 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - sanitize every unexpected failure.
         print(_safe_unexpected_code(current_phase, exc), file=sys.stderr)
         return 3
+    finally:
+        application_workflow.corpus_hash = _previous_workflow_hash
 
 
 if __name__ == "__main__":
