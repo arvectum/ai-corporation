@@ -222,7 +222,7 @@ def test_compare_material_snapshots_detects_changed_bytes() -> None:
 def test_compare_material_snapshots_detects_added_and_removed() -> None:
     baseline = _baseline_snapshot()
     fresh = _fresh_snapshot()
-    baseline["physical"] = baseline["physical"][:-1]
+    fresh["physical"] = fresh["physical"][:-1]
     fresh["physical"].append(
         {"original_name": "Новый.docx", "sha256": _digest("new"), "size_bytes": 1}
     )
