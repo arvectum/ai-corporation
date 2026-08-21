@@ -7,15 +7,15 @@ from src.modules.production_llm_analysis.openai_compatible import (
 )
 from src.modules.production_llm_analysis.schemas import ProductionLLMAnalysisRequest
 
-_LLAMA_REASONING_PROFILE = "thinking-disabled-json-v1"
-_PATCH_MARKER = "_arv003_llama_reasoning_disabled_v1"
+_LLAMA_REASONING_PROFILE = "thinking-disabled-json-v2"
+_PATCH_MARKER = "_arv003_llama_reasoning_disabled_v2"
 
 
 def apply_llama_non_reasoning_mode(
     body: dict[str, Any],
     request: ProductionLLMAnalysisRequest,
 ) -> dict[str, Any]:
-    """Disable template-level thinking for compact schema-constrained requests."""
+    """Disable llama.cpp reasoning for compact schema-constrained requests."""
 
     if request.provider_wire_contract_version not in {"compact-safe-v1", "compact-safe-v2"}:
         return body
@@ -28,14 +28,22 @@ def apply_llama_non_reasoning_mode(
         raise ValueError("llama_thinking_mode_conflict")
     kwargs["enable_thinking"] = False
     body["chat_template_kwargs"] = kwargs
+
+    # `reasoning_format=none` controls how llama.cpp exposes reasoning text; it
+    # does not disable reasoning generation. Keep it for raw-content semantics,
+    # and also set `reasoning_effort=none`, which is the request-level control
+    # that disables reasoning on current llama.cpp builds.
     if body.get("reasoning_format") is not None and body["reasoning_format"] != "none":
         raise ValueError("llama_reasoning_format_conflict")
     body["reasoning_format"] = "none"
+    if body.get("reasoning_effort") is not None and body["reasoning_effort"] != "none":
+        raise ValueError("llama_reasoning_effort_conflict")
+    body["reasoning_effort"] = "none"
     return body
 
 
 def install_llama_non_reasoning_mode() -> None:
-    """Wrap the currently installed request builder with thinking disabled."""
+    """Wrap the currently installed request builder with reasoning disabled."""
 
     current = OpenAICompatibleProductionLLMProvider._build_request_body
     if bool(getattr(current, _PATCH_MARKER, False)):
