@@ -30,7 +30,7 @@ def _policy():
     )
 
 
-def test_non_reasoning_mode_disables_thinking_and_preserves_other_kwargs():
+def test_non_reasoning_mode_disables_reasoning_and_preserves_other_kwargs():
     request = _build_batch_shaped_request(_policy())
     body = {"chat_template_kwargs": {"custom": "kept"}}
 
@@ -41,7 +41,9 @@ def test_non_reasoning_mode_disables_thinking_and_preserves_other_kwargs():
         "custom": "kept",
         "enable_thinking": False,
     }
-    assert _LLAMA_REASONING_PROFILE == "thinking-disabled-json-v1"
+    assert result["reasoning_format"] == "none"
+    assert result["reasoning_effort"] == "none"
+    assert _LLAMA_REASONING_PROFILE == "thinking-disabled-json-v2"
 
 
 def test_non_reasoning_mode_rejects_conflicting_thinking_enablement():
@@ -54,6 +56,16 @@ def test_non_reasoning_mode_rejects_conflicting_thinking_enablement():
         )
 
 
+def test_non_reasoning_mode_rejects_conflicting_reasoning_effort():
+    request = _build_batch_shaped_request(_policy())
+
+    with pytest.raises(ValueError, match="llama_reasoning_effort_conflict"):
+        apply_llama_non_reasoning_mode(
+            {"reasoning_effort": "high"},
+            request,
+        )
+
+
 def test_non_reasoning_mode_leaves_full_wire_unchanged():
     request = _build_batch_shaped_request(_policy()).model_copy(
         update={"provider_wire_contract_version": "full-v1", "map_mode": False}
@@ -62,6 +74,7 @@ def test_non_reasoning_mode_leaves_full_wire_unchanged():
 
     assert apply_llama_non_reasoning_mode(body, request) == body
     assert "chat_template_kwargs" not in body
+    assert "reasoning_effort" not in body
 
 
 def test_batch_shaped_probe_matches_real_map_shape_without_customer_data():
@@ -85,7 +98,7 @@ def test_batch_shaped_probe_matches_real_map_shape_without_customer_data():
     )
 
 
-def test_batch_shaped_request_body_uses_schema_and_disables_thinking():
+def test_batch_shaped_request_body_uses_schema_and_disables_reasoning():
     request = _build_batch_shaped_request(_policy())
     adapter = OpenAICompatibleProductionLLMProvider.__new__(
         OpenAICompatibleProductionLLMProvider
@@ -98,3 +111,5 @@ def test_batch_shaped_request_body_uses_schema_and_disables_thinking():
     claims_schema = body["response_format"]["schema"]["properties"]["claims"]
     assert claims_schema["maxItems"] == 3
     assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    assert body["reasoning_format"] == "none"
+    assert body["reasoning_effort"] == "none"
