@@ -15,18 +15,46 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _frozen_corpus_sha(physical: list[dict]) -> str:
+    projected = [
+        {
+            "original_name": item["original_name"],
+            "sha256": item["sha256"],
+            "size_bytes": item["size_bytes"],
+        }
+        for item in physical
+    ]
+    payload = (
+        json.dumps(
+            sorted(projected, key=lambda item: item["original_name"]),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n"
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def _write_artifacts(candidate: Path, intake: Path) -> dict[Path, tuple[int, str]]:
     candidate.mkdir()
     intake.mkdir()
+    physical = [
+        {
+            "original_name": "A.xml",
+            "sha256": "a" * 64,
+            "size_bytes": 1,
+        }
+    ]
     payloads = {
-        "physical-files.json": [{"original_name": "A.xml", "sha256": "a" * 64}],
+        "physical-files.json": physical,
         "logical-documents.json": [{"name": "Извещение о закупке"}],
         "document-set-summary.json": {
             "status": "complete",
             "analysis_allowed": True,
         },
         "deterministic-parse-summary.json": {"registry_number": "1"},
-        "intake-summary.json": {"corpus_sha256": "b" * 64},
+        "intake-summary.json": {"corpus_sha256": _frozen_corpus_sha(physical)},
     }
     for name, value in payloads.items():
         (candidate / name).write_text(
@@ -93,6 +121,9 @@ def test_entrypoint_delegates_with_temporary_complete_candidate_root(
     candidate = tmp_path / "candidate"
     intake = tmp_path / "intake"
     _write_artifacts(candidate, intake)
+    expected = json.loads(
+        (candidate / "intake-summary.json").read_text(encoding="utf-8")
+    )["corpus_sha256"]
     delegated_root: Path | None = None
 
     def fake_main() -> int:
@@ -114,7 +145,7 @@ def test_entrypoint_delegates_with_temporary_complete_candidate_root(
             "--intake-root",
             str(intake),
             "--expected-corpus-sha",
-            "b" * 64,
+            expected,
         ]
     )
 
