@@ -37,13 +37,16 @@ from src.modules.production_llm_analysis.controlled_evidence import (
     load_approved_provider_policy,
     run_controlled_provider_evidence,
 )
+from src.modules.production_llm_analysis.llama_reasoning_control import (
+    install_llama_non_reasoning_mode,
+)
+from src.modules.production_llm_analysis.llama_schema_constraint import (
+    install_llama_schema_constraint,
+)
 from src.modules.production_llm_analysis.openai_compatible import (
     OpenAICompatibleProductionLLMProvider,
     OpenAICompatibleTransportConfig,
     enable_live_boundary_verification,
-)
-from src.modules.production_llm_analysis.llama_schema_constraint import (
-    install_llama_schema_constraint,
 )
 
 from src.shared.config.settings import get_settings
@@ -265,11 +268,10 @@ def _metadata(
 def main() -> int:
     args = _arguments()
     try:
-        # Install ARV-001 live runtime adapters (sentinels, non-reasoning, and verification)
+        # Install the exact ARV-001 live runtime adapters before any transport.
         install_llama_schema_constraint()
+        install_llama_non_reasoning_mode()
         enable_live_boundary_verification()
-
-
 
         policy = load_approved_provider_policy(args.approved_policy)
 
